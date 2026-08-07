@@ -28,6 +28,11 @@ export function listFolder(path: string): Promise<FileEntry[]> {
   return invoke("list_folder", { path });
 }
 
+/** Watches `path` (non-recursive); replaces any previously watched folder. */
+export function watchFolder(path: string): Promise<void> {
+  return invoke("watch_folder", { path });
+}
+
 export function openMarkdownFileDialog(options: {
   title: string;
   filterName: string;

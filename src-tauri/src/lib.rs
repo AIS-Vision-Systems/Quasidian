@@ -1,4 +1,7 @@
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
+use std::sync::Mutex;
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -6,6 +9,49 @@ pub struct FileEntry {
     name: String,
     path: String,
     is_dir: bool,
+}
+
+/// Holds the single active folder watcher; replacing it drops (stops)
+/// the previous one, so exactly one folder is ever watched.
+#[derive(Default)]
+struct WatcherState(Mutex<Option<RecommendedWatcher>>);
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FolderChange {
+    kind: String,
+    paths: Vec<String>,
+}
+
+/// Watches a single folder (non-recursive) and forwards raw change events
+/// to the frontend as "folder-changed"; no business logic here.
+#[tauri::command]
+fn watch_folder(
+    app: AppHandle,
+    state: State<WatcherState>,
+    path: String,
+) -> Result<(), String> {
+    let mut watcher = notify::recommended_watcher(
+        move |result: Result<notify::Event, notify::Error>| {
+            if let Ok(event) = result {
+                let change = FolderChange {
+                    kind: format!("{:?}", event.kind),
+                    paths: event
+                        .paths
+                        .iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect(),
+                };
+                let _ = app.emit("folder-changed", change);
+            }
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    watcher
+        .watch(std::path::Path::new(&path), RecursiveMode::NonRecursive)
+        .map_err(|e| e.to_string())?;
+    *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
+    Ok(())
 }
 
 #[tauri::command]
@@ -52,12 +98,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(WatcherState::default())
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
             write_file_atomic,
             ensure_dir,
-            list_folder
+            list_folder,
+            watch_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -96,6 +96,11 @@ export interface EditorHandle {
   getDoc(): string;
   /** In-place edit that preserves undo history (e.g. task toggles). */
   replaceRange(from: number, to: number, insert: string): void;
+  /**
+   * Replaces the whole document keeping undo history, cursor (clamped)
+   * and scroll — for reloading external changes from disk.
+   */
+  reloadDoc(contents: string): void;
   focus(): void;
   /** Hot-applies configurable options without recreating the editor. */
   applyConfig(config: EditorConfig): void;
@@ -190,6 +195,13 @@ export function createEditor(
     },
     replaceRange(from: number, to: number, insert: string): void {
       view.dispatch({ changes: { from, to, insert } });
+    },
+    reloadDoc(contents: string): void {
+      const head = Math.min(view.state.selection.main.head, contents.length);
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: contents },
+        selection: { anchor: head },
+      });
     },
     focus(): void {
       view.focus();
