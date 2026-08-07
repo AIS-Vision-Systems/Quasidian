@@ -101,6 +101,8 @@ export interface EditorHandle {
    * and scroll — for reloading external changes from disk.
    */
   reloadDoc(contents: string): void;
+  /** Selects [from, to], scrolls it into view centered, and focuses. */
+  revealRange(from: number, to: number): void;
   focus(): void;
   /** Hot-applies configurable options without recreating the editor. */
   applyConfig(config: EditorConfig): void;
@@ -202,6 +204,16 @@ export function createEditor(
         changes: { from: 0, to: view.state.doc.length, insert: contents },
         selection: { anchor: head },
       });
+    },
+    revealRange(from: number, to: number): void {
+      const length = view.state.doc.length;
+      const anchor = Math.min(from, length);
+      const head = Math.min(to, length);
+      view.dispatch({
+        selection: { anchor, head },
+        effects: EditorView.scrollIntoView(anchor, { y: "center" }),
+      });
+      view.focus();
     },
     focus(): void {
       view.focus();

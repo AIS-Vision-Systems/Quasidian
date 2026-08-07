@@ -11,6 +11,7 @@ import {
 import { createEditor } from "../editor/editor";
 import { createAutosaveScheduler } from "../editor/autosave";
 import { createBacklinkIndex } from "../lib/backlinkIndex";
+import { createSearchIndex, type SearchMatch } from "../lib/searchIndex";
 import { basename, dirname, normalizePath, samePath } from "../lib/paths";
 import type { EditorModeSetting } from "../lib/settings";
 import { countWords } from "../lib/text";
@@ -26,14 +27,41 @@ export function mountLayout(root: HTMLElement): void {
   const sidebar = document.createElement("aside");
   sidebar.className = "sidebar";
 
+  const sidebarFiles = document.createElement("div");
+  sidebarFiles.className = "sidebar-view";
+
   const openButton = document.createElement("button");
   openButton.className = "sidebar-open-button";
   openButton.textContent = t("sidebar.openFile");
-  sidebar.append(openButton);
+  sidebarFiles.append(openButton);
 
   const fileList = document.createElement("ul");
   fileList.className = "file-list";
-  sidebar.append(fileList);
+  sidebarFiles.append(fileList);
+  sidebar.append(sidebarFiles);
+
+  const sidebarSearch = document.createElement("div");
+  sidebarSearch.className = "sidebar-view is-hidden";
+  const searchHeader = document.createElement("div");
+  searchHeader.className = "search-header";
+  const searchTitle = document.createElement("span");
+  searchTitle.textContent = t("search.title");
+  const searchClose = document.createElement("button");
+  searchClose.className = "search-close";
+  searchClose.textContent = "×";
+  searchClose.title = t("search.close");
+  searchClose.setAttribute("aria-label", t("search.close"));
+  searchHeader.append(searchTitle, searchClose);
+  const searchInput = document.createElement("input");
+  searchInput.className = "search-input";
+  searchInput.placeholder = t("search.placeholder");
+  searchInput.spellcheck = false;
+  const searchStatus = document.createElement("div");
+  searchStatus.className = "search-status";
+  const searchResults = document.createElement("ul");
+  searchResults.className = "search-results";
+  sidebarSearch.append(searchHeader, searchInput, searchStatus, searchResults);
+  sidebar.append(sidebarSearch);
 
   const settingsButton = document.createElement("button");
   settingsButton.className = "sidebar-settings-button";
@@ -88,7 +116,9 @@ export function mountLayout(root: HTMLElement): void {
   let watchedFolder: string | null = null;
   let backlinksVisible = true;
   let reloadingFromDisk = false;
+  let searchVisible = false;
   const backlinkIndex = createBacklinkIndex();
+  const searchIndex = createSearchIndex();
 
   // Shared mutable options: the scheduler reads them on every change, so
   // settings updates apply on the next keystroke.
@@ -204,7 +234,11 @@ export function mountLayout(root: HTMLElement): void {
       await writeFile(openedPath, editor.getDoc());
       setStatusError(null);
       backlinkIndex.setFile(openedPath, editor.getDoc());
+      searchIndex.setFile(openedPath, editor.getDoc());
       renderBacklinks();
+      if (searchVisible) {
+        runSearch();
+      }
     } catch (error) {
       setStatusError(t("error.writeFile", { error: String(error) }));
     }
@@ -246,17 +280,110 @@ export function mountLayout(root: HTMLElement): void {
 
   async function rebuildIndex(): Promise<void> {
     backlinkIndex.clear();
+    searchIndex.clear();
     const files = [...folderFiles];
     await Promise.all(
       files.map(async (file) => {
         try {
-          backlinkIndex.setFile(file.path, await readFile(file.path));
+          const contents = await readFile(file.path);
+          backlinkIndex.setFile(file.path, contents);
+          searchIndex.setFile(file.path, contents);
         } catch {
           // Deleted or unreadable mid-scan; the watcher will retrigger.
         }
       }),
     );
     renderBacklinks();
+    if (searchVisible) {
+      runSearch();
+    }
+  }
+
+  function matchSnippet(match: SearchMatch, onClick: () => void): HTMLElement {
+    const item = document.createElement("li");
+    item.className = "search-match-line";
+    let prefix = match.lineText.slice(0, match.colFrom);
+    let suffix = match.lineText.slice(match.colTo);
+    if (prefix.length > 30) {
+      prefix = "…" + prefix.slice(-30);
+    }
+    if (suffix.length > 60) {
+      suffix = suffix.slice(0, 60) + "…";
+    }
+    const highlight = document.createElement("span");
+    highlight.className = "search-hl";
+    highlight.textContent = match.lineText.slice(match.colFrom, match.colTo);
+    item.append(document.createTextNode(prefix), highlight, document.createTextNode(suffix));
+    item.addEventListener("click", onClick);
+    return item;
+  }
+
+  function runSearch(): void {
+    const query = searchInput.value;
+    if (currentFolder === null) {
+      searchStatus.textContent = t("sidebar.noFolder");
+      searchResults.replaceChildren();
+      return;
+    }
+    if (query.trim() === "") {
+      searchStatus.textContent = "";
+      searchResults.replaceChildren();
+      return;
+    }
+    const outcome = searchIndex.search(query);
+    searchStatus.textContent = outcome.truncated
+      ? t("search.truncated", { count: outcome.totalMatches })
+      : t("search.results", { count: outcome.totalMatches });
+    searchResults.replaceChildren(
+      ...outcome.results.map((result) => {
+        const fileItem = document.createElement("li");
+        fileItem.className = "search-file";
+        const fileName = document.createElement("div");
+        fileName.className = "search-file-name";
+        fileName.textContent = basename(result.path).replace(/\.md$/i, "");
+        fileName.addEventListener("click", () => void openFile(result.path));
+        const matches = document.createElement("ul");
+        matches.className = "search-matches";
+        matches.append(
+          ...result.matches.map((match) =>
+            matchSnippet(match, () => void openFileAt(result.path, match)),
+          ),
+        );
+        fileItem.append(fileName, matches);
+        return fileItem;
+      }),
+    );
+  }
+
+  async function openFileAt(path: string, match: SearchMatch): Promise<void> {
+    await openFile(path);
+    if (currentMode === "edit") {
+      editor.revealRange(match.from, match.to);
+    }
+  }
+
+  function openSearch(): void {
+    searchVisible = true;
+    sidebarFiles.classList.add("is-hidden");
+    sidebarSearch.classList.remove("is-hidden");
+    runSearch();
+    searchInput.focus();
+    searchInput.select();
+  }
+
+  function closeSearch(): void {
+    searchVisible = false;
+    sidebarSearch.classList.add("is-hidden");
+    sidebarFiles.classList.remove("is-hidden");
+    editor.focus();
+  }
+
+  function toggleSearch(): void {
+    if (searchVisible) {
+      closeSearch();
+    } else {
+      openSearch();
+    }
   }
 
   async function refreshFolder(folderPath: string): Promise<void> {
@@ -429,6 +556,12 @@ export function mountLayout(root: HTMLElement): void {
       nameKey: "command.toggleBacklinks",
       run: toggleBacklinksPanel,
     },
+    {
+      id: "global-search",
+      nameKey: "command.globalSearch",
+      hotkey: "Ctrl+Shift+F",
+      run: openSearch,
+    },
   ];
 
   function toggleBacklinksPanel(): void {
@@ -455,7 +588,35 @@ export function mountLayout(root: HTMLElement): void {
 
   openButton.addEventListener("click", () => void openFileFromDialog());
 
+  let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+  searchInput.addEventListener("input", () => {
+    if (searchDebounce !== null) {
+      clearTimeout(searchDebounce);
+    }
+    searchDebounce = setTimeout(() => {
+      searchDebounce = null;
+      runSearch();
+    }, 150);
+  });
+  searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSearch();
+    }
+  });
+  searchClose.addEventListener("click", closeSearch);
+
   window.addEventListener("keydown", (event) => {
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      event.shiftKey &&
+      !event.altKey &&
+      event.key.toLowerCase() === "f"
+    ) {
+      event.preventDefault();
+      toggleSearch();
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
       return;
     }
@@ -493,6 +654,13 @@ export function mountLayout(root: HTMLElement): void {
     wordCount.textContent = t("statusBar.words", { count: lastWordCount });
     welcome.textContent = t("workspace.welcome");
     backlinksTitle.textContent = t("backlinks.title");
+    searchTitle.textContent = t("search.title");
+    searchInput.placeholder = t("search.placeholder");
+    searchClose.title = t("search.close");
+    searchClose.setAttribute("aria-label", t("search.close"));
+    if (searchVisible) {
+      runSearch();
+    }
     renderBacklinks();
     if (currentFolder === null) {
       setListMessage(t("sidebar.noFolder"));
