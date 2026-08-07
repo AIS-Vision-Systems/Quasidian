@@ -6,6 +6,8 @@ import { createAutosaveScheduler } from "../editor/autosave";
 import { dirname, samePath } from "../lib/paths";
 import { countWords } from "../lib/text";
 import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
+import { commandPaletteItems, type Command } from "./commands";
+import { openPalette } from "./palette";
 
 // Autosave defaults; wired to the settings module in milestone 6.
 const AUTOSAVE_ENABLED = true;
@@ -183,13 +185,88 @@ export function mountLayout(root: HTMLElement): void {
     await refreshFolder(dirname(path));
   }
 
-  openButton.addEventListener("click", async () => {
+  async function openFileFromDialog(): Promise<void> {
     const path = await openMarkdownFileDialog({
       title: t("dialog.openFile.title"),
       filterName: t("dialog.openFile.markdownFilter"),
     });
     if (path !== null) {
       await openFile(path);
+    }
+  }
+
+  function openQuickSwitcher(): void {
+    openPalette({
+      placeholder: t("switcher.placeholder"),
+      emptyLabel:
+        currentFolder === null ? t("sidebar.noFolder") : t("palette.noResults"),
+      items: folderFiles.map((file) => ({
+        id: file.path,
+        label: file.name.replace(/\.md$/i, ""),
+      })),
+      onSelect(item) {
+        void openFile(item.id);
+      },
+      onCreate:
+        currentFolder === null
+          ? undefined
+          : (name) => {
+              void openWikilink(name);
+            },
+      createLabel: (name) => t("switcher.create", { name }),
+      onClose() {
+        editor.focus();
+      },
+    });
+  }
+
+  const commands: Command[] = [
+    {
+      id: "open-file",
+      nameKey: "command.openFile",
+      run: () => void openFileFromDialog(),
+    },
+    {
+      id: "save-file",
+      nameKey: "command.saveFile",
+      hotkey: "Ctrl+S",
+      run: () => void saveNow(),
+    },
+    {
+      id: "quick-switcher",
+      nameKey: "command.quickSwitcher",
+      hotkey: "Ctrl+O",
+      run: openQuickSwitcher,
+    },
+  ];
+
+  function openCommandPalette(): void {
+    openPalette({
+      placeholder: t("palette.commandPlaceholder"),
+      emptyLabel: t("palette.noResults"),
+      items: commandPaletteItems(commands),
+      onSelect(item) {
+        commands.find((command) => command.id === item.id)?.run();
+      },
+      onClose() {
+        editor.focus();
+      },
+    });
+  }
+
+  openButton.addEventListener("click", () => void openFileFromDialog());
+
+  window.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
+      return;
+    }
+    const key = event.key.toLowerCase();
+    if (key === "o") {
+      event.preventDefault();
+      openQuickSwitcher();
+    } else if (key === "p") {
+      event.preventDefault();
+      openCommandPalette();
     }
   });
 

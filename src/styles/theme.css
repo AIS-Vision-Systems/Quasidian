@@ -32,6 +32,8 @@
   --background-modifier-border: rgba(255, 255, 255, 0.14);
   --background-modifier-hover: rgba(255, 255, 255, 0.08);
   --code-background: rgba(255, 255, 255, 0.06);
+  --background-modifier-cover: rgba(0, 0, 0, 0.6);
+  --shadow-color: rgba(0, 0, 0, 0.5);
 
   --text-normal: var(--color-1);
   --text-muted: var(--color-5);
@@ -67,6 +69,8 @@
   --background-modifier-border: rgba(0, 0, 0, 0.12);
   --background-modifier-hover: rgba(0, 0, 0, 0.06);
   --code-background: rgba(0, 0, 0, 0.05);
+  --background-modifier-cover: rgba(0, 0, 0, 0.25);
+  --shadow-color: rgba(0, 0, 0, 0.15);
 
   --text-normal: var(--color-1);
   --text-muted: rgba(2, 8, 50, 0.65);
