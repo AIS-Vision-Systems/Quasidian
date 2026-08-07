@@ -75,6 +75,7 @@ L'app ha de tenir opcions de configuració, accessibles des d'un modal de settin
 8. **Backlinks**: panell lateral que mostra quins fitxers de la carpeta enllacen al fitxer obert; índex en memòria + watcher.
 9. **Cerca global (Ctrl+Shift+F)** sobre la carpeta.
 10. **Polit**: imatges incrustades `![[img.png]]` via `Decoration.widget`, llistes de tasques clicables en mode edició, code blocks amb highlight.
+11. **Matemàtiques (LaTeX)**: `$…$` inline i `$$…$$` en bloc com a extensió de Lezer pròpia (mai un segon parser), renderitzades amb KaTeX via `Decoration.replace`/`widget` en Live Preview (tokens visibles amb el cursor dins, com la resta de sintaxi) i al mode lectura des del mateix arbre.
 
 ## Convencions
 
