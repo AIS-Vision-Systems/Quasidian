@@ -7,6 +7,7 @@ src-tauri/target/
 src-tauri/gen/
 
 # Editor / OS
+.claude/
 .vscode/
 .idea/
 *.log
