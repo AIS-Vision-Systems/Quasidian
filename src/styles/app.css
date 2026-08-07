@@ -17,11 +17,11 @@ body {
 #app {
   display: grid;
   height: 100%;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 260px 1fr auto;
   grid-template-rows: 1fr auto;
   grid-template-areas:
-    "sidebar main"
-    "statusbar statusbar";
+    "sidebar main backlinks"
+    "statusbar statusbar statusbar";
 }
 
 /* --- Sidebar --- */
@@ -101,6 +101,52 @@ body {
 .file-item.is-active {
   background-color: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+
+/* --- Backlinks panel --- */
+
+.backlinks-panel {
+  grid-area: backlinks;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 240px;
+  padding: 12px;
+  background-color: var(--background-secondary);
+  border-left: 1px solid var(--background-modifier-border);
+  overflow-y: auto;
+}
+
+.backlinks-panel.is-hidden {
+  display: none;
+}
+
+.backlinks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.backlinks-count {
+  color: var(--text-faint);
+}
+
+.backlinks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.backlinks-empty {
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
 }
 
 /* --- Main area --- */

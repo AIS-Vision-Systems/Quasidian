@@ -1,9 +1,17 @@
 // App shell: sidebar with folder listing, CM6 editor, status bar.
+import { listen } from "@tauri-apps/api/event";
 import { t } from "../i18n/i18n";
-import { listFolder, openMarkdownFileDialog, readFile, writeFile } from "../ipc/fs";
+import {
+  listFolder,
+  openMarkdownFileDialog,
+  readFile,
+  watchFolder,
+  writeFile,
+} from "../ipc/fs";
 import { createEditor } from "../editor/editor";
 import { createAutosaveScheduler } from "../editor/autosave";
-import { dirname, normalizePath, samePath } from "../lib/paths";
+import { createBacklinkIndex } from "../lib/backlinkIndex";
+import { basename, dirname, normalizePath, samePath } from "../lib/paths";
 import type { EditorModeSetting } from "../lib/settings";
 import { countWords } from "../lib/text";
 import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
@@ -47,6 +55,19 @@ export function mountLayout(root: HTMLElement): void {
 
   workspace.append(welcome, editorHost);
 
+  const backlinksPanel = document.createElement("aside");
+  backlinksPanel.className = "backlinks-panel";
+  const backlinksHeader = document.createElement("div");
+  backlinksHeader.className = "backlinks-header";
+  const backlinksTitle = document.createElement("span");
+  backlinksTitle.textContent = t("backlinks.title");
+  const backlinksCount = document.createElement("span");
+  backlinksCount.className = "backlinks-count";
+  backlinksHeader.append(backlinksTitle, backlinksCount);
+  const backlinksList = document.createElement("ul");
+  backlinksList.className = "backlinks-list";
+  backlinksPanel.append(backlinksHeader, backlinksList);
+
   const statusBar = document.createElement("footer");
   statusBar.className = "status-bar";
   const statusError = document.createElement("span");
@@ -58,12 +79,15 @@ export function mountLayout(root: HTMLElement): void {
   modeButton.addEventListener("click", () => void toggleMode());
   statusBar.append(statusError, wordCount, modeButton);
 
-  root.append(sidebar, workspace, statusBar);
+  root.append(sidebar, workspace, backlinksPanel, statusBar);
 
   let openedPath: string | null = null;
   let currentFolder: string | null = null;
   let folderFiles: FolderFile[] = [];
   let lastWordCount = 0;
+  let watchedFolder: string | null = null;
+  let backlinksVisible = true;
+  const backlinkIndex = createBacklinkIndex();
 
   // Shared mutable options: the scheduler reads them on every change, so
   // settings updates apply on the next keystroke.
@@ -178,9 +202,60 @@ export function mountLayout(root: HTMLElement): void {
     try {
       await writeFile(openedPath, editor.getDoc());
       setStatusError(null);
+      backlinkIndex.setFile(openedPath, editor.getDoc());
+      renderBacklinks();
     } catch (error) {
       setStatusError(t("error.writeFile", { error: String(error) }));
     }
+  }
+
+  function renderBacklinks(): void {
+    if (openedPath === null || currentFolder === null) {
+      backlinksCount.textContent = "";
+      const empty = document.createElement("li");
+      empty.className = "backlinks-empty";
+      empty.textContent = t("backlinks.empty");
+      backlinksList.replaceChildren(empty);
+      return;
+    }
+    const links = backlinkIndex.backlinksOf(
+      openedPath,
+      currentFolder,
+      folderFiles,
+      getSettings().files.defaultExtension,
+    );
+    backlinksCount.textContent = String(links.length);
+    if (links.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "backlinks-empty";
+      empty.textContent = t("backlinks.empty");
+      backlinksList.replaceChildren(empty);
+      return;
+    }
+    backlinksList.replaceChildren(
+      ...links.map((path) => {
+        const item = document.createElement("li");
+        item.className = "file-item";
+        item.textContent = basename(path).replace(/\.md$/i, "");
+        item.addEventListener("click", () => void openFile(path));
+        return item;
+      }),
+    );
+  }
+
+  async function rebuildIndex(): Promise<void> {
+    backlinkIndex.clear();
+    const files = [...folderFiles];
+    await Promise.all(
+      files.map(async (file) => {
+        try {
+          backlinkIndex.setFile(file.path, await readFile(file.path));
+        } catch {
+          // Deleted or unreadable mid-scan; the watcher will retrigger.
+        }
+      }),
+    );
+    renderBacklinks();
   }
 
   async function refreshFolder(folderPath: string): Promise<void> {
@@ -196,6 +271,13 @@ export function mountLayout(root: HTMLElement): void {
       .sort((a, b) => a.name.localeCompare(b.name));
     currentFolder = folderPath;
     folderFiles = markdownFiles.map(({ name, path }) => ({ name, path }));
+    if (watchedFolder === null || !samePath(watchedFolder, folderPath)) {
+      watchedFolder = folderPath;
+      watchFolder(folderPath).catch(() => undefined);
+      void rebuildIndex();
+    } else {
+      renderBacklinks();
+    }
     if (markdownFiles.length === 0) {
       setListMessage(t("sidebar.emptyFolder"));
       return;
@@ -341,7 +423,20 @@ export function mountLayout(root: HTMLElement): void {
       hotkey: "Ctrl+E",
       run: () => void toggleMode(),
     },
+    {
+      id: "toggle-backlinks",
+      nameKey: "command.toggleBacklinks",
+      run: toggleBacklinksPanel,
+    },
   ];
+
+  function toggleBacklinksPanel(): void {
+    backlinksVisible = !backlinksVisible;
+    backlinksPanel.classList.toggle("is-hidden", !backlinksVisible);
+    if (backlinksVisible) {
+      renderBacklinks();
+    }
+  }
 
   function openCommandPalette(): void {
     openPalette({
@@ -396,12 +491,33 @@ export function mountLayout(root: HTMLElement): void {
     );
     wordCount.textContent = t("statusBar.words", { count: lastWordCount });
     welcome.textContent = t("workspace.welcome");
+    backlinksTitle.textContent = t("backlinks.title");
+    renderBacklinks();
     if (currentFolder === null) {
       setListMessage(t("sidebar.noFolder"));
     } else if (folderFiles.length === 0) {
       setListMessage(t("sidebar.emptyFolder"));
     }
   }
+
+  // The watcher fires in bursts (editors write several times); coalesce
+  // and then re-list + reindex the whole folder — small by design.
+  let watcherDebounce: ReturnType<typeof setTimeout> | null = null;
+  void listen("folder-changed", () => {
+    if (watcherDebounce !== null) {
+      clearTimeout(watcherDebounce);
+    }
+    watcherDebounce = setTimeout(() => {
+      watcherDebounce = null;
+      const folder = currentFolder;
+      if (folder !== null) {
+        void (async () => {
+          await refreshFolder(folder);
+          await rebuildIndex();
+        })();
+      }
+    }, 300);
+  });
 
   // Best-effort save of pending changes when the window closes.
   window.addEventListener("beforeunload", () => {
@@ -410,4 +526,5 @@ export function mountLayout(root: HTMLElement): void {
 
   setListMessage(t("sidebar.noFolder"));
   setWordCount(0);
+  renderBacklinks();
 }
