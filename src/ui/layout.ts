@@ -3,8 +3,9 @@ import { t } from "../i18n/i18n";
 import { listFolder, openMarkdownFileDialog, readFile, writeFile } from "../ipc/fs";
 import { createEditor } from "../editor/editor";
 import { createAutosaveScheduler } from "../editor/autosave";
-import { dirname } from "../lib/paths";
+import { dirname, samePath } from "../lib/paths";
 import { countWords } from "../lib/text";
+import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
 
 // Autosave defaults; wired to the settings module in milestone 6.
 const AUTOSAVE_ENABLED = true;
@@ -47,6 +48,8 @@ export function mountLayout(root: HTMLElement): void {
   root.append(sidebar, workspace, statusBar);
 
   let openedPath: string | null = null;
+  let currentFolder: string | null = null;
+  let folderFiles: FolderFile[] = [];
 
   const autosave = createAutosaveScheduler(() => void saveNow(), {
     enabled: AUTOSAVE_ENABLED,
@@ -62,6 +65,12 @@ export function mountLayout(root: HTMLElement): void {
     },
     onSaveRequested() {
       void saveNow();
+    },
+    onWikilinkClick(target) {
+      void openWikilink(target);
+    },
+    getWikilinkCompletions() {
+      return folderFiles.map((file) => file.name.replace(/\.md$/i, ""));
     },
   });
 
@@ -104,6 +113,8 @@ export function mountLayout(root: HTMLElement): void {
     const markdownFiles = entries
       .filter((entry) => !entry.isDir && entry.name.toLowerCase().endsWith(".md"))
       .sort((a, b) => a.name.localeCompare(b.name));
+    currentFolder = folderPath;
+    folderFiles = markdownFiles.map(({ name, path }) => ({ name, path }));
     if (markdownFiles.length === 0) {
       setListMessage(t("sidebar.emptyFolder"));
       return;
@@ -112,7 +123,10 @@ export function mountLayout(root: HTMLElement): void {
       ...markdownFiles.map((entry) => {
         const item = document.createElement("li");
         item.className = "file-item";
-        item.classList.toggle("is-active", entry.path === openedPath);
+        item.classList.toggle(
+          "is-active",
+          openedPath !== null && samePath(entry.path, openedPath),
+        );
         item.textContent = entry.name.replace(/\.md$/i, "");
         item.addEventListener("click", () => void openFile(entry.path));
         return item;
@@ -120,8 +134,33 @@ export function mountLayout(root: HTMLElement): void {
     );
   }
 
+  async function openWikilink(target: string): Promise<void> {
+    if (currentFolder === null) {
+      return;
+    }
+    const resolution = resolveWikilink(target, currentFolder, folderFiles);
+    if (resolution === null) {
+      return;
+    }
+    if (!resolution.exists) {
+      // Cross-folder targets may exist even if unknown here: probe first,
+      // create only when the read fails.
+      try {
+        await readFile(resolution.path);
+      } catch {
+        try {
+          await writeFile(resolution.path, "");
+        } catch (error) {
+          setStatusError(t("error.createFile", { error: String(error) }));
+          return;
+        }
+      }
+    }
+    await openFile(resolution.path);
+  }
+
   async function openFile(path: string): Promise<void> {
-    if (path === openedPath) {
+    if (openedPath !== null && samePath(path, openedPath)) {
       return;
     }
     if (openedPath !== null && autosave.isDirty()) {

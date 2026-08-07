@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
+import { wikilinks } from "../markdown/wikilinks";
 import { computeHiddenRanges, type HiddenRange } from "./livePreview";
 
 function hiddenRanges(
@@ -12,7 +13,7 @@ function hiddenRanges(
   const state = EditorState.create({
     doc,
     selection: EditorSelection.single(anchor, head),
-    extensions: [markdown({ base: markdownLanguage })],
+    extensions: [markdown({ base: markdownLanguage, extensions: [wikilinks] })],
   });
   ensureSyntaxTree(state, doc.length, 5000);
   return computeHiddenRanges(state, 0, doc.length);
@@ -104,6 +105,36 @@ describe("computeHiddenRanges — blockquotes", () => {
     const multi = "> one\n> two";
     // Cursor on the second quote line: only the first line's mark hides.
     expect(hiddenRanges(multi, 8)).toEqual([{ from: 0, to: 2 }]);
+  });
+});
+
+describe("computeHiddenRanges — wikilinks", () => {
+  it("hides only the [[ ]] marks of a plain wikilink when outside", () => {
+    // "[[nota]] x" — path stays visible.
+    expect(hiddenRanges("[[nota]] x", 10)).toEqual([
+      { from: 0, to: 2 },
+      { from: 6, to: 8 },
+    ]);
+  });
+
+  it("reveals the marks when the cursor touches the wikilink", () => {
+    expect(hiddenRanges("[[nota]] x", 4)).toEqual([]);
+    expect(hiddenRanges("[[nota]] x", 0)).toEqual([]);
+    expect(hiddenRanges("[[nota]] x", 8)).toEqual([]);
+  });
+
+  it("hides marks, path and pipe of an aliased wikilink when outside", () => {
+    // "[[nota|àlies]] x" — only the alias stays visible.
+    expect(hiddenRanges("[[nota|àlies]] x", 16)).toEqual([
+      { from: 0, to: 2 },
+      { from: 2, to: 6 },
+      { from: 6, to: 7 },
+      { from: 12, to: 14 },
+    ]);
+  });
+
+  it("reveals everything of an aliased wikilink when inside", () => {
+    expect(hiddenRanges("[[nota|àlies]] x", 9)).toEqual([]);
   });
 });
 

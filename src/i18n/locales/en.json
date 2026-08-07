@@ -9,5 +9,6 @@
   "dialog.openFile.markdownFilter": "Markdown",
   "error.readFile": "Could not read file: {error}",
   "error.writeFile": "Could not save file: {error}",
+  "error.createFile": "Could not create file: {error}",
   "error.listFolder": "Could not list folder: {error}"
 }

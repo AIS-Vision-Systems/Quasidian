@@ -1,11 +1,22 @@
 // CodeMirror 6 markdown editor with Live Preview (syntax tokens hidden
 // outside the active line/selection); styling goes through CSS variables.
+import {
+  autocompletion,
+  type CompletionContext,
+  type CompletionResult,
+} from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import {
+  HighlightStyle,
+  syntaxHighlighting,
+  syntaxTree,
+} from "@codemirror/language";
 import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
+import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
+import { wikilinks } from "../markdown/wikilinks";
 import { livePreview } from "./livePreview";
 
 // Renders markdown formatting (sizes, weights, code font) while Live Preview
@@ -29,11 +40,47 @@ const markdownHighlighting = HighlightStyle.define([
   },
   { tag: tags.quote, color: "var(--text-muted)" },
   { tag: tags.processingInstruction, color: "var(--text-faint)" },
+  { tag: tags.link, class: "cm-link" },
 ]);
+
+/** Wikilink target at `pos`, or null when the position is not inside one. */
+function wikilinkTargetAt(state: EditorState, pos: number): string | null {
+  let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 0);
+  while (node !== null && node.name !== "Wikilink") {
+    node = node.parent;
+  }
+  if (node === null) {
+    return null;
+  }
+  const path = node.getChild("WikilinkPath");
+  return path === null ? null : state.sliceDoc(path.from, path.to);
+}
 
 export interface EditorHooks {
   onDocChanged(doc: string): void;
   onSaveRequested(): void;
+  onWikilinkClick(target: string): void;
+  /** Basenames (without extension) of the folder's markdown files. */
+  getWikilinkCompletions(): string[];
+}
+
+function wikilinkCompletionSource(hooks: EditorHooks) {
+  return (context: CompletionContext): CompletionResult | null => {
+    const match = context.matchBefore(/\[\[[^\][|]*$/);
+    if (match === null) {
+      return null;
+    }
+    const alreadyClosed =
+      context.state.sliceDoc(context.pos, context.pos + 2) === "]]";
+    return {
+      from: match.from + 2,
+      options: hooks.getWikilinkCompletions().map((name) => ({
+        label: name,
+        apply: alreadyClosed ? name : name + "]]",
+      })),
+      validFor: /^[^\][|]*$/,
+    };
+  };
 }
 
 export interface EditorHandle {
@@ -64,9 +111,31 @@ export function createEditor(
         ),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
-        markdown({ base: markdownLanguage }),
+        markdown({ base: markdownLanguage, extensions: [wikilinks] }),
         syntaxHighlighting(markdownHighlighting),
         livePreview(),
+        autocompletion({
+          override: [wikilinkCompletionSource(hooks)],
+          icons: false,
+        }),
+        EditorView.domEventHandlers({
+          mousedown(event, view) {
+            if (!(event.ctrlKey || event.metaKey) || event.button !== 0) {
+              return false;
+            }
+            const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+            if (pos === null) {
+              return false;
+            }
+            const target = wikilinkTargetAt(view.state, pos);
+            if (target === null) {
+              return false;
+            }
+            event.preventDefault();
+            hooks.onWikilinkClick(target);
+            return true;
+          },
+        }),
         EditorView.lineWrapping,
         // Spellcheck off until the setting lands in milestone 6.
         EditorView.contentAttributes.of({ spellcheck: "false" }),
