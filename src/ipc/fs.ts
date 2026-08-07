@@ -1,0 +1,33 @@
+// Typed wrappers around the Rust filesystem commands and the dialog plugin.
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+}
+
+export function readFile(path: string): Promise<string> {
+  return invoke("read_file", { path });
+}
+
+export function writeFile(path: string, contents: string): Promise<void> {
+  return invoke("write_file", { path, contents });
+}
+
+export function listFolder(path: string): Promise<FileEntry[]> {
+  return invoke("list_folder", { path });
+}
+
+export function openMarkdownFileDialog(options: {
+  title: string;
+  filterName: string;
+}): Promise<string | null> {
+  return open({
+    title: options.title,
+    multiple: false,
+    directory: false,
+    filters: [{ name: options.filterName, extensions: ["md"] }],
+  });
+}
