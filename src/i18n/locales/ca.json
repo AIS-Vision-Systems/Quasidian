@@ -4,6 +4,8 @@
   "sidebar.emptyFolder": "Cap fitxer markdown en aquesta carpeta",
   "workspace.welcome": "Obre un fitxer per començar",
   "statusBar.mode.edit": "Edició",
+  "statusBar.mode.read": "Lectura",
+  "command.toggleReadingMode": "Commuta el mode lectura",
   "statusBar.words": "{count} paraules",
   "dialog.openFile.title": "Obre un fitxer",
   "dialog.openFile.markdownFilter": "Markdown",

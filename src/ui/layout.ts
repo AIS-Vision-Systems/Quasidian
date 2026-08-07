@@ -3,13 +3,15 @@ import { t } from "../i18n/i18n";
 import { listFolder, openMarkdownFileDialog, readFile, writeFile } from "../ipc/fs";
 import { createEditor } from "../editor/editor";
 import { createAutosaveScheduler } from "../editor/autosave";
-import { dirname, samePath } from "../lib/paths";
+import { dirname, normalizePath, samePath } from "../lib/paths";
+import type { EditorModeSetting } from "../lib/settings";
 import { countWords } from "../lib/text";
 import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
 import { getSettings, subscribeSettings } from "../ipc/settingsStore";
 import { editorConfigFrom } from "./applySettings";
 import { commandPaletteItems, type Command } from "./commands";
 import { openPalette } from "./palette";
+import { createReadingView } from "./readingView";
 import { openSettingsModal } from "./settingsModal";
 
 export function mountLayout(root: HTMLElement): void {
@@ -50,9 +52,11 @@ export function mountLayout(root: HTMLElement): void {
   const statusError = document.createElement("span");
   statusError.className = "status-bar-error";
   const wordCount = document.createElement("span");
-  const mode = document.createElement("span");
-  mode.textContent = t("statusBar.mode.edit");
-  statusBar.append(statusError, wordCount, mode);
+  const modeButton = document.createElement("button");
+  modeButton.className = "status-bar-mode";
+  modeButton.textContent = t("statusBar.mode.edit");
+  modeButton.addEventListener("click", () => void toggleMode());
+  statusBar.append(statusError, wordCount, modeButton);
 
   root.append(sidebar, workspace, statusBar);
 
@@ -86,6 +90,69 @@ export function mountLayout(root: HTMLElement): void {
       return folderFiles.map((file) => file.name.replace(/\.md$/i, ""));
     },
   }, editorConfigFrom(getSettings()));
+
+  const readingView = createReadingView({
+    onInternalLink(target) {
+      void openWikilink(target);
+    },
+    onTaskToggle(pos, checked) {
+      editor.replaceRange(pos, pos + 3, checked ? "[x]" : "[ ]");
+      void saveNow();
+      readingView.render(editor.getDoc());
+    },
+  });
+  workspace.append(readingView.element);
+
+  const fileModes = new Map<string, EditorModeSetting>();
+  let currentMode: EditorModeSetting = "edit";
+
+  function applyMode(mode: EditorModeSetting): void {
+    currentMode = mode;
+    if (openedPath !== null) {
+      fileModes.set(normalizePath(openedPath), mode);
+    }
+    const editing = mode === "edit";
+    editorHost.classList.toggle("is-hidden", !editing);
+    readingView.element.classList.toggle("is-hidden", editing);
+    modeButton.textContent = t(
+      editing ? "statusBar.mode.edit" : "statusBar.mode.read",
+    );
+  }
+
+  function scrollFraction(el: Element | null): number {
+    if (!(el instanceof HTMLElement)) {
+      return 0;
+    }
+    const max = el.scrollHeight - el.clientHeight;
+    return max <= 0 ? 0 : el.scrollTop / max;
+  }
+
+  function setScrollFraction(el: Element | null, fraction: number): void {
+    if (el instanceof HTMLElement) {
+      el.scrollTop = fraction * (el.scrollHeight - el.clientHeight);
+    }
+  }
+
+  async function toggleMode(): Promise<void> {
+    if (openedPath === null) {
+      return;
+    }
+    const scroller = editorHost.querySelector(".cm-scroller");
+    if (currentMode === "edit") {
+      if (autosave.isDirty()) {
+        await saveNow();
+      }
+      readingView.render(editor.getDoc());
+      const fraction = scrollFraction(scroller);
+      applyMode("read");
+      setScrollFraction(readingView.element, fraction);
+    } else {
+      const fraction = scrollFraction(readingView.element);
+      applyMode("edit");
+      setScrollFraction(scroller, fraction);
+      editor.focus();
+    }
+  }
 
   function setWordCount(count: number): void {
     lastWordCount = count;
@@ -195,10 +262,17 @@ export function mountLayout(root: HTMLElement): void {
     openedPath = path;
     setStatusError(null);
     welcome.remove();
-    editorHost.classList.remove("is-hidden");
     editor.setDoc(contents);
     setWordCount(countWords(contents));
-    editor.focus();
+    const mode =
+      fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode;
+    if (mode === "read") {
+      readingView.render(contents);
+    }
+    applyMode(mode);
+    if (mode === "edit") {
+      editor.focus();
+    }
     await refreshFolder(dirname(path));
   }
 
@@ -261,6 +335,12 @@ export function mountLayout(root: HTMLElement): void {
       hotkey: "Ctrl+,",
       run: () => openSettingsModal(),
     },
+    {
+      id: "toggle-reading-mode",
+      nameKey: "command.toggleReadingMode",
+      hotkey: "Ctrl+E",
+      run: () => void toggleMode(),
+    },
   ];
 
   function openCommandPalette(): void {
@@ -293,6 +373,9 @@ export function mountLayout(root: HTMLElement): void {
     } else if (key === ",") {
       event.preventDefault();
       openSettingsModal();
+    } else if (key === "e") {
+      event.preventDefault();
+      void toggleMode();
     }
   });
 
@@ -308,7 +391,9 @@ export function mountLayout(root: HTMLElement): void {
     openButton.textContent = t("sidebar.openFile");
     settingsButton.title = t("settings.title");
     settingsButton.setAttribute("aria-label", t("settings.title"));
-    mode.textContent = t("statusBar.mode.edit");
+    modeButton.textContent = t(
+      currentMode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
+    );
     wordCount.textContent = t("statusBar.words", { count: lastWordCount });
     welcome.textContent = t("workspace.welcome");
     if (currentFolder === null) {
