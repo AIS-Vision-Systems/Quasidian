@@ -94,6 +94,8 @@ export interface EditorHandle {
   /** Replaces the whole document and resets undo history (file switch). */
   setDoc(doc: string): void;
   getDoc(): string;
+  /** In-place edit that preserves undo history (e.g. task toggles). */
+  replaceRange(from: number, to: number, insert: string): void;
   focus(): void;
   /** Hot-applies configurable options without recreating the editor. */
   applyConfig(config: EditorConfig): void;
@@ -185,6 +187,9 @@ export function createEditor(
     },
     getDoc(): string {
       return view.state.doc.toString();
+    },
+    replaceRange(from: number, to: number, insert: string): void {
+      view.dispatch({ changes: { from, to, insert } });
     },
     focus(): void {
       view.focus();

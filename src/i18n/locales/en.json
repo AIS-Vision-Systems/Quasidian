@@ -4,6 +4,8 @@
   "sidebar.emptyFolder": "No markdown files in this folder",
   "workspace.welcome": "Open a file to get started",
   "statusBar.mode.edit": "Editing",
+  "statusBar.mode.read": "Reading",
+  "command.toggleReadingMode": "Toggle reading mode",
   "statusBar.words": "{count} words",
   "dialog.openFile.title": "Open a file",
   "dialog.openFile.markdownFilter": "Markdown",
