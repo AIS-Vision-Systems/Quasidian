@@ -87,6 +87,7 @@ export function mountLayout(root: HTMLElement): void {
   let lastWordCount = 0;
   let watchedFolder: string | null = null;
   let backlinksVisible = true;
+  let reloadingFromDisk = false;
   const backlinkIndex = createBacklinkIndex();
 
   // Shared mutable options: the scheduler reads them on every change, so
@@ -100,7 +101,7 @@ export function mountLayout(root: HTMLElement): void {
   const editor = createEditor(editorHost, {
     onDocChanged(doc) {
       setWordCount(countWords(doc));
-      if (openedPath !== null) {
+      if (openedPath !== null && !reloadingFromDisk) {
         autosave.notifyChange();
       }
     },
@@ -500,6 +501,31 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
+  // External change to the open file: reload it only when there are no
+  // pending local edits (local wins during the autosave window).
+  async function maybeReloadOpenFile(): Promise<void> {
+    if (openedPath === null || autosave.isDirty()) {
+      return;
+    }
+    let contents: string;
+    try {
+      contents = await readFile(openedPath);
+    } catch {
+      // Deleted or unreadable on disk: keep the buffer; saving recreates it.
+      return;
+    }
+    if (contents === editor.getDoc()) {
+      return;
+    }
+    reloadingFromDisk = true;
+    editor.reloadDoc(contents);
+    reloadingFromDisk = false;
+    setWordCount(countWords(contents));
+    if (currentMode === "read") {
+      readingView.render(contents);
+    }
+  }
+
   // The watcher fires in bursts (editors write several times); coalesce
   // and then re-list + reindex the whole folder — small by design.
   let watcherDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -514,6 +540,7 @@ export function mountLayout(root: HTMLElement): void {
         void (async () => {
           await refreshFolder(folder);
           await rebuildIndex();
+          await maybeReloadOpenFile();
         })();
       }
     }, 300);
