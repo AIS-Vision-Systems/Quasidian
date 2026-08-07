@@ -9,11 +9,12 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   HighlightStyle,
+  indentUnit,
   syntaxHighlighting,
   syntaxTree,
 } from "@codemirror/language";
-import { EditorState, Prec } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { Compartment, EditorState, Prec } from "@codemirror/state";
+import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import { wikilinks } from "../markdown/wikilinks";
@@ -83,17 +84,44 @@ function wikilinkCompletionSource(hooks: EditorHooks) {
   };
 }
 
+export interface EditorConfig {
+  showLineNumbers: boolean;
+  indentation: "spaces" | "tabs";
+  spellcheck: boolean;
+}
+
 export interface EditorHandle {
   /** Replaces the whole document and resets undo history (file switch). */
   setDoc(doc: string): void;
   getDoc(): string;
   focus(): void;
+  /** Hot-applies configurable options without recreating the editor. */
+  applyConfig(config: EditorConfig): void;
 }
 
 export function createEditor(
   parent: HTMLElement,
   hooks: EditorHooks,
+  initialConfig: EditorConfig,
 ): EditorHandle {
+  let config = initialConfig;
+
+  const lineNumbersCompartment = new Compartment();
+  const indentCompartment = new Compartment();
+  const spellcheckCompartment = new Compartment();
+
+  function lineNumbersExtension(c: EditorConfig) {
+    return c.showLineNumbers ? lineNumbers() : [];
+  }
+  function indentExtension(c: EditorConfig) {
+    return indentUnit.of(c.indentation === "tabs" ? "\t" : "    ");
+  }
+  function spellcheckExtension(c: EditorConfig) {
+    return EditorView.contentAttributes.of({
+      spellcheck: c.spellcheck ? "true" : "false",
+    });
+  }
+
   function buildState(doc: string): EditorState {
     return EditorState.create({
       doc,
@@ -114,6 +142,9 @@ export function createEditor(
         markdown({ base: markdownLanguage, extensions: [wikilinks] }),
         syntaxHighlighting(markdownHighlighting),
         livePreview(),
+        lineNumbersCompartment.of(lineNumbersExtension(config)),
+        indentCompartment.of(indentExtension(config)),
+        spellcheckCompartment.of(spellcheckExtension(config)),
         autocompletion({
           override: [wikilinkCompletionSource(hooks)],
           icons: false,
@@ -137,8 +168,6 @@ export function createEditor(
           },
         }),
         EditorView.lineWrapping,
-        // Spellcheck off until the setting lands in milestone 6.
-        EditorView.contentAttributes.of({ spellcheck: "false" }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             hooks.onDocChanged(update.state.doc.toString());
@@ -159,6 +188,16 @@ export function createEditor(
     },
     focus(): void {
       view.focus();
+    },
+    applyConfig(next: EditorConfig): void {
+      config = next;
+      view.dispatch({
+        effects: [
+          lineNumbersCompartment.reconfigure(lineNumbersExtension(next)),
+          indentCompartment.reconfigure(indentExtension(next)),
+          spellcheckCompartment.reconfigure(spellcheckExtension(next)),
+        ],
+      });
     },
   };
 }
