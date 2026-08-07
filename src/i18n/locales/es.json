@@ -8,5 +8,6 @@
   "dialog.openFile.title": "Abrir un archivo",
   "dialog.openFile.markdownFilter": "Markdown",
   "error.readFile": "No se ha podido leer el archivo: {error}",
+  "error.writeFile": "No se ha podido guardar el archivo: {error}",
   "error.listFolder": "No se ha podido listar la carpeta: {error}"
 }

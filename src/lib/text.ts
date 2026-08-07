@@ -1,0 +1,6 @@
+// Pure module: no Tauri, no DOM.
+
+export function countWords(text: string): number {
+  const trimmed = text.trim();
+  return trimmed === "" ? 0 : trimmed.split(/\s+/).length;
+}

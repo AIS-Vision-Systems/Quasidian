@@ -8,5 +8,6 @@
   "dialog.openFile.title": "Obre un fitxer",
   "dialog.openFile.markdownFilter": "Markdown",
   "error.readFile": "No s'ha pogut llegir el fitxer: {error}",
+  "error.writeFile": "No s'ha pogut desar el fitxer: {error}",
   "error.listFolder": "No s'ha pogut llistar la carpeta: {error}"
 }

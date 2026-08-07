@@ -101,17 +101,39 @@ body {
   color: var(--text-faint);
 }
 
-.file-view {
+.editor-host {
+  height: 100%;
+}
+
+.editor-host.is-hidden {
+  display: none;
+}
+
+.cm-editor {
+  height: 100%;
+  font-size: var(--font-text-size);
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+.cm-editor .cm-scroller {
+  font-family: var(--font-text);
+  line-height: 1.6;
+}
+
+.cm-editor .cm-content {
   max-width: 46em;
   margin: 0 auto;
   padding: 24px 32px;
-  font-family: var(--font-monospace);
-  font-size: var(--font-text-size);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-wrap: break-word;
+  caret-color: var(--text-normal);
   -webkit-user-select: text;
   user-select: text;
+}
+
+.cm-editor .cm-cursor {
+  border-left-color: var(--text-normal);
 }
 
 /* --- Status bar --- */
@@ -126,4 +148,12 @@ body {
   border-top: 1px solid var(--background-modifier-border);
   color: var(--text-muted);
   font-size: var(--font-ui-small);
+}
+
+.status-bar-error {
+  margin-right: auto;
+  color: var(--text-error);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
