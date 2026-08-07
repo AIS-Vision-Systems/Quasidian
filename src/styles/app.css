@@ -164,6 +164,92 @@ body {
   color: var(--text-on-accent);
 }
 
+/* --- Palette (quick switcher / command palette) --- */
+
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background-color: var(--background-modifier-cover);
+  z-index: 100;
+}
+
+.palette {
+  width: min(560px, 90vw);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px var(--shadow-color);
+  overflow: hidden;
+}
+
+.palette-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+  font-size: var(--font-text-size);
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.palette-input::placeholder {
+  color: var(--text-faint);
+}
+
+.palette-results {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.palette-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.palette-item:hover,
+.palette-item.is-selected {
+  background-color: var(--background-modifier-hover);
+}
+
+.palette-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-match {
+  color: var(--text-accent);
+}
+
+.palette-hint {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+}
+
+.palette-empty {
+  padding: 8px 10px;
+  color: var(--text-faint);
+}
+
 /* --- Status bar --- */
 
 .status-bar {
