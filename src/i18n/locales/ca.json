@@ -1,0 +1,12 @@
+{
+  "sidebar.openFile": "Obre un fitxer…",
+  "sidebar.noFolder": "Cap carpeta oberta",
+  "sidebar.emptyFolder": "Cap fitxer markdown en aquesta carpeta",
+  "workspace.welcome": "Obre un fitxer per començar",
+  "statusBar.mode.edit": "Edició",
+  "statusBar.words": "{count} paraules",
+  "dialog.openFile.title": "Obre un fitxer",
+  "dialog.openFile.markdownFilter": "Markdown",
+  "error.readFile": "No s'ha pogut llegir el fitxer: {error}",
+  "error.listFolder": "No s'ha pogut llistar la carpeta: {error}"
+}

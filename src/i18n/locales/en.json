@@ -1,0 +1,12 @@
+{
+  "sidebar.openFile": "Open a file…",
+  "sidebar.noFolder": "No folder open",
+  "sidebar.emptyFolder": "No markdown files in this folder",
+  "workspace.welcome": "Open a file to get started",
+  "statusBar.mode.edit": "Editing",
+  "statusBar.words": "{count} words",
+  "dialog.openFile.title": "Open a file",
+  "dialog.openFile.markdownFilter": "Markdown",
+  "error.readFile": "Could not read file: {error}",
+  "error.listFolder": "Could not list folder: {error}"
+}
