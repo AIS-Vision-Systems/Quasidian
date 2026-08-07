@@ -141,6 +141,29 @@ body {
   padding-left: 12px;
 }
 
+.cm-editor .cm-link {
+  color: var(--text-accent);
+  cursor: pointer;
+}
+
+.cm-editor .cm-link:hover {
+  color: var(--text-accent-hover);
+  text-decoration: underline;
+}
+
+.cm-tooltip.cm-tooltip-autocomplete {
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+}
+
+.cm-tooltip-autocomplete ul li[aria-selected] {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
 /* --- Status bar --- */
 
 .status-bar {

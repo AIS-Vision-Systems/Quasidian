@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { basename, dirname } from "./paths";
+import { basename, dirname, joinPath, normalizePath, samePath } from "./paths";
 
 describe("dirname", () => {
   it("handles unix separators", () => {
@@ -30,5 +30,35 @@ describe("basename", () => {
 
   it("returns the input when there is no separator", () => {
     expect(basename("note.md")).toBe("note.md");
+  });
+});
+
+describe("joinPath", () => {
+  it("joins with a single separator regardless of trailing/leading ones", () => {
+    expect(joinPath("C:\\notes", "nota.md")).toBe("C:\\notes/nota.md");
+    expect(joinPath("/home/user/", "/nota.md")).toBe("/home/user/nota.md");
+  });
+});
+
+describe("normalizePath", () => {
+  it("unifies separators to forward slashes", () => {
+    expect(normalizePath("C:\\notes\\sub\\nota.md")).toBe("C:/notes/sub/nota.md");
+  });
+
+  it("collapses . and .. segments", () => {
+    expect(normalizePath("C:/notes/./sub/../nota.md")).toBe("C:/notes/nota.md");
+    expect(normalizePath("/a/b/../../c")).toBe("/c");
+  });
+
+  it("keeps leading .. on relative paths", () => {
+    expect(normalizePath("../a/b")).toBe("../a/b");
+  });
+});
+
+describe("samePath", () => {
+  it("equates paths that differ only in separators or . segments", () => {
+    expect(samePath("C:\\notes\\nota.md", "C:/notes/nota.md")).toBe(true);
+    expect(samePath("C:/notes/sub/../nota.md", "C:\\notes\\nota.md")).toBe(true);
+    expect(samePath("C:/notes/a.md", "C:/notes/b.md")).toBe(false);
   });
 });

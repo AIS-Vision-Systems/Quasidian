@@ -77,6 +77,26 @@ export function computeHiddenRanges(
         }
         return;
       }
+      if (node.name === "Wikilink") {
+        if (!selectionTouches(state, node.from, node.to)) {
+          const wikilink = node.node;
+          const hasAlias = wikilink.getChild("WikilinkAlias") !== null;
+          for (
+            let child = wikilink.firstChild;
+            child !== null;
+            child = child.nextSibling
+          ) {
+            // With an alias, hide the path too so only the alias shows.
+            if (
+              child.name === "WikilinkMark" ||
+              (hasAlias && child.name === "WikilinkPath")
+            ) {
+              hidden.push({ from: child.from, to: child.to });
+            }
+          }
+        }
+        return false;
+      }
       const revealedBy = INLINE_MARKS[node.name];
       if (revealedBy !== undefined && revealedBy.includes(parent.name)) {
         if (!selectionTouches(state, parent.from, parent.to)) {
