@@ -70,3 +70,28 @@ describe("resolveWikilink — relative and full paths", () => {
     });
   });
 });
+
+describe("resolveWikilink — default extension setting", () => {
+  it("uses the configured extension when creating", () => {
+    expect(resolveWikilink("nova", folder, files, ".markdown")).toEqual({
+      path: "C:/notes/nova.markdown",
+      exists: false,
+    });
+  });
+
+  it("keeps any explicit extension untouched", () => {
+    expect(resolveWikilink("sub/nota.txt", folder, files, ".markdown")).toEqual(
+      {
+        path: "C:/notes/sub/nota.txt",
+        exists: false,
+      },
+    );
+  });
+
+  it("still matches existing .md files by bare name", () => {
+    expect(resolveWikilink("altra", folder, files, ".markdown")).toEqual({
+      path: "C:\\notes\\altra.md",
+      exists: true,
+    });
+  });
+});

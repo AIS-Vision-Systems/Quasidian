@@ -6,12 +6,11 @@ import { createAutosaveScheduler } from "../editor/autosave";
 import { dirname, samePath } from "../lib/paths";
 import { countWords } from "../lib/text";
 import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
+import { getSettings, subscribeSettings } from "../ipc/settingsStore";
+import { editorConfigFrom } from "./applySettings";
 import { commandPaletteItems, type Command } from "./commands";
 import { openPalette } from "./palette";
-
-// Autosave defaults; wired to the settings module in milestone 6.
-const AUTOSAVE_ENABLED = true;
-const AUTOSAVE_INTERVAL_MS = 2000;
+import { openSettingsModal } from "./settingsModal";
 
 export function mountLayout(root: HTMLElement): void {
   const sidebar = document.createElement("aside");
@@ -25,6 +24,14 @@ export function mountLayout(root: HTMLElement): void {
   const fileList = document.createElement("ul");
   fileList.className = "file-list";
   sidebar.append(fileList);
+
+  const settingsButton = document.createElement("button");
+  settingsButton.className = "sidebar-settings-button";
+  settingsButton.textContent = "⚙";
+  settingsButton.title = t("settings.title");
+  settingsButton.setAttribute("aria-label", t("settings.title"));
+  settingsButton.addEventListener("click", () => openSettingsModal());
+  sidebar.append(settingsButton);
 
   const workspace = document.createElement("main");
   workspace.className = "workspace";
@@ -52,11 +59,15 @@ export function mountLayout(root: HTMLElement): void {
   let openedPath: string | null = null;
   let currentFolder: string | null = null;
   let folderFiles: FolderFile[] = [];
+  let lastWordCount = 0;
 
-  const autosave = createAutosaveScheduler(() => void saveNow(), {
-    enabled: AUTOSAVE_ENABLED,
-    intervalMs: AUTOSAVE_INTERVAL_MS,
-  });
+  // Shared mutable options: the scheduler reads them on every change, so
+  // settings updates apply on the next keystroke.
+  const autosaveOptions = {
+    enabled: getSettings().editor.autosave,
+    intervalMs: getSettings().editor.autosaveIntervalMs,
+  };
+  const autosave = createAutosaveScheduler(() => void saveNow(), autosaveOptions);
 
   const editor = createEditor(editorHost, {
     onDocChanged(doc) {
@@ -74,9 +85,10 @@ export function mountLayout(root: HTMLElement): void {
     getWikilinkCompletions() {
       return folderFiles.map((file) => file.name.replace(/\.md$/i, ""));
     },
-  });
+  }, editorConfigFrom(getSettings()));
 
   function setWordCount(count: number): void {
+    lastWordCount = count;
     wordCount.textContent = t("statusBar.words", { count });
   }
 
@@ -140,7 +152,12 @@ export function mountLayout(root: HTMLElement): void {
     if (currentFolder === null) {
       return;
     }
-    const resolution = resolveWikilink(target, currentFolder, folderFiles);
+    const resolution = resolveWikilink(
+      target,
+      currentFolder,
+      folderFiles,
+      getSettings().files.defaultExtension,
+    );
     if (resolution === null) {
       return;
     }
@@ -238,6 +255,12 @@ export function mountLayout(root: HTMLElement): void {
       hotkey: "Ctrl+O",
       run: openQuickSwitcher,
     },
+    {
+      id: "open-settings",
+      nameKey: "command.openSettings",
+      hotkey: "Ctrl+,",
+      run: () => openSettingsModal(),
+    },
   ];
 
   function openCommandPalette(): void {
@@ -267,8 +290,33 @@ export function mountLayout(root: HTMLElement): void {
     } else if (key === "p") {
       event.preventDefault();
       openCommandPalette();
+    } else if (key === ",") {
+      event.preventDefault();
+      openSettingsModal();
     }
   });
+
+  // Hot-apply settings changes to the editor, autosave and static labels.
+  subscribeSettings((settings) => {
+    autosaveOptions.enabled = settings.editor.autosave;
+    autosaveOptions.intervalMs = settings.editor.autosaveIntervalMs;
+    editor.applyConfig(editorConfigFrom(settings));
+    refreshTexts();
+  });
+
+  function refreshTexts(): void {
+    openButton.textContent = t("sidebar.openFile");
+    settingsButton.title = t("settings.title");
+    settingsButton.setAttribute("aria-label", t("settings.title"));
+    mode.textContent = t("statusBar.mode.edit");
+    wordCount.textContent = t("statusBar.words", { count: lastWordCount });
+    welcome.textContent = t("workspace.welcome");
+    if (currentFolder === null) {
+      setListMessage(t("sidebar.noFolder"));
+    } else if (folderFiles.length === 0) {
+      setListMessage(t("sidebar.emptyFolder"));
+    }
+  }
 
   // Best-effort save of pending changes when the window closes.
   window.addEventListener("beforeunload", () => {

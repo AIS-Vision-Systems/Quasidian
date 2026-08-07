@@ -16,6 +16,14 @@ export function writeFile(path: string, contents: string): Promise<void> {
   return invoke("write_file", { path, contents });
 }
 
+export function writeFileAtomic(path: string, contents: string): Promise<void> {
+  return invoke("write_file_atomic", { path, contents });
+}
+
+export function ensureDir(path: string): Promise<void> {
+  return invoke("ensure_dir", { path });
+}
+
 export function listFolder(path: string): Promise<FileEntry[]> {
   return invoke("list_folder", { path });
 }

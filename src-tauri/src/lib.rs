@@ -18,6 +18,19 @@ fn write_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| e.to_string())
 }
 
+/// Write-then-rename so readers never observe a partially written file.
+#[tauri::command]
+fn write_file_atomic(path: String, contents: String) -> Result<(), String> {
+    let tmp = format!("{path}.tmp");
+    std::fs::write(&tmp, contents).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn ensure_dir(path: String) -> Result<(), String> {
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())
+}
+
 /// Non-recursive listing; filtering and sorting happen on the TS side.
 #[tauri::command]
 fn list_folder(path: String) -> Result<Vec<FileEntry>, String> {
@@ -38,7 +51,13 @@ fn list_folder(path: String) -> Result<Vec<FileEntry>, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_file, write_file, list_folder])
+        .invoke_handler(tauri::generate_handler![
+            read_file,
+            write_file,
+            write_file_atomic,
+            ensure_dir,
+            list_folder
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

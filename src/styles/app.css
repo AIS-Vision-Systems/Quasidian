@@ -81,6 +81,23 @@ body {
   color: var(--text-normal);
 }
 
+.sidebar-settings-button {
+  margin-top: auto;
+  align-self: flex-start;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.sidebar-settings-button:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
 .file-item.is-active {
   background-color: var(--background-modifier-hover);
   color: var(--text-normal);
@@ -124,12 +141,21 @@ body {
 }
 
 .cm-editor .cm-content {
-  max-width: 46em;
-  margin: 0 auto;
   padding: 24px 32px;
   caret-color: var(--text-normal);
   -webkit-user-select: text;
   user-select: text;
+}
+
+body.is-readable-line-length .cm-editor .cm-content {
+  max-width: 46em;
+  margin: 0 auto;
+}
+
+.cm-editor .cm-gutters {
+  background-color: transparent;
+  border-right: 1px solid var(--background-modifier-border);
+  color: var(--text-faint);
 }
 
 .cm-editor .cm-cursor {
@@ -248,6 +274,164 @@ body {
 .palette-empty {
   padding: 8px 10px;
   color: var(--text-faint);
+}
+
+/* --- Settings modal --- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--background-modifier-cover);
+  z-index: 90;
+}
+
+.settings-modal {
+  display: flex;
+  width: min(760px, 92vw);
+  height: min(560px, 85vh);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  box-shadow: 0 10px 40px var(--shadow-color);
+  overflow: hidden;
+}
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 180px;
+  flex-shrink: 0;
+  padding: 12px 8px;
+  background-color: var(--background-secondary);
+  border-right: 1px solid var(--background-modifier-border);
+}
+
+.settings-section-button {
+  padding: 6px 10px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  font-size: var(--font-text-size);
+  cursor: pointer;
+}
+
+.settings-section-button:hover,
+.settings-section-button.is-active {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.settings-content {
+  flex: 1;
+  padding: 16px 24px;
+  overflow-y: auto;
+}
+
+.settings-heading {
+  margin: 0 0 12px;
+  font-size: 1.2em;
+  color: var(--text-normal);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 0;
+}
+
+.setting-row + .setting-row {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.setting-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-name {
+  color: var(--text-normal);
+}
+
+.setting-desc {
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+}
+
+.setting-select,
+.setting-text,
+.setting-number {
+  padding: 4px 8px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+}
+
+.setting-text,
+.setting-number {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.setting-number {
+  width: 70px;
+}
+
+.setting-text {
+  width: 180px;
+}
+
+.setting-color {
+  width: 40px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.setting-toggle {
+  appearance: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  background-color: var(--background-modifier-border);
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.setting-toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--text-normal);
+  transition: left 0.15s ease;
+}
+
+.setting-toggle:checked {
+  background-color: var(--interactive-accent);
+}
+
+.setting-toggle:checked::after {
+  left: 19px;
 }
 
 /* --- Status bar --- */

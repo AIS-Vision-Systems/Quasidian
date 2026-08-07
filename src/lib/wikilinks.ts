@@ -3,9 +3,11 @@
 // passed in by the caller.
 import { joinPath, normalizePath } from "./paths";
 
-// Becomes the "default extension when creating from a wikilink" setting
-// in milestone 6.
-const DEFAULT_EXTENSION = ".md";
+const MARKDOWN_EXTENSION = ".md";
+
+function hasExtension(target: string): boolean {
+  return /\.[^./\\]+$/.test(target);
+}
 
 export interface FolderFile {
   /** Basename including extension, e.g. "nota.md". */
@@ -28,6 +30,7 @@ export function resolveWikilink(
   target: string,
   folder: string,
   folderFiles: FolderFile[],
+  defaultExtension: string = MARKDOWN_EXTENSION,
 ): WikilinkResolution | null {
   const trimmed = target.trim();
   if (trimmed === "") {
@@ -40,21 +43,21 @@ export function resolveWikilink(
     const lower = trimmed.toLowerCase();
     const match = folderFiles.find((file) => {
       const name = file.name.toLowerCase();
-      return name === lower || name === lower + DEFAULT_EXTENSION;
+      return name === lower || name === lower + MARKDOWN_EXTENSION;
     });
     if (match !== undefined) {
       return { path: match.path, exists: true };
     }
-    const fileName = lower.endsWith(DEFAULT_EXTENSION)
+    const fileName = hasExtension(trimmed)
       ? trimmed
-      : trimmed + DEFAULT_EXTENSION;
+      : trimmed + defaultExtension;
     return { path: normalizePath(joinPath(folder, fileName)), exists: false };
   }
 
   // Relative or full path (cross-folder link).
-  const withExtension = trimmed.toLowerCase().endsWith(DEFAULT_EXTENSION)
+  const withExtension = hasExtension(trimmed)
     ? trimmed
-    : trimmed + DEFAULT_EXTENSION;
+    : trimmed + defaultExtension;
   const isAbsolute = /^([a-zA-Z]:[/\\]|[/\\])/.test(withExtension);
   const combined = isAbsolute ? withExtension : joinPath(folder, withExtension);
   return { path: normalizePath(combined), exists: false };
