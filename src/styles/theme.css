@@ -31,6 +31,7 @@
   --background-secondary-alt: #000000;
   --background-modifier-border: rgba(255, 255, 255, 0.14);
   --background-modifier-hover: rgba(255, 255, 255, 0.08);
+  --code-background: rgba(255, 255, 255, 0.06);
 
   --text-normal: var(--color-1);
   --text-muted: var(--color-5);
@@ -65,6 +66,7 @@
   --background-secondary-alt: #e8eaed;
   --background-modifier-border: rgba(0, 0, 0, 0.12);
   --background-modifier-hover: rgba(0, 0, 0, 0.06);
+  --code-background: rgba(0, 0, 0, 0.05);
 
   --text-normal: var(--color-1);
   --text-muted: rgba(2, 8, 50, 0.65);

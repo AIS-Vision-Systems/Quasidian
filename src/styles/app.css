@@ -136,6 +136,11 @@ body {
   border-left-color: var(--text-normal);
 }
 
+.cm-editor .cm-blockquote-line {
+  border-left: 2px solid var(--interactive-accent);
+  padding-left: 12px;
+}
+
 /* --- Status bar --- */
 
 .status-bar {
