@@ -11,11 +11,12 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
-import { StateField, type EditorState, type Range } from "@codemirror/state";
+import { Prec, StateField, type EditorState, type Range } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
   EditorView,
+  keymap,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
@@ -823,9 +824,57 @@ const blockDecorations = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
+/**
+ * Collapsed block widgets are atomic for vertical motion, so plain
+ * arrows would hop over them. When the adjacent line lies inside a
+ * collapsed block, enter it instead (first line going down, last line
+ * going up) — the selection change reveals the block.
+ */
+function moveIntoBlock(view: EditorView, forward: boolean): boolean {
+  const state = view.state;
+  const selection = state.selection.main;
+  if (!selection.empty) {
+    return false;
+  }
+  const line = state.doc.lineAt(selection.head);
+  const targetPos = forward
+    ? line.to >= state.doc.length
+      ? -1
+      : line.to + 1
+    : line.from === 0
+      ? -1
+      : line.from - 1;
+  if (targetPos < 0) {
+    return false;
+  }
+  const decorations = state.field(blockDecorations, false);
+  if (decorations === undefined) {
+    return false;
+  }
+  let blockFrom = -1;
+  let blockTo = -1;
+  decorations.between(targetPos, targetPos, (from, to) => {
+    blockFrom = from;
+    blockTo = to;
+    return false;
+  });
+  if (blockFrom < 0) {
+    return false;
+  }
+  const entry = forward ? blockFrom : state.doc.lineAt(blockTo).from;
+  view.dispatch({ selection: { anchor: entry }, scrollIntoView: true });
+  return true;
+}
+
 export function livePreview(hooks: LivePreviewHooks) {
   return [
     blockDecorations,
+    Prec.high(
+      keymap.of([
+        { key: "ArrowDown", run: (view) => moveIntoBlock(view, true) },
+        { key: "ArrowUp", run: (view) => moveIntoBlock(view, false) },
+      ]),
+    ),
     ViewPlugin.fromClass(
       class {
         decorations: DecorationSet;
