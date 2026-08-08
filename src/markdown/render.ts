@@ -62,6 +62,15 @@ const HEADING_LEVELS: Record<string, number> = {
   SetextHeading2: 2,
 };
 
+/**
+ * Inline text: escaped, with soft line breaks rendered as real breaks —
+ * Obsidian treats single newlines as line breaks, unlike strict
+ * CommonMark, and the two modes must agree.
+ */
+function inlineText(text: string): string {
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
 /** Emits the node's inline content in [from, to]: text plus child elements. */
 function renderInline(
   node: SyntaxNode,
@@ -76,13 +85,13 @@ function renderInline(
       continue;
     }
     if (child.from > pos) {
-      out.push(escapeHtml(doc.slice(pos, child.from)));
+      out.push(inlineText(doc.slice(pos, child.from)));
     }
     renderNode(child, doc, out);
     pos = child.to;
   }
   if (pos < to) {
-    out.push(escapeHtml(doc.slice(pos, to)));
+    out.push(inlineText(doc.slice(pos, to)));
   }
 }
 

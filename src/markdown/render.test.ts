@@ -21,6 +21,13 @@ describe("renderToHtml — blocks", () => {
     );
   });
 
+  it("renders soft line breaks as real breaks, Obsidian-style", () => {
+    expect(renderToHtml("Imatge:\n![[img.png]]")).toBe(
+      '<p>Imatge:<br><img class="internal-embed" data-target="img.png" alt="img.png"></p>',
+    );
+    expect(renderToHtml("una\ndues")).toBe("<p>una<br>dues</p>");
+  });
+
   it("renders bullet and ordered lists", () => {
     expect(renderToHtml("- a\n- b")).toBe(
       "<ul><li><p>a</p></li><li><p>b</p></li></ul>",
