@@ -34,6 +34,7 @@ const SKIP = new Set([
   "LinkLabel",
   "LinkReference",
   "HighlightMark",
+  "MathMark",
 ]);
 
 const INLINE_WRAPPERS: Record<string, [string, string]> = {
@@ -191,6 +192,20 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
       const from = marks[0]?.to ?? node.from;
       const to = marks[marks.length - 1]?.from ?? node.to;
       out.push("<code>", escapeHtml(doc.slice(from, to)), "</code>");
+      return;
+    }
+    case "InlineMath":
+    case "MathBlock": {
+      // TeX stays raw here (pure module); the view renders it with KaTeX.
+      // math-block is a span so inline $$...$$ never breaks its paragraph.
+      const marks = node.getChildren("MathMark");
+      const from = marks[0]?.to ?? node.from;
+      const to = marks.length > 1 ? marks[marks.length - 1].from : node.to;
+      const tex = doc.slice(from, to).trim();
+      const cls = name === "InlineMath" ? "math-inline" : "math-block";
+      out.push(
+        `<span class="${cls}" data-tex="${escapeHtml(tex)}">${escapeHtml(tex)}</span>`,
+      );
       return;
     }
     case "FencedCode": {

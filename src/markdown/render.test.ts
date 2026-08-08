@@ -41,6 +41,18 @@ describe("renderToHtml — blocks", () => {
     );
   });
 
+  it("renders math as placeholders for the view to typeset", () => {
+    expect(renderToHtml("val $x+y$")).toBe(
+      '<p>val <span class="math-inline" data-tex="x+y">x+y</span></p>',
+    );
+    expect(renderToHtml("a $$b$$ c")).toBe(
+      '<p>a <span class="math-block" data-tex="b">b</span> c</p>',
+    );
+    expect(renderToHtml("$$\nE=mc^2\n$$")).toBe(
+      '<span class="math-block" data-tex="E=mc^2">E=mc^2</span>',
+    );
+  });
+
   it("renders horizontal rules", () => {
     expect(renderToHtml("---")).toBe("<hr>");
   });
