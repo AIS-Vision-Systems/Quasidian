@@ -17,6 +17,8 @@ import { basename, dirname, normalizePath, samePath } from "../lib/paths";
 import type { EditorModeSetting } from "../lib/settings";
 import { countWords } from "../lib/text";
 import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
+import { renderToHtml } from "../markdown/render";
+import { isImageTarget } from "../markdown/wikilinks";
 import { getSettings, subscribeSettings } from "../ipc/settingsStore";
 import { editorConfigFrom } from "./applySettings";
 import { commandPaletteItems, type Command } from "./commands";
@@ -75,6 +77,28 @@ export function mountLayout(root: HTMLElement): void {
   const workspace = document.createElement("main");
   workspace.className = "workspace";
 
+  const viewHeader = document.createElement("div");
+  viewHeader.className = "view-header";
+  const viewTitle = document.createElement("span");
+  viewTitle.className = "view-title";
+  const headerActions = document.createElement("div");
+  headerActions.className = "view-header-actions";
+  const modeHeaderButton = document.createElement("button");
+  modeHeaderButton.className = "view-header-button";
+  modeHeaderButton.textContent = "📖";
+  modeHeaderButton.title = t("command.toggleReadingMode");
+  modeHeaderButton.addEventListener("click", () => void toggleMode());
+  const backlinksHeaderButton = document.createElement("button");
+  backlinksHeaderButton.className = "view-header-button";
+  backlinksHeaderButton.textContent = "🔗";
+  backlinksHeaderButton.title = t("command.toggleBacklinks");
+  backlinksHeaderButton.addEventListener("click", () => toggleBacklinksPanel());
+  headerActions.append(modeHeaderButton, backlinksHeaderButton);
+  viewHeader.append(viewTitle, headerActions);
+
+  const workspaceBody = document.createElement("div");
+  workspaceBody.className = "workspace-body";
+
   const welcome = document.createElement("div");
   welcome.className = "workspace-welcome";
   welcome.textContent = t("workspace.welcome");
@@ -82,7 +106,8 @@ export function mountLayout(root: HTMLElement): void {
   const editorHost = document.createElement("div");
   editorHost.className = "editor-host is-hidden";
 
-  workspace.append(welcome, editorHost);
+  workspaceBody.append(welcome, editorHost);
+  workspace.append(viewHeader, workspaceBody);
 
   const backlinksPanel = document.createElement("aside");
   backlinksPanel.className = "backlinks-panel";
@@ -113,6 +138,7 @@ export function mountLayout(root: HTMLElement): void {
   let openedPath: string | null = null;
   let currentFolder: string | null = null;
   let folderFiles: FolderFile[] = [];
+  let folderImages: FolderFile[] = [];
   let lastWordCount = 0;
   let watchedFolder: string | null = null;
   let backlinksVisible = true;
@@ -142,6 +168,26 @@ export function mountLayout(root: HTMLElement): void {
     return resolution === null ? null : convertFileSrc(resolution.path);
   }
 
+  async function renderEmbedNote(target: string): Promise<string | null> {
+    if (currentFolder === null) {
+      return null;
+    }
+    const resolution = resolveWikilink(
+      target,
+      currentFolder,
+      folderFiles,
+      getSettings().files.defaultExtension,
+    );
+    if (resolution === null) {
+      return null;
+    }
+    try {
+      return renderToHtml(await readFile(resolution.path));
+    } catch {
+      return null;
+    }
+  }
+
   const editor = createEditor(editorHost, {
     onDocChanged(doc) {
       setWordCount(countWords(doc));
@@ -152,13 +198,20 @@ export function mountLayout(root: HTMLElement): void {
     onSaveRequested() {
       void saveNow();
     },
+    onToggleModeRequested() {
+      void toggleMode();
+    },
     onWikilinkClick(target) {
       void openWikilink(target);
     },
     getWikilinkCompletions() {
-      return folderFiles.map((file) => file.name.replace(/\.md$/i, ""));
+      return [
+        ...folderFiles.map((file) => file.name.replace(/\.md$/i, "")),
+        ...folderImages.map((file) => file.name),
+      ];
     },
     resolveEmbedSrc,
+    renderEmbedNote,
   }, editorConfigFrom(getSettings()));
 
   const readingView = createReadingView({
@@ -171,8 +224,9 @@ export function mountLayout(root: HTMLElement): void {
       readingView.render(editor.getDoc());
     },
     resolveEmbedSrc,
+    renderEmbedNote,
   });
-  workspace.append(readingView.element);
+  workspaceBody.append(readingView.element);
 
   const fileModes = new Map<string, EditorModeSetting>();
   let currentMode: EditorModeSetting = "edit";
@@ -188,6 +242,7 @@ export function mountLayout(root: HTMLElement): void {
     modeButton.textContent = t(
       editing ? "statusBar.mode.edit" : "statusBar.mode.read",
     );
+    modeHeaderButton.textContent = editing ? "📖" : "✎";
   }
 
   function scrollFraction(el: Element | null): number {
@@ -415,6 +470,10 @@ export function mountLayout(root: HTMLElement): void {
       .sort((a, b) => a.name.localeCompare(b.name));
     currentFolder = folderPath;
     folderFiles = markdownFiles.map(({ name, path }) => ({ name, path }));
+    folderImages = entries
+      .filter((entry) => !entry.isDir && isImageTarget(entry.name))
+      .map(({ name, path }) => ({ name, path }))
+      .sort((a, b) => a.name.localeCompare(b.name));
     if (watchedFolder === null || !samePath(watchedFolder, folderPath)) {
       watchedFolder = folderPath;
       watchFolder(folderPath).catch(() => undefined);
@@ -488,6 +547,7 @@ export function mountLayout(root: HTMLElement): void {
     openedPath = path;
     setStatusError(null);
     welcome.remove();
+    viewTitle.textContent = basename(path).replace(/\.md$/i, "");
     editor.setDoc(contents);
     setWordCount(countWords(contents));
     const mode =
@@ -669,6 +729,8 @@ export function mountLayout(root: HTMLElement): void {
     );
     wordCount.textContent = t("statusBar.words", { count: lastWordCount });
     welcome.textContent = t("workspace.welcome");
+    modeHeaderButton.title = t("command.toggleReadingMode");
+    backlinksHeaderButton.title = t("command.toggleBacklinks");
     backlinksTitle.textContent = t("backlinks.title");
     searchTitle.textContent = t("search.title");
     searchInput.placeholder = t("search.placeholder");

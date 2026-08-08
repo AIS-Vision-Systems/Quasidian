@@ -38,7 +38,8 @@ const markdownHighlighting = HighlightStyle.define([
     fontFamily: "var(--font-monospace)",
     fontSize: "0.9em",
     backgroundColor: "var(--code-background)",
-    borderRadius: "3px",
+    borderRadius: "4px",
+    padding: "1px 4px",
   },
   { tag: tags.quote, color: "var(--text-muted)" },
   { tag: tags.processingInstruction, color: "var(--text-faint)" },
@@ -71,11 +72,14 @@ function wikilinkTargetAt(state: EditorState, pos: number): string | null {
 export interface EditorHooks {
   onDocChanged(doc: string): void;
   onSaveRequested(): void;
+  onToggleModeRequested(): void;
   onWikilinkClick(target: string): void;
-  /** Basenames (without extension) of the folder's markdown files. */
+  /** File names offered after `[[`: markdown basenames and image files. */
   getWikilinkCompletions(): string[];
   /** Resolves an embed target to a loadable URL, or null if unknown. */
   resolveEmbedSrc(target: string): string | null;
+  /** Renders a note embed target to HTML, or null if unknown. */
+  renderEmbedNote(target: string): Promise<string | null>;
 }
 
 function wikilinkCompletionSource(hooks: EditorHooks) {
@@ -157,6 +161,13 @@ export function createEditor(
                 return true;
               },
             },
+            {
+              key: "Mod-e",
+              run: () => {
+                hooks.onToggleModeRequested();
+                return true;
+              },
+            },
           ]),
         ),
         history(),
@@ -167,7 +178,11 @@ export function createEditor(
           codeLanguages: languages,
         }),
         syntaxHighlighting(markdownHighlighting),
-        livePreview({ resolveEmbedSrc: hooks.resolveEmbedSrc }),
+        livePreview({
+          resolveEmbedSrc: hooks.resolveEmbedSrc,
+          renderEmbedNote: hooks.renderEmbedNote,
+          onNavigate: hooks.onWikilinkClick,
+        }),
         lineNumbersCompartment.of(lineNumbersExtension(config)),
         indentCompartment.of(indentExtension(config)),
         spellcheckCompartment.of(spellcheckExtension(config)),

@@ -117,9 +117,9 @@ describe("renderToHtml — embeds", () => {
     );
   });
 
-  it("renders non-image embeds as internal links", () => {
+  it("renders non-image embeds as transclusion placeholders", () => {
     expect(renderToHtml("![[nota]]")).toBe(
-      '<p><a class="internal-link" data-target="nota">nota</a></p>',
+      '<p><span class="internal-embed embed-note" data-target="nota">nota</span></p>',
     );
   });
 });

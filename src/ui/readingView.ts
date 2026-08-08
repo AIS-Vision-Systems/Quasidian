@@ -14,6 +14,8 @@ export interface ReadingViewHooks {
   onTaskToggle(pos: number, checked: boolean): void;
   /** Resolves an embed target to a loadable URL, or null if unknown. */
   resolveEmbedSrc(target: string): string | null;
+  /** Renders a note embed target to HTML, or null if unknown. */
+  renderEmbedNote(target: string): Promise<string | null>;
 }
 
 /** Best-effort async syntax highlighting; unknown languages stay plain. */
@@ -113,6 +115,25 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
         } else {
           image.src = src;
         }
+      }
+      for (const embed of content.querySelectorAll<HTMLElement>(
+        "span.embed-note",
+      )) {
+        const target = embed.dataset.target ?? "";
+        void hooks.renderEmbedNote(target).then((html) => {
+          if (html === null || !embed.isConnected) {
+            return;
+          }
+          embed.replaceChildren();
+          const title = document.createElement("a");
+          title.className = "internal-link embed-note-title";
+          title.dataset.target = target;
+          title.textContent = target;
+          const body = document.createElement("div");
+          body.className = "embed-note-body";
+          body.innerHTML = html;
+          embed.append(title, body);
+        });
       }
       for (const codeEl of content.querySelectorAll<HTMLElement>(
         'pre > code[class*="language-"]',

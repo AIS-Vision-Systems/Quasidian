@@ -274,7 +274,14 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
         );
         return;
       }
-      // Non-image embeds render as navigable links (no note transclusion).
+      if (name === "Embed") {
+        // Placeholder for note transclusion; the reading view fills it in
+        // (depth 1 — nested embeds inside stay as placeholders).
+        out.push(
+          `<span class="internal-embed embed-note" data-target="${escapeHtml(target)}">${escapeHtml(display)}</span>`,
+        );
+        return;
+      }
       out.push(
         `<a class="internal-link" data-target="${escapeHtml(target)}">${escapeHtml(display)}</a>`,
       );

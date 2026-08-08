@@ -6,6 +6,8 @@ import { wikilinks } from "../markdown/wikilinks";
 import {
   computeHiddenRanges,
   computeImageEmbeds,
+  computeListMarks,
+  computeNoteEmbeds,
   computeTaskMarkers,
   type HiddenRange,
 } from "./livePreview";
@@ -164,15 +166,15 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     expect(computeImageEmbeds(inside, 0, doc.length)).toEqual([]);
   });
 
-  it("ignores non-image embeds (handled as links)", () => {
+  it("collects non-image embeds for transclusion widgets", () => {
     const doc = "![[nota]] x";
     const state = stateFor(doc, doc.length);
     expect(computeImageEmbeds(state, 0, doc.length)).toEqual([]);
-    // Their marks hide like a wikilink instead.
-    expect(computeHiddenRanges(state, 0, doc.length)).toEqual([
-      { from: 0, to: 3 },
-      { from: 7, to: 9 },
+    expect(computeNoteEmbeds(state, 0, doc.length)).toEqual([
+      { from: 0, to: 9, target: "nota" },
     ]);
+    // The whole embed is widget-replaced, so nothing is mark-hidden.
+    expect(computeHiddenRanges(state, 0, doc.length)).toEqual([]);
   });
 
   it("collects task markers only on inactive lines", () => {
@@ -182,6 +184,32 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     expect(computeTaskMarkers(state, 0, doc.length)).toEqual([
       { pos: 12, checked: true },
     ]);
+  });
+
+  it("collects list marks: bullets for items, hidden marks for tasks", () => {
+    const doc = "- poma\n- [ ] fer\n1. tres";
+    const state = stateFor(doc, doc.length);
+    expect(computeListMarks(state, 0, doc.length)).toEqual([
+      { from: 0, to: 1, kind: "bullet" },
+      { from: 7, to: 9, kind: "task" },
+    ]);
+  });
+
+  it("keeps list marks raw on the active line", () => {
+    const doc = "- poma\n- pera";
+    const state = stateFor(doc, 2);
+    expect(computeListMarks(state, 0, doc.length)).toEqual([
+      { from: 7, to: 8, kind: "bullet" },
+    ]);
+  });
+
+  it("skips everything inside an inactive table", () => {
+    // Blank line before "fora": without it, GFM keeps absorbing rows.
+    const doc = "| **a** | b |\n| --- | --- |\n| c | d |\n\nfora";
+    const state = stateFor(doc, doc.length);
+    // Bold marks inside the table are not hidden: the table widget
+    // replaces the whole block.
+    expect(computeHiddenRanges(state, 0, doc.length)).toEqual([]);
   });
 });
 
