@@ -437,9 +437,21 @@ body.is-readable-line-length .cm-editor .cm-content {
 .cm-editor .cm-embed-image,
 .markdown-rendered img.internal-embed {
   max-width: 100%;
-  max-height: 420px;
   border-radius: 4px;
   vertical-align: bottom;
+}
+
+/* Cap the height only when no explicit size is set, and keep the aspect
+   ratio when only a width is given — a |500 wider than the natural size
+   must scale, never distort. */
+.cm-editor .cm-embed-image:not([width]),
+.markdown-rendered img.internal-embed:not([width]) {
+  max-height: 420px;
+}
+
+.cm-editor .cm-embed-image:not([height]),
+.markdown-rendered img.internal-embed:not([height]) {
+  height: auto;
 }
 
 .cm-embed-missing,

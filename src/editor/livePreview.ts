@@ -107,7 +107,9 @@ export function computeHiddenRanges(
         }
         return;
       }
-      if (node.name === "QuoteMark" && parent.name === "Blockquote") {
+      // QuoteMark parents vary: continuation-line marks hang from the
+      // inner Paragraph, not from Blockquote — hide them all the same.
+      if (node.name === "QuoteMark") {
         if (!selectionTouchesLine(state, node.from)) {
           hidden.push(withFollowingSpace(state, node.from, node.to));
         }

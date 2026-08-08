@@ -136,6 +136,16 @@ describe("computeHiddenRanges — blockquotes", () => {
     // Cursor on the second quote line: only the first line's mark hides.
     expect(hiddenRanges(multi, 8)).toEqual([{ from: 0, to: 2 }]);
   });
+
+  it("hides continuation-line quote marks nested in the paragraph", () => {
+    // "b" is a lazy continuation; the marks on lines 1 and 3 hang from
+    // different parents but must both hide.
+    const doc = "> a\nb\n> c\n\nx";
+    expect(hiddenRanges(doc, doc.length)).toEqual([
+      { from: 0, to: 2 },
+      { from: 6, to: 8 },
+    ]);
+  });
 });
 
 describe("computeHiddenRanges — wikilinks", () => {
