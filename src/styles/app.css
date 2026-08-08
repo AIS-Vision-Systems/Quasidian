@@ -402,10 +402,20 @@ body.is-readable-line-length .cm-editor .cm-content {
   vertical-align: middle;
 }
 
+/* Spacing via padding, never margin: CodeMirror measures offsetHeight
+   and margins would desync the gutter and coordinate mapping. */
 .cm-math-block {
   display: inline-block;
   width: 100%;
-  margin: 0.5em 0;
+  margin: 0;
+  padding: 0.25em 0;
+  text-align: center;
+}
+
+.cm-math-standalone {
+  display: block;
+  margin: 0;
+  padding: 0.5em 0;
   text-align: center;
 }
 
@@ -421,7 +431,7 @@ body.is-readable-line-length .cm-editor .cm-content {
   display: inline-block;
   width: 100%;
   box-sizing: border-box;
-  margin: 4px 0;
+  margin: 0;
   padding: 8px 12px;
   border-left: 2px solid var(--interactive-accent);
   border-radius: 4px;

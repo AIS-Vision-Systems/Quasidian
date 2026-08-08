@@ -547,6 +547,8 @@ class MathWidget extends WidgetType {
     readonly tex: string,
     readonly display: boolean,
     readonly pos: number,
+    /** True when used as a block decoration (multi-line $$ blocks). */
+    readonly standalone: boolean = false,
   ) {
     super();
   }
@@ -555,16 +557,22 @@ class MathWidget extends WidgetType {
     return (
       other.tex === this.tex &&
       other.display === this.display &&
-      other.pos === this.pos
+      other.pos === this.pos &&
+      other.standalone === this.standalone
     );
   }
 
   toDOM(view: EditorView): HTMLElement {
-    // Always a span: inline uses must not introduce block boxes inside a
-    // text line (they desync the gutter); CSS makes the display variant
-    // full-width.
-    const container = document.createElement("span");
-    container.className = this.display ? "cm-math cm-math-block" : "cm-math";
+    // Inline uses must stay inline-level (block boxes inside a text line
+    // desync the gutter); block uses must be real block elements with
+    // padding-based spacing, because CodeMirror measures offsetHeight
+    // and CSS margins are invisible to it.
+    const container = document.createElement(this.standalone ? "div" : "span");
+    container.className = this.standalone
+      ? "cm-math cm-math-standalone"
+      : this.display
+        ? "cm-math cm-math-block"
+        : "cm-math";
     container.innerHTML = katex.renderToString(this.tex, {
       throwOnError: false,
       displayMode: this.display,
@@ -790,7 +798,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
           if (math.from === node.from) {
             ranges.push(
               Decoration.replace({
-                widget: new MathWidget(math.tex, true, node.from),
+                widget: new MathWidget(math.tex, true, node.from, true),
                 block: true,
               }).range(fromLine.from, toLine.to),
             );
