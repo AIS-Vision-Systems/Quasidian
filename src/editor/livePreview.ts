@@ -11,18 +11,24 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
-import { StateField, type EditorState, type Range } from "@codemirror/state";
+import { Prec, StateField, type EditorState, type Range } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
   EditorView,
+  keymap,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
+import katex from "katex";
 import { renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
-import { fillEmbedImages, highlightCodeBlocks } from "../ui/renderedContent";
+import {
+  fillEmbedImages,
+  highlightCodeBlocks,
+  renderMathElements,
+} from "../ui/renderedContent";
 
 export interface HiddenRange {
   from: number;
@@ -215,6 +221,48 @@ export function computeNoteEmbeds(
   return computeEmbeds(state, from, to, false);
 }
 
+export interface MathRange {
+  from: number;
+  to: number;
+  tex: string;
+  display: boolean;
+}
+
+/**
+ * Pure computation of math elements in [from, to] whose range the
+ * selection does not touch, to be replaced by KaTeX widgets.
+ */
+export function computeMathRanges(
+  state: EditorState,
+  from: number,
+  to: number,
+): MathRange[] {
+  const ranges: MathRange[] = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter(node) {
+      if (node.name !== "InlineMath" && node.name !== "MathBlock") {
+        return;
+      }
+      if (!selectionTouches(state, node.from, node.to)) {
+        const marks = node.node.getChildren("MathMark");
+        const texFrom = marks[0]?.to ?? node.from;
+        const texTo =
+          marks.length > 1 ? marks[marks.length - 1].from : node.to;
+        ranges.push({
+          from: node.from,
+          to: node.to,
+          tex: state.doc.sliceString(texFrom, texTo).trim(),
+          display: node.name === "MathBlock",
+        });
+      }
+      return false;
+    },
+  });
+  return ranges;
+}
+
 /**
  * Pure computation of horizontal rules (---, ***) in [from, to] on
  * inactive lines, to be replaced by a rendered rule.
@@ -358,7 +406,7 @@ class ImageWidget extends WidgetType {
     );
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     if (this.src === null) {
       const missing = document.createElement("span");
       missing.className = "cm-embed-missing";
@@ -367,6 +415,9 @@ class ImageWidget extends WidgetType {
     }
     const image = document.createElement("img");
     image.className = "cm-embed-image";
+    // The real height is known only once loaded; remeasure so the gutter
+    // and coordinate mapping stay aligned with the content.
+    image.addEventListener("load", () => view.requestMeasure());
     image.src = this.src;
     const dimensions = parseImageDimensions(this.alias);
     if (dimensions === null) {
@@ -395,7 +446,7 @@ class NoteEmbedWidget extends WidgetType {
     return other.target === this.target && other.alias === this.alias;
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("span");
     container.className = "cm-embed-note";
     const title = document.createElement("span");
@@ -415,7 +466,13 @@ class NoteEmbedWidget extends WidgetType {
         body.innerHTML = html;
         fillEmbedImages(body, this.hooks.resolveEmbedSrc);
         highlightCodeBlocks(body);
+        renderMathElements(body);
+        for (const image of body.querySelectorAll("img")) {
+          image.addEventListener("load", () => view.requestMeasure());
+        }
       }
+      // The fill changed the widget height after CodeMirror measured it.
+      view.requestMeasure();
     });
     return container;
   }
@@ -486,19 +543,73 @@ class HrWidget extends WidgetType {
   }
 }
 
+class MathWidget extends WidgetType {
+  constructor(
+    readonly tex: string,
+    readonly display: boolean,
+    readonly pos: number,
+    /** True when used as a block decoration (multi-line $$ blocks). */
+    readonly standalone: boolean = false,
+  ) {
+    super();
+  }
+
+  override eq(other: MathWidget): boolean {
+    return (
+      other.tex === this.tex &&
+      other.display === this.display &&
+      other.pos === this.pos &&
+      other.standalone === this.standalone
+    );
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    // Inline uses must stay inline-level (block boxes inside a text line
+    // desync the gutter); block uses must be real block elements with
+    // padding-based spacing, because CodeMirror measures offsetHeight
+    // and CSS margins are invisible to it.
+    const container = document.createElement(this.standalone ? "div" : "span");
+    container.className = this.standalone
+      ? "cm-math cm-math-standalone"
+      : this.display
+        ? "cm-math cm-math-block"
+        : "cm-math";
+    container.innerHTML = katex.renderToString(this.tex, {
+      throwOnError: false,
+      displayMode: this.display,
+    });
+    // Clicking a formula reveals its raw TeX with the cursor inside.
+    container.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({ selection: { anchor: this.pos } });
+      view.focus();
+    });
+    return container;
+  }
+}
+
 class TableWidget extends WidgetType {
-  constructor(readonly source: string) {
+  constructor(
+    readonly source: string,
+    readonly pos: number,
+  ) {
     super();
   }
 
   override eq(other: TableWidget): boolean {
-    return other.source === this.source;
+    return other.source === this.source && other.pos === this.pos;
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("div");
     container.className = "cm-table-widget markdown-rendered";
     container.innerHTML = renderToHtml(this.source);
+    // Clicking the table reveals its raw markdown with the cursor inside.
+    container.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({ selection: { anchor: this.pos } });
+      view.focus();
+    });
     return container;
   }
 }
@@ -636,51 +747,134 @@ function buildDecorations(
     for (const rule of computeHorizontalRules(state, from, to)) {
       ranges.push(hrDecoration.range(rule.from, rule.to));
     }
+    for (const math of computeMathRanges(state, from, to)) {
+      const sameLine =
+        state.doc.lineAt(math.from).number === state.doc.lineAt(math.to).number;
+      if (sameLine) {
+        // Multi-line math blocks are block decorations and live in the
+        // state field below.
+        ranges.push(
+          Decoration.replace({
+            widget: new MathWidget(math.tex, math.display, math.from),
+          }).range(math.from, math.to),
+        );
+      }
+    }
   }
   return Decoration.set(ranges, true);
 }
 
 // Block decorations may not come from a ViewPlugin (CodeMirror throws),
-// so inactive tables are replaced through a StateField instead.
-function buildTableDecorations(state: EditorState): DecorationSet {
+// so inactive tables and multi-line math blocks are replaced through a
+// StateField instead.
+function buildBlockDecorations(state: EditorState): DecorationSet {
   ensureSyntaxTree(state, state.doc.length, 50);
   const ranges: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     enter(node) {
-      if (node.name !== "Table") {
-        return;
-      }
-      if (selectionTouches(state, node.from, node.to)) {
+      if (node.name === "Table") {
+        if (selectionTouches(state, node.from, node.to)) {
+          return false;
+        }
+        const from = state.doc.lineAt(node.from).from;
+        const to = state.doc.lineAt(node.to).to;
+        ranges.push(
+          Decoration.replace({
+            widget: new TableWidget(state.doc.sliceString(from, to), from),
+            block: true,
+          }).range(from, to),
+        );
         return false;
       }
-      const from = state.doc.lineAt(node.from).from;
-      const to = state.doc.lineAt(node.to).to;
-      ranges.push(
-        Decoration.replace({
-          widget: new TableWidget(state.doc.sliceString(from, to)),
-          block: true,
-        }).range(from, to),
-      );
-      return false;
+      if (node.name === "MathBlock") {
+        const fromLine = state.doc.lineAt(node.from);
+        const toLine = state.doc.lineAt(node.to);
+        if (fromLine.number === toLine.number) {
+          return false; // single-line: handled inline by the view plugin
+        }
+        if (selectionTouches(state, node.from, node.to)) {
+          return false;
+        }
+        for (const math of computeMathRanges(state, node.from, node.to)) {
+          if (math.from === node.from) {
+            ranges.push(
+              Decoration.replace({
+                widget: new MathWidget(math.tex, true, node.from, true),
+                block: true,
+              }).range(fromLine.from, toLine.to),
+            );
+          }
+        }
+        return false;
+      }
+      return;
     },
   });
   return Decoration.set(ranges, true);
 }
 
-const tableDecorations = StateField.define<DecorationSet>({
-  create: buildTableDecorations,
+const blockDecorations = StateField.define<DecorationSet>({
+  create: buildBlockDecorations,
   update(value, tr) {
     if (tr.docChanged || tr.selection !== undefined) {
-      return buildTableDecorations(tr.state);
+      return buildBlockDecorations(tr.state);
     }
     return value;
   },
   provide: (field) => EditorView.decorations.from(field),
 });
 
+/**
+ * Collapsed block widgets are atomic for vertical motion, so plain
+ * arrows would hop over them. When the adjacent line lies inside a
+ * collapsed block, enter it instead (first line going down, last line
+ * going up) — the selection change reveals the block.
+ */
+function moveIntoBlock(view: EditorView, forward: boolean): boolean {
+  const state = view.state;
+  const selection = state.selection.main;
+  if (!selection.empty) {
+    return false;
+  }
+  const line = state.doc.lineAt(selection.head);
+  const targetPos = forward
+    ? line.to >= state.doc.length
+      ? -1
+      : line.to + 1
+    : line.from === 0
+      ? -1
+      : line.from - 1;
+  if (targetPos < 0) {
+    return false;
+  }
+  const decorations = state.field(blockDecorations, false);
+  if (decorations === undefined) {
+    return false;
+  }
+  let blockFrom = -1;
+  let blockTo = -1;
+  decorations.between(targetPos, targetPos, (from, to) => {
+    blockFrom = from;
+    blockTo = to;
+    return false;
+  });
+  if (blockFrom < 0) {
+    return false;
+  }
+  const entry = forward ? blockFrom : state.doc.lineAt(blockTo).from;
+  view.dispatch({ selection: { anchor: entry }, scrollIntoView: true });
+  return true;
+}
+
 export function livePreview(hooks: LivePreviewHooks) {
   return [
-    tableDecorations,
+    blockDecorations,
+    Prec.high(
+      keymap.of([
+        { key: "ArrowDown", run: (view) => moveIntoBlock(view, true) },
+        { key: "ArrowUp", run: (view) => moveIntoBlock(view, false) },
+      ]),
+    ),
     ViewPlugin.fromClass(
       class {
         decorations: DecorationSet;

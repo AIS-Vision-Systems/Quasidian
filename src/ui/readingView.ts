@@ -4,7 +4,11 @@
 // browser.
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { renderToHtml } from "../markdown/render";
-import { fillEmbedImages, highlightCodeBlocks } from "./renderedContent";
+import {
+  fillEmbedImages,
+  highlightCodeBlocks,
+  renderMathElements,
+} from "./renderedContent";
 
 export interface ReadingViewHooks {
   onInternalLink(target: string): void;
@@ -81,10 +85,12 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
           body.innerHTML = html;
           fillEmbedImages(body, hooks.resolveEmbedSrc);
           highlightCodeBlocks(body);
+          renderMathElements(body);
           embed.append(title, body);
         });
       }
       highlightCodeBlocks(content);
+      renderMathElements(content);
     },
   };
 }

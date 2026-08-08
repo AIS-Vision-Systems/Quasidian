@@ -18,6 +18,7 @@ import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
+import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag } from "../markdown/wikilinks";
 import { livePreview } from "./livePreview";
@@ -50,6 +51,8 @@ const markdownHighlighting = HighlightStyle.define([
     backgroundColor: "var(--text-highlight-bg)",
     borderRadius: "2px",
   },
+  // Raw TeX source, shown when the selection reveals a formula.
+  { tag: mathTag, fontFamily: "var(--font-monospace)", fontSize: "0.9em" },
   // Code-block tokens, mapped onto the theme palette.
   { tag: tags.keyword, color: "var(--color-6)" },
   { tag: [tags.string, tags.special(tags.string)], color: "var(--color-4)" },
@@ -225,6 +228,10 @@ export function createEditor(
   }
 
   const view = new EditorView({ parent, state: buildState("") });
+
+  // KaTeX/monospace fonts load once after startup and change glyph
+  // metrics; remeasure so line geometry stays exact.
+  void document.fonts.ready.then(() => view.requestMeasure());
 
   return {
     setDoc(doc: string): void {

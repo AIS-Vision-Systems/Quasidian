@@ -21,6 +21,13 @@ describe("renderToHtml — blocks", () => {
     );
   });
 
+  it("renders soft line breaks as real breaks, Obsidian-style", () => {
+    expect(renderToHtml("Imatge:\n![[img.png]]")).toBe(
+      '<p>Imatge:<br><img class="internal-embed" data-target="img.png" alt="img.png"></p>',
+    );
+    expect(renderToHtml("una\ndues")).toBe("<p>una<br>dues</p>");
+  });
+
   it("renders bullet and ordered lists", () => {
     expect(renderToHtml("- a\n- b")).toBe(
       "<ul><li><p>a</p></li><li><p>b</p></li></ul>",
@@ -38,6 +45,18 @@ describe("renderToHtml — blocks", () => {
   it("renders ==highlights== as mark", () => {
     expect(renderToHtml("un ==ressaltat== aquí")).toBe(
       "<p>un <mark>ressaltat</mark> aquí</p>",
+    );
+  });
+
+  it("renders math as placeholders for the view to typeset", () => {
+    expect(renderToHtml("val $x+y$")).toBe(
+      '<p>val <span class="math-inline" data-tex="x+y">x+y</span></p>',
+    );
+    expect(renderToHtml("a $$b$$ c")).toBe(
+      '<p>a <span class="math-block" data-tex="b">b</span> c</p>',
+    );
+    expect(renderToHtml("$$\nE=mc^2\n$$")).toBe(
+      '<span class="math-block" data-tex="E=mc^2">E=mc^2</span>',
     );
   });
 

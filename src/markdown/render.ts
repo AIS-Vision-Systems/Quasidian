@@ -34,6 +34,7 @@ const SKIP = new Set([
   "LinkLabel",
   "LinkReference",
   "HighlightMark",
+  "MathMark",
 ]);
 
 const INLINE_WRAPPERS: Record<string, [string, string]> = {
@@ -61,6 +62,15 @@ const HEADING_LEVELS: Record<string, number> = {
   SetextHeading2: 2,
 };
 
+/**
+ * Inline text: escaped, with soft line breaks rendered as real breaks —
+ * Obsidian treats single newlines as line breaks, unlike strict
+ * CommonMark, and the two modes must agree.
+ */
+function inlineText(text: string): string {
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
 /** Emits the node's inline content in [from, to]: text plus child elements. */
 function renderInline(
   node: SyntaxNode,
@@ -75,13 +85,13 @@ function renderInline(
       continue;
     }
     if (child.from > pos) {
-      out.push(escapeHtml(doc.slice(pos, child.from)));
+      out.push(inlineText(doc.slice(pos, child.from)));
     }
     renderNode(child, doc, out);
     pos = child.to;
   }
   if (pos < to) {
-    out.push(escapeHtml(doc.slice(pos, to)));
+    out.push(inlineText(doc.slice(pos, to)));
   }
 }
 
@@ -191,6 +201,20 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
       const from = marks[0]?.to ?? node.from;
       const to = marks[marks.length - 1]?.from ?? node.to;
       out.push("<code>", escapeHtml(doc.slice(from, to)), "</code>");
+      return;
+    }
+    case "InlineMath":
+    case "MathBlock": {
+      // TeX stays raw here (pure module); the view renders it with KaTeX.
+      // math-block is a span so inline $$...$$ never breaks its paragraph.
+      const marks = node.getChildren("MathMark");
+      const from = marks[0]?.to ?? node.from;
+      const to = marks.length > 1 ? marks[marks.length - 1].from : node.to;
+      const tex = doc.slice(from, to).trim();
+      const cls = name === "InlineMath" ? "math-inline" : "math-block";
+      out.push(
+        `<span class="${cls}" data-tex="${escapeHtml(tex)}">${escapeHtml(tex)}</span>`,
+      );
       return;
     }
     case "FencedCode": {

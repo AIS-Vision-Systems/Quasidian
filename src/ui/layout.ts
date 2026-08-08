@@ -691,6 +691,11 @@ export function mountLayout(root: HTMLElement): void {
   searchClose.addEventListener("click", closeSearch);
 
   window.addEventListener("keydown", (event) => {
+    // Already consumed (e.g. the editor keymap handled Ctrl+E): acting
+    // again here would toggle twice and look like a no-op.
+    if (event.defaultPrevented) {
+      return;
+    }
     if (
       (event.ctrlKey || event.metaKey) &&
       event.shiftKey &&

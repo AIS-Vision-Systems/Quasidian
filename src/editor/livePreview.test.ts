@@ -8,6 +8,7 @@ import {
   computeHorizontalRules,
   computeImageEmbeds,
   computeListMarks,
+  computeMathRanges,
   computeNoteEmbeds,
   computeTaskMarkers,
   type HiddenRange,
@@ -236,6 +237,27 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     expect(computeListMarks(state, 0, doc.length)).toEqual([
       { from: 0, to: 1, kind: "bullet" },
       { from: 7, to: 9, kind: "task" },
+    ]);
+  });
+
+  it("collects math ranges only when the selection is outside", () => {
+    const doc = "val $x+y$ i $$a$$";
+    const outside = stateFor(doc, 0);
+    expect(computeMathRanges(outside, 0, doc.length)).toEqual([
+      { from: 4, to: 9, tex: "x+y", display: false },
+      { from: 12, to: 17, tex: "a", display: true },
+    ]);
+    const inside = stateFor(doc, 6);
+    expect(computeMathRanges(inside, 0, doc.length)).toEqual([
+      { from: 12, to: 17, tex: "a", display: true },
+    ]);
+  });
+
+  it("collects multi-line math blocks with trimmed tex", () => {
+    const doc = "$$\nx = 1\n$$\n\nfora";
+    const state = stateFor(doc, doc.length);
+    expect(computeMathRanges(state, 0, doc.length)).toEqual([
+      { from: 0, to: 11, tex: "x = 1", display: true },
     ]);
   });
 
