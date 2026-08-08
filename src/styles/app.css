@@ -402,14 +402,32 @@ body.is-readable-line-length .cm-editor .cm-content {
   vertical-align: middle;
 }
 
-.cm-math-block,
+.cm-math-block {
+  display: inline-block;
+  width: 100%;
+  margin: 0.5em 0;
+  text-align: center;
+}
+
 .markdown-rendered .math-block {
   display: block;
   margin: 0.5em 0;
   text-align: center;
 }
 
-.cm-embed-note,
+/* inline-block (not block): a block box inside a text line desyncs the
+   editor's line geometry and gutter. */
+.cm-embed-note {
+  display: inline-block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0;
+  padding: 8px 12px;
+  border-left: 2px solid var(--interactive-accent);
+  border-radius: 4px;
+  background-color: var(--code-background);
+}
+
 .markdown-rendered .embed-note {
   display: block;
   margin: 4px 0;

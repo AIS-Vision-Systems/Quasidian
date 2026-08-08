@@ -229,6 +229,10 @@ export function createEditor(
 
   const view = new EditorView({ parent, state: buildState("") });
 
+  // KaTeX/monospace fonts load once after startup and change glyph
+  // metrics; remeasure so line geometry stays exact.
+  void document.fonts.ready.then(() => view.requestMeasure());
+
   return {
     setDoc(doc: string): void {
       view.setState(buildState(doc));

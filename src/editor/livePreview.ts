@@ -405,7 +405,7 @@ class ImageWidget extends WidgetType {
     );
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     if (this.src === null) {
       const missing = document.createElement("span");
       missing.className = "cm-embed-missing";
@@ -414,6 +414,9 @@ class ImageWidget extends WidgetType {
     }
     const image = document.createElement("img");
     image.className = "cm-embed-image";
+    // The real height is known only once loaded; remeasure so the gutter
+    // and coordinate mapping stay aligned with the content.
+    image.addEventListener("load", () => view.requestMeasure());
     image.src = this.src;
     const dimensions = parseImageDimensions(this.alias);
     if (dimensions === null) {
@@ -442,7 +445,7 @@ class NoteEmbedWidget extends WidgetType {
     return other.target === this.target && other.alias === this.alias;
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("span");
     container.className = "cm-embed-note";
     const title = document.createElement("span");
@@ -463,7 +466,12 @@ class NoteEmbedWidget extends WidgetType {
         fillEmbedImages(body, this.hooks.resolveEmbedSrc);
         highlightCodeBlocks(body);
         renderMathElements(body);
+        for (const image of body.querySelectorAll("img")) {
+          image.addEventListener("load", () => view.requestMeasure());
+        }
       }
+      // The fill changed the widget height after CodeMirror measured it.
+      view.requestMeasure();
     });
     return container;
   }
@@ -552,7 +560,10 @@ class MathWidget extends WidgetType {
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const container = document.createElement(this.display ? "div" : "span");
+    // Always a span: inline uses must not introduce block boxes inside a
+    // text line (they desync the gutter); CSS makes the display variant
+    // full-width.
+    const container = document.createElement("span");
     container.className = this.display ? "cm-math cm-math-block" : "cm-math";
     container.innerHTML = katex.renderToString(this.tex, {
       throwOnError: false,
@@ -744,31 +755,6 @@ function buildDecorations(
   return Decoration.set(ranges, true);
 }
 
-/**
- * Reveal range for a block widget: the block plus the whole line before
- * and after. Blocks stay expanded while the cursor is adjacent, so arrow
- * keys walk in and out line by line without the geometry shifting under
- * the cursor.
- */
-function blockRevealRange(
-  state: EditorState,
-  from: number,
-  to: number,
-): { from: number; to: number } {
-  const fromLine = state.doc.lineAt(from);
-  const toLine = state.doc.lineAt(to);
-  return {
-    from:
-      fromLine.number > 1
-        ? state.doc.line(fromLine.number - 1).from
-        : fromLine.from,
-    to:
-      toLine.number < state.doc.lines
-        ? state.doc.line(toLine.number + 1).to
-        : toLine.to,
-  };
-}
-
 // Block decorations may not come from a ViewPlugin (CodeMirror throws),
 // so inactive tables and multi-line math blocks are replaced through a
 // StateField instead.
@@ -778,8 +764,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
   syntaxTree(state).iterate({
     enter(node) {
       if (node.name === "Table") {
-        const reveal = blockRevealRange(state, node.from, node.to);
-        if (selectionTouches(state, reveal.from, reveal.to)) {
+        if (selectionTouches(state, node.from, node.to)) {
           return false;
         }
         const from = state.doc.lineAt(node.from).from;
@@ -798,8 +783,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
         if (fromLine.number === toLine.number) {
           return false; // single-line: handled inline by the view plugin
         }
-        const reveal = blockRevealRange(state, node.from, node.to);
-        if (selectionTouches(state, reveal.from, reveal.to)) {
+        if (selectionTouches(state, node.from, node.to)) {
           return false;
         }
         for (const math of computeMathRanges(state, node.from, node.to)) {
