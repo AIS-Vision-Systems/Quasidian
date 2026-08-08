@@ -4,6 +4,7 @@
 // rendered as escaped text, not injected).
 import type { SyntaxNode } from "@lezer/common";
 import { markdownParser } from "./parser";
+import { isImageTarget } from "./wikilinks";
 
 function escapeHtml(text: string): string {
   return text
@@ -258,12 +259,22 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
       );
       return;
     }
-    case "Wikilink": {
+    case "Wikilink":
+    case "Embed": {
       const pathNode = node.getChild("WikilinkPath");
       const aliasNode = node.getChild("WikilinkAlias");
       const target = pathNode === null ? "" : doc.slice(pathNode.from, pathNode.to);
       const display =
         aliasNode === null ? target : doc.slice(aliasNode.from, aliasNode.to);
+      if (name === "Embed" && isImageTarget(target)) {
+        // The src stays unresolved here (pure module); the reading view
+        // fills it in through its resolveEmbedSrc hook.
+        out.push(
+          `<img class="internal-embed" data-target="${escapeHtml(target)}" alt="${escapeHtml(display)}">`,
+        );
+        return;
+      }
+      // Non-image embeds render as navigable links (no note transclusion).
       out.push(
         `<a class="internal-link" data-target="${escapeHtml(target)}">${escapeHtml(display)}</a>`,
       );

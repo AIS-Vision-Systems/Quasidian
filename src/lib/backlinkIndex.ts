@@ -16,7 +16,7 @@ export function extractLinkTargets(doc: string): string[] {
   const targets: string[] = [];
   tree.iterate({
     enter(node) {
-      if (node.name === "Wikilink") {
+      if (node.name === "Wikilink" || node.name === "Embed") {
         const path = node.node.getChild("WikilinkPath");
         if (path !== null) {
           targets.push(doc.slice(path.from, path.to));

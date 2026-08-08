@@ -104,6 +104,26 @@ describe("renderToHtml — wikilinks (same cases as the editor decorations)", ()
   });
 });
 
+describe("renderToHtml — embeds", () => {
+  it("renders image embeds without src, resolved later by the view", () => {
+    expect(renderToHtml("![[img.png]]")).toBe(
+      '<p><img class="internal-embed" data-target="img.png" alt="img.png"></p>',
+    );
+  });
+
+  it("uses the alias as alt text", () => {
+    expect(renderToHtml("![[img.png|logo]]")).toBe(
+      '<p><img class="internal-embed" data-target="img.png" alt="logo"></p>',
+    );
+  });
+
+  it("renders non-image embeds as internal links", () => {
+    expect(renderToHtml("![[nota]]")).toBe(
+      '<p><a class="internal-link" data-target="nota">nota</a></p>',
+    );
+  });
+});
+
 describe("renderToHtml — safety", () => {
   it("escapes raw HTML blocks instead of injecting them", () => {
     const html = renderToHtml("<script>alert('x')</script>");
