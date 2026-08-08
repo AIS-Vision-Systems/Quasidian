@@ -548,16 +548,21 @@ export function mountLayout(root: HTMLElement): void {
     setStatusError(null);
     welcome.remove();
     viewTitle.textContent = basename(path).replace(/\.md$/i, "");
-    editor.setDoc(contents);
-    setWordCount(countWords(contents));
-    const mode =
-      fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode;
-    if (mode === "read") {
-      readingView.render(contents);
-    }
-    applyMode(mode);
-    if (mode === "edit") {
-      editor.focus();
+    try {
+      editor.setDoc(contents);
+      setWordCount(countWords(contents));
+      const mode =
+        fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode;
+      if (mode === "read") {
+        readingView.render(contents);
+      }
+      applyMode(mode);
+      if (mode === "edit") {
+        editor.focus();
+      }
+    } catch (error) {
+      // A rendering failure must never leave the view half-open.
+      setStatusError(t("error.openFile", { error: String(error) }));
     }
     await refreshFolder(dirname(path));
   }

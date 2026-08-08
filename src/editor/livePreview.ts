@@ -4,10 +4,14 @@
 // (heading #, quote >) reveal when their line is active. Embeds, task
 // markers, bullets, code fences and tables render as widgets/decorations
 // when inactive and reveal their raw text on touch.
-import { LanguageDescription, syntaxTree } from "@codemirror/language";
+import {
+  ensureSyntaxTree,
+  LanguageDescription,
+  syntaxTree,
+} from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
-import type { EditorState, Range } from "@codemirror/state";
+import { StateField, type EditorState, type Range } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -495,20 +499,6 @@ function buildDecorations(
           decorateLines(node.node, codeblockLine);
           return false;
         }
-        if (
-          node.name === "Table" &&
-          !selectionTouches(state, node.from, node.to)
-        ) {
-          const tableFrom = state.doc.lineAt(node.from).from;
-          const tableTo = state.doc.lineAt(node.to).to;
-          ranges.push(
-            Decoration.replace({
-              widget: new TableWidget(state.doc.sliceString(tableFrom, tableTo)),
-              block: true,
-            }).range(tableFrom, tableTo),
-          );
-          return false;
-        }
         return;
       },
     });
@@ -547,21 +537,62 @@ function buildDecorations(
   return Decoration.set(ranges, true);
 }
 
-export function livePreview(hooks: LivePreviewHooks) {
-  return ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet;
-
-      constructor(view: EditorView) {
-        this.decorations = buildDecorations(view, hooks);
+// Block decorations may not come from a ViewPlugin (CodeMirror throws),
+// so inactive tables are replaced through a StateField instead.
+function buildTableDecorations(state: EditorState): DecorationSet {
+  ensureSyntaxTree(state, state.doc.length, 50);
+  const ranges: Range<Decoration>[] = [];
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== "Table") {
+        return;
       }
-
-      update(update: ViewUpdate) {
-        if (update.docChanged || update.selectionSet || update.viewportChanged) {
-          this.decorations = buildDecorations(update.view, hooks);
-        }
+      if (selectionTouches(state, node.from, node.to)) {
+        return false;
       }
+      const from = state.doc.lineAt(node.from).from;
+      const to = state.doc.lineAt(node.to).to;
+      ranges.push(
+        Decoration.replace({
+          widget: new TableWidget(state.doc.sliceString(from, to)),
+          block: true,
+        }).range(from, to),
+      );
+      return false;
     },
-    { decorations: (plugin) => plugin.decorations },
-  );
+  });
+  return Decoration.set(ranges, true);
+}
+
+const tableDecorations = StateField.define<DecorationSet>({
+  create: buildTableDecorations,
+  update(value, tr) {
+    if (tr.docChanged || tr.selection !== undefined) {
+      return buildTableDecorations(tr.state);
+    }
+    return value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+export function livePreview(hooks: LivePreviewHooks) {
+  return [
+    tableDecorations,
+    ViewPlugin.fromClass(
+      class {
+        decorations: DecorationSet;
+
+        constructor(view: EditorView) {
+          this.decorations = buildDecorations(view, hooks);
+        }
+
+        update(update: ViewUpdate) {
+          if (update.docChanged || update.selectionSet || update.viewportChanged) {
+            this.decorations = buildDecorations(update.view, hooks);
+          }
+        }
+      },
+      { decorations: (plugin) => plugin.decorations },
+    ),
+  ];
 }

@@ -75,6 +75,7 @@
   "settings.defaultExtension.name": "Extensió per defecte",
   "settings.defaultExtension.desc": "Extensió en crear notes des d'un wikilink",
   "error.readFile": "No s'ha pogut llegir el fitxer: {error}",
+  "error.openFile": "No s'ha pogut obrir el fitxer: {error}",
   "error.writeFile": "No s'ha pogut desar el fitxer: {error}",
   "error.createFile": "No s'ha pogut crear el fitxer: {error}",
   "error.listFolder": "No s'ha pogut llistar la carpeta: {error}"

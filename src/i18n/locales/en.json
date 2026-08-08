@@ -75,6 +75,7 @@
   "settings.defaultExtension.name": "Default extension",
   "settings.defaultExtension.desc": "Extension when creating notes from a wikilink",
   "error.readFile": "Could not read file: {error}",
+  "error.openFile": "Could not open file: {error}",
   "error.writeFile": "Could not save file: {error}",
   "error.createFile": "Could not create file: {error}",
   "error.listFolder": "Could not list folder: {error}"
