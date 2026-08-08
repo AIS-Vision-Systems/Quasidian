@@ -744,6 +744,31 @@ function buildDecorations(
   return Decoration.set(ranges, true);
 }
 
+/**
+ * Reveal range for a block widget: the block plus the whole line before
+ * and after. Blocks stay expanded while the cursor is adjacent, so arrow
+ * keys walk in and out line by line without the geometry shifting under
+ * the cursor.
+ */
+function blockRevealRange(
+  state: EditorState,
+  from: number,
+  to: number,
+): { from: number; to: number } {
+  const fromLine = state.doc.lineAt(from);
+  const toLine = state.doc.lineAt(to);
+  return {
+    from:
+      fromLine.number > 1
+        ? state.doc.line(fromLine.number - 1).from
+        : fromLine.from,
+    to:
+      toLine.number < state.doc.lines
+        ? state.doc.line(toLine.number + 1).to
+        : toLine.to,
+  };
+}
+
 // Block decorations may not come from a ViewPlugin (CodeMirror throws),
 // so inactive tables and multi-line math blocks are replaced through a
 // StateField instead.
@@ -752,11 +777,9 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
   const ranges: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     enter(node) {
-      // Reveal with a ±1 margin: block widgets are atomic for cursor
-      // motion, so standing on an adjacent line un-renders the block and
-      // lets the cursor walk into the raw text.
       if (node.name === "Table") {
-        if (selectionTouches(state, node.from - 1, node.to + 1)) {
+        const reveal = blockRevealRange(state, node.from, node.to);
+        if (selectionTouches(state, reveal.from, reveal.to)) {
           return false;
         }
         const from = state.doc.lineAt(node.from).from;
@@ -775,7 +798,8 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
         if (fromLine.number === toLine.number) {
           return false; // single-line: handled inline by the view plugin
         }
-        if (selectionTouches(state, node.from - 1, node.to + 1)) {
+        const reveal = blockRevealRange(state, node.from, node.to);
+        if (selectionTouches(state, reveal.from, reveal.to)) {
           return false;
         }
         for (const math of computeMathRanges(state, node.from, node.to)) {
