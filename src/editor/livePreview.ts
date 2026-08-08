@@ -23,7 +23,11 @@ import {
 import katex from "katex";
 import { renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
-import { fillEmbedImages, highlightCodeBlocks } from "../ui/renderedContent";
+import {
+  fillEmbedImages,
+  highlightCodeBlocks,
+  renderMathElements,
+} from "../ui/renderedContent";
 
 export interface HiddenRange {
   from: number;
@@ -458,6 +462,7 @@ class NoteEmbedWidget extends WidgetType {
         body.innerHTML = html;
         fillEmbedImages(body, this.hooks.resolveEmbedSrc);
         highlightCodeBlocks(body);
+        renderMathElements(body);
       }
     });
     return container;
@@ -533,38 +538,58 @@ class MathWidget extends WidgetType {
   constructor(
     readonly tex: string,
     readonly display: boolean,
+    readonly pos: number,
   ) {
     super();
   }
 
   override eq(other: MathWidget): boolean {
-    return other.tex === this.tex && other.display === this.display;
+    return (
+      other.tex === this.tex &&
+      other.display === this.display &&
+      other.pos === this.pos
+    );
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const container = document.createElement(this.display ? "div" : "span");
     container.className = this.display ? "cm-math cm-math-block" : "cm-math";
     container.innerHTML = katex.renderToString(this.tex, {
       throwOnError: false,
       displayMode: this.display,
     });
+    // Clicking a formula reveals its raw TeX with the cursor inside.
+    container.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({ selection: { anchor: this.pos } });
+      view.focus();
+    });
     return container;
   }
 }
 
 class TableWidget extends WidgetType {
-  constructor(readonly source: string) {
+  constructor(
+    readonly source: string,
+    readonly pos: number,
+  ) {
     super();
   }
 
   override eq(other: TableWidget): boolean {
-    return other.source === this.source;
+    return other.source === this.source && other.pos === this.pos;
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("div");
     container.className = "cm-table-widget markdown-rendered";
     container.innerHTML = renderToHtml(this.source);
+    // Clicking the table reveals its raw markdown with the cursor inside.
+    container.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({ selection: { anchor: this.pos } });
+      view.focus();
+    });
     return container;
   }
 }
@@ -710,7 +735,7 @@ function buildDecorations(
         // state field below.
         ranges.push(
           Decoration.replace({
-            widget: new MathWidget(math.tex, math.display),
+            widget: new MathWidget(math.tex, math.display, math.from),
           }).range(math.from, math.to),
         );
       }
@@ -727,15 +752,18 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
   const ranges: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     enter(node) {
+      // Reveal with a ±1 margin: block widgets are atomic for cursor
+      // motion, so standing on an adjacent line un-renders the block and
+      // lets the cursor walk into the raw text.
       if (node.name === "Table") {
-        if (selectionTouches(state, node.from, node.to)) {
+        if (selectionTouches(state, node.from - 1, node.to + 1)) {
           return false;
         }
         const from = state.doc.lineAt(node.from).from;
         const to = state.doc.lineAt(node.to).to;
         ranges.push(
           Decoration.replace({
-            widget: new TableWidget(state.doc.sliceString(from, to)),
+            widget: new TableWidget(state.doc.sliceString(from, to), from),
             block: true,
           }).range(from, to),
         );
@@ -747,14 +775,14 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
         if (fromLine.number === toLine.number) {
           return false; // single-line: handled inline by the view plugin
         }
-        if (selectionTouches(state, node.from, node.to)) {
+        if (selectionTouches(state, node.from - 1, node.to + 1)) {
           return false;
         }
         for (const math of computeMathRanges(state, node.from, node.to)) {
           if (math.from === node.from) {
             ranges.push(
               Decoration.replace({
-                widget: new MathWidget(math.tex, true),
+                widget: new MathWidget(math.tex, true, node.from),
                 block: true,
               }).range(fromLine.from, toLine.to),
             );
