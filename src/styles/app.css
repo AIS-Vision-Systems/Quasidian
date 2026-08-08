@@ -402,6 +402,13 @@ body.is-readable-line-length .cm-editor .cm-content {
   vertical-align: middle;
 }
 
+.cm-math-block,
+.markdown-rendered .math-block {
+  display: block;
+  margin: 0.5em 0;
+  text-align: center;
+}
+
 .cm-embed-note,
 .markdown-rendered .embed-note {
   display: block;

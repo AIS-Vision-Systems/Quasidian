@@ -20,6 +20,7 @@ import {
   type ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
+import katex from "katex";
 import { renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import { fillEmbedImages, highlightCodeBlocks } from "../ui/renderedContent";
@@ -213,6 +214,48 @@ export function computeNoteEmbeds(
   to: number,
 ): EmbedRange[] {
   return computeEmbeds(state, from, to, false);
+}
+
+export interface MathRange {
+  from: number;
+  to: number;
+  tex: string;
+  display: boolean;
+}
+
+/**
+ * Pure computation of math elements in [from, to] whose range the
+ * selection does not touch, to be replaced by KaTeX widgets.
+ */
+export function computeMathRanges(
+  state: EditorState,
+  from: number,
+  to: number,
+): MathRange[] {
+  const ranges: MathRange[] = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter(node) {
+      if (node.name !== "InlineMath" && node.name !== "MathBlock") {
+        return;
+      }
+      if (!selectionTouches(state, node.from, node.to)) {
+        const marks = node.node.getChildren("MathMark");
+        const texFrom = marks[0]?.to ?? node.from;
+        const texTo =
+          marks.length > 1 ? marks[marks.length - 1].from : node.to;
+        ranges.push({
+          from: node.from,
+          to: node.to,
+          tex: state.doc.sliceString(texFrom, texTo).trim(),
+          display: node.name === "MathBlock",
+        });
+      }
+      return false;
+    },
+  });
+  return ranges;
 }
 
 /**
@@ -486,6 +529,29 @@ class HrWidget extends WidgetType {
   }
 }
 
+class MathWidget extends WidgetType {
+  constructor(
+    readonly tex: string,
+    readonly display: boolean,
+  ) {
+    super();
+  }
+
+  override eq(other: MathWidget): boolean {
+    return other.tex === this.tex && other.display === this.display;
+  }
+
+  toDOM(): HTMLElement {
+    const container = document.createElement(this.display ? "div" : "span");
+    container.className = this.display ? "cm-math cm-math-block" : "cm-math";
+    container.innerHTML = katex.renderToString(this.tex, {
+      throwOnError: false,
+      displayMode: this.display,
+    });
+    return container;
+  }
+}
+
 class TableWidget extends WidgetType {
   constructor(readonly source: string) {
     super();
@@ -636,42 +702,77 @@ function buildDecorations(
     for (const rule of computeHorizontalRules(state, from, to)) {
       ranges.push(hrDecoration.range(rule.from, rule.to));
     }
+    for (const math of computeMathRanges(state, from, to)) {
+      const sameLine =
+        state.doc.lineAt(math.from).number === state.doc.lineAt(math.to).number;
+      if (sameLine) {
+        // Multi-line math blocks are block decorations and live in the
+        // state field below.
+        ranges.push(
+          Decoration.replace({
+            widget: new MathWidget(math.tex, math.display),
+          }).range(math.from, math.to),
+        );
+      }
+    }
   }
   return Decoration.set(ranges, true);
 }
 
 // Block decorations may not come from a ViewPlugin (CodeMirror throws),
-// so inactive tables are replaced through a StateField instead.
-function buildTableDecorations(state: EditorState): DecorationSet {
+// so inactive tables and multi-line math blocks are replaced through a
+// StateField instead.
+function buildBlockDecorations(state: EditorState): DecorationSet {
   ensureSyntaxTree(state, state.doc.length, 50);
   const ranges: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     enter(node) {
-      if (node.name !== "Table") {
-        return;
-      }
-      if (selectionTouches(state, node.from, node.to)) {
+      if (node.name === "Table") {
+        if (selectionTouches(state, node.from, node.to)) {
+          return false;
+        }
+        const from = state.doc.lineAt(node.from).from;
+        const to = state.doc.lineAt(node.to).to;
+        ranges.push(
+          Decoration.replace({
+            widget: new TableWidget(state.doc.sliceString(from, to)),
+            block: true,
+          }).range(from, to),
+        );
         return false;
       }
-      const from = state.doc.lineAt(node.from).from;
-      const to = state.doc.lineAt(node.to).to;
-      ranges.push(
-        Decoration.replace({
-          widget: new TableWidget(state.doc.sliceString(from, to)),
-          block: true,
-        }).range(from, to),
-      );
-      return false;
+      if (node.name === "MathBlock") {
+        const fromLine = state.doc.lineAt(node.from);
+        const toLine = state.doc.lineAt(node.to);
+        if (fromLine.number === toLine.number) {
+          return false; // single-line: handled inline by the view plugin
+        }
+        if (selectionTouches(state, node.from, node.to)) {
+          return false;
+        }
+        for (const math of computeMathRanges(state, node.from, node.to)) {
+          if (math.from === node.from) {
+            ranges.push(
+              Decoration.replace({
+                widget: new MathWidget(math.tex, true),
+                block: true,
+              }).range(fromLine.from, toLine.to),
+            );
+          }
+        }
+        return false;
+      }
+      return;
     },
   });
   return Decoration.set(ranges, true);
 }
 
-const tableDecorations = StateField.define<DecorationSet>({
-  create: buildTableDecorations,
+const blockDecorations = StateField.define<DecorationSet>({
+  create: buildBlockDecorations,
   update(value, tr) {
     if (tr.docChanged || tr.selection !== undefined) {
-      return buildTableDecorations(tr.state);
+      return buildBlockDecorations(tr.state);
     }
     return value;
   },
@@ -680,7 +781,7 @@ const tableDecorations = StateField.define<DecorationSet>({
 
 export function livePreview(hooks: LivePreviewHooks) {
   return [
-    tableDecorations,
+    blockDecorations,
     ViewPlugin.fromClass(
       class {
         decorations: DecorationSet;

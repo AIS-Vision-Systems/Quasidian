@@ -4,6 +4,7 @@
 import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { classHighlighter, highlightCode } from "@lezer/highlight";
+import katex from "katex";
 
 export function fillEmbedImages(
   root: HTMLElement,
@@ -74,5 +75,17 @@ export function highlightCodeBlocks(root: HTMLElement): void {
     if (match !== null) {
       void highlightBlock(codeEl, match[1]);
     }
+  }
+}
+
+/** Replaces math placeholders with KaTeX output; errors render as text. */
+export function renderMathElements(root: HTMLElement): void {
+  for (const el of root.querySelectorAll<HTMLElement>(
+    ".math-inline, .math-block",
+  )) {
+    el.innerHTML = katex.renderToString(el.dataset.tex ?? "", {
+      throwOnError: false,
+      displayMode: el.classList.contains("math-block"),
+    });
   }
 }
