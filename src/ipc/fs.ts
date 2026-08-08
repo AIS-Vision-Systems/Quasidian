@@ -33,6 +33,11 @@ export function watchFolder(path: string): Promise<void> {
   return invoke("watch_folder", { path });
 }
 
+/** File passed on the command line at launch, if any. */
+export function startupFile(): Promise<string | null> {
+  return invoke("startup_file");
+}
+
 export function openMarkdownFileDialog(options: {
   title: string;
   filterName: string;

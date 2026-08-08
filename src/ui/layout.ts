@@ -6,6 +6,7 @@ import {
   listFolder,
   openMarkdownFileDialog,
   readFile,
+  startupFile,
   watchFolder,
   writeFile,
 } from "../ipc/fs";
@@ -813,4 +814,12 @@ export function mountLayout(root: HTMLElement): void {
   setListMessage(t("sidebar.noFolder"));
   setWordCount(0);
   renderBacklinks();
+
+  // Double-clicking an associated .md passes its path on the command line.
+  void (async () => {
+    const file = await startupFile();
+    if (file !== null) {
+      await openFile(file);
+    }
+  })();
 }
