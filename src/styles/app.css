@@ -395,6 +395,13 @@ body.is-readable-line-length .cm-editor .cm-content {
   color: var(--text-muted);
 }
 
+.cm-editor .cm-hr {
+  display: inline-block;
+  width: 100%;
+  border-top: 1px solid var(--background-modifier-border);
+  vertical-align: middle;
+}
+
 .cm-embed-note,
 .markdown-rendered .embed-note {
   display: block;

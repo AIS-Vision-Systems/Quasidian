@@ -215,6 +215,32 @@ export function computeNoteEmbeds(
   return computeEmbeds(state, from, to, false);
 }
 
+/**
+ * Pure computation of horizontal rules (---, ***) in [from, to] on
+ * inactive lines, to be replaced by a rendered rule.
+ */
+export function computeHorizontalRules(
+  state: EditorState,
+  from: number,
+  to: number,
+): HiddenRange[] {
+  const rules: HiddenRange[] = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter(node) {
+      if (node.name !== "HorizontalRule") {
+        return;
+      }
+      if (!selectionTouchesLine(state, node.from)) {
+        rules.push({ from: node.from, to: node.to });
+      }
+      return false;
+    },
+  });
+  return rules;
+}
+
 export interface TaskMarkerInfo {
   /** Offset of the "[ ]"/"[x]" marker. */
   pos: number;
@@ -448,6 +474,18 @@ class BulletWidget extends WidgetType {
   }
 }
 
+class HrWidget extends WidgetType {
+  override eq(): boolean {
+    return true;
+  }
+
+  toDOM(): HTMLElement {
+    const rule = document.createElement("span");
+    rule.className = "cm-hr";
+    return rule;
+  }
+}
+
 class TableWidget extends WidgetType {
   constructor(readonly source: string) {
     super();
@@ -469,6 +507,7 @@ const hideMark = Decoration.replace({});
 const blockquoteLine = Decoration.line({ class: "cm-blockquote-line" });
 const codeblockLine = Decoration.line({ class: "cm-codeblock-line" });
 const bulletDecoration = Decoration.replace({ widget: new BulletWidget() });
+const hrDecoration = Decoration.replace({ widget: new HrWidget() });
 
 function hasBlockquoteAncestor(node: SyntaxNode): boolean {
   for (let cur = node.parent; cur !== null; cur = cur.parent) {
@@ -593,6 +632,9 @@ function buildDecorations(
       } else {
         ranges.push(bulletDecoration.range(mark.from, mark.to));
       }
+    }
+    for (const rule of computeHorizontalRules(state, from, to)) {
+      ranges.push(hrDecoration.range(rule.from, rule.to));
     }
   }
   return Decoration.set(ranges, true);

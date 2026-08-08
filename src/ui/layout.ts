@@ -548,6 +548,9 @@ export function mountLayout(root: HTMLElement): void {
     setStatusError(null);
     welcome.remove();
     viewTitle.textContent = basename(path).replace(/\.md$/i, "");
+    // The folder state must exist before setDoc: embed widgets resolve
+    // their sources against it while building decorations.
+    await refreshFolder(dirname(path));
     try {
       editor.setDoc(contents);
       setWordCount(countWords(contents));
@@ -564,7 +567,7 @@ export function mountLayout(root: HTMLElement): void {
       // A rendering failure must never leave the view half-open.
       setStatusError(t("error.openFile", { error: String(error) }));
     }
-    await refreshFolder(dirname(path));
+    renderBacklinks();
   }
 
   async function openFileFromDialog(): Promise<void> {

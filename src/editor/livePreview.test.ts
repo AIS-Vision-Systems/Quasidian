@@ -5,6 +5,7 @@ import { EditorSelection, EditorState } from "@codemirror/state";
 import { markdownExtensions } from "../markdown/parser";
 import {
   computeHiddenRanges,
+  computeHorizontalRules,
   computeImageEmbeds,
   computeListMarks,
   computeNoteEmbeds,
@@ -236,6 +237,16 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
       { from: 0, to: 1, kind: "bullet" },
       { from: 7, to: 9, kind: "task" },
     ]);
+  });
+
+  it("collects horizontal rules on inactive lines only", () => {
+    const doc = "x\n\n---\n\ny";
+    const outside = stateFor(doc, doc.length);
+    expect(computeHorizontalRules(outside, 0, doc.length)).toEqual([
+      { from: 3, to: 6 },
+    ]);
+    const onLine = stateFor(doc, 4);
+    expect(computeHorizontalRules(onLine, 0, doc.length)).toEqual([]);
   });
 
   it("keeps list marks raw on the active line", () => {
