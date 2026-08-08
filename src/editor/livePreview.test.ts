@@ -2,8 +2,16 @@ import { describe, expect, it } from "vitest";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
-import { wikilinks } from "../markdown/wikilinks";
-import { computeHiddenRanges, type HiddenRange } from "./livePreview";
+import { markdownExtensions } from "../markdown/parser";
+import {
+  computeHiddenRanges,
+  computeHorizontalRules,
+  computeImageEmbeds,
+  computeListMarks,
+  computeNoteEmbeds,
+  computeTaskMarkers,
+  type HiddenRange,
+} from "./livePreview";
 
 function hiddenRanges(
   doc: string,
@@ -13,7 +21,9 @@ function hiddenRanges(
   const state = EditorState.create({
     doc,
     selection: EditorSelection.single(anchor, head),
-    extensions: [markdown({ base: markdownLanguage, extensions: [wikilinks] })],
+    extensions: [
+      markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+    ],
   });
   ensureSyntaxTree(state, doc.length, 5000);
   return computeHiddenRanges(state, 0, doc.length);
@@ -71,6 +81,27 @@ describe("computeHiddenRanges — italic, inline code, strikethrough", () => {
     ]);
     expect(hiddenRanges("~~s~~ x", 3)).toEqual([]);
   });
+
+  it("hides == marks of highlights when outside", () => {
+    expect(hiddenRanges("==h== x", 7)).toEqual([
+      { from: 0, to: 2 },
+      { from: 3, to: 5 },
+    ]);
+    expect(hiddenRanges("==h== x", 3)).toEqual([]);
+  });
+});
+
+describe("computeHiddenRanges — setext headings", () => {
+  it("hides the underline when the selection is outside the heading", () => {
+    const doc = "Títol\n===\n\ntext";
+    expect(hiddenRanges(doc, doc.length)).toEqual([{ from: 6, to: 9 }]);
+  });
+
+  it("reveals the underline when the selection is in the heading", () => {
+    const doc = "Títol\n===\n\ntext";
+    expect(hiddenRanges(doc, 2)).toEqual([]);
+    expect(hiddenRanges(doc, 7)).toEqual([]);
+  });
 });
 
 describe("computeHiddenRanges — headings", () => {
@@ -106,6 +137,16 @@ describe("computeHiddenRanges — blockquotes", () => {
     // Cursor on the second quote line: only the first line's mark hides.
     expect(hiddenRanges(multi, 8)).toEqual([{ from: 0, to: 2 }]);
   });
+
+  it("hides continuation-line quote marks nested in the paragraph", () => {
+    // "b" is a lazy continuation; the marks on lines 1 and 3 hang from
+    // different parents but must both hide.
+    const doc = "> a\nb\n> c\n\nx";
+    expect(hiddenRanges(doc, doc.length)).toEqual([
+      { from: 0, to: 2 },
+      { from: 6, to: 8 },
+    ]);
+  });
 });
 
 describe("computeHiddenRanges — wikilinks", () => {
@@ -135,6 +176,94 @@ describe("computeHiddenRanges — wikilinks", () => {
 
   it("reveals everything of an aliased wikilink when inside", () => {
     expect(hiddenRanges("[[nota|àlies]] x", 9)).toEqual([]);
+  });
+});
+
+describe("computeImageEmbeds and computeTaskMarkers", () => {
+  function stateFor(doc: string, anchor: number) {
+    const state = EditorState.create({
+      doc,
+      selection: EditorSelection.single(anchor),
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+      ],
+    });
+    ensureSyntaxTree(state, doc.length, 5000);
+    return state;
+  }
+
+  it("collects image embeds only when the selection is outside", () => {
+    const doc = "![[img.png]] x";
+    const outside = stateFor(doc, doc.length);
+    expect(computeImageEmbeds(outside, 0, doc.length)).toEqual([
+      { from: 0, to: 12, target: "img.png", alias: null },
+    ]);
+    const inside = stateFor(doc, 5);
+    expect(computeImageEmbeds(inside, 0, doc.length)).toEqual([]);
+  });
+
+  it("carries the alias for image sizing", () => {
+    const doc = "![[img.png|50]] x";
+    const state = stateFor(doc, doc.length);
+    expect(computeImageEmbeds(state, 0, doc.length)).toEqual([
+      { from: 0, to: 15, target: "img.png", alias: "50" },
+    ]);
+  });
+
+  it("collects non-image embeds for transclusion widgets", () => {
+    const doc = "![[nota]] x";
+    const state = stateFor(doc, doc.length);
+    expect(computeImageEmbeds(state, 0, doc.length)).toEqual([]);
+    expect(computeNoteEmbeds(state, 0, doc.length)).toEqual([
+      { from: 0, to: 9, target: "nota", alias: null },
+    ]);
+    // The whole embed is widget-replaced, so nothing is mark-hidden.
+    expect(computeHiddenRanges(state, 0, doc.length)).toEqual([]);
+  });
+
+  it("collects task markers only on inactive lines", () => {
+    const doc = "- [ ] fer\n- [x] fet";
+    // Cursor on the first line: only the second marker becomes a widget.
+    const state = stateFor(doc, 3);
+    expect(computeTaskMarkers(state, 0, doc.length)).toEqual([
+      { pos: 12, checked: true },
+    ]);
+  });
+
+  it("collects list marks: bullets for items, hidden marks for tasks", () => {
+    const doc = "- poma\n- [ ] fer\n1. tres";
+    const state = stateFor(doc, doc.length);
+    expect(computeListMarks(state, 0, doc.length)).toEqual([
+      { from: 0, to: 1, kind: "bullet" },
+      { from: 7, to: 9, kind: "task" },
+    ]);
+  });
+
+  it("collects horizontal rules on inactive lines only", () => {
+    const doc = "x\n\n---\n\ny";
+    const outside = stateFor(doc, doc.length);
+    expect(computeHorizontalRules(outside, 0, doc.length)).toEqual([
+      { from: 3, to: 6 },
+    ]);
+    const onLine = stateFor(doc, 4);
+    expect(computeHorizontalRules(onLine, 0, doc.length)).toEqual([]);
+  });
+
+  it("keeps list marks raw on the active line", () => {
+    const doc = "- poma\n- pera";
+    const state = stateFor(doc, 2);
+    expect(computeListMarks(state, 0, doc.length)).toEqual([
+      { from: 7, to: 8, kind: "bullet" },
+    ]);
+  });
+
+  it("skips everything inside an inactive table", () => {
+    // Blank line before "fora": without it, GFM keeps absorbing rows.
+    const doc = "| **a** | b |\n| --- | --- |\n| c | d |\n\nfora";
+    const state = stateFor(doc, doc.length);
+    // Bold marks inside the table are not hidden: the table widget
+    // replaces the whole block.
+    expect(computeHiddenRanges(state, 0, doc.length)).toEqual([]);
   });
 });
 

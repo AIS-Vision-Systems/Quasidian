@@ -271,7 +271,52 @@ body {
 
 .workspace {
   grid-area: main;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.view-title {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-header-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.view-header-button {
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.view-header-button:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.workspace-body {
+  flex: 1;
+  min-height: 0;
 }
 
 .workspace-welcome {
@@ -329,6 +374,143 @@ body.is-readable-line-length .cm-editor .cm-content {
 .cm-editor .cm-blockquote-line {
   border-left: 2px solid var(--interactive-accent);
   padding-left: 12px;
+}
+
+.cm-editor .cm-codeblock-line {
+  background-color: var(--code-background);
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+  padding-left: 12px;
+}
+
+.cm-editor .cm-codeblock-open::after {
+  content: attr(data-lang);
+  float: right;
+  color: var(--text-faint);
+  font-family: var(--font-interface);
+  font-size: 11px;
+}
+
+.cm-editor .cm-list-bullet {
+  color: var(--text-muted);
+}
+
+.cm-editor .cm-hr {
+  display: inline-block;
+  width: 100%;
+  border-top: 1px solid var(--background-modifier-border);
+  vertical-align: middle;
+}
+
+.cm-embed-note,
+.markdown-rendered .embed-note {
+  display: block;
+  margin: 4px 0;
+  padding: 8px 12px;
+  border-left: 2px solid var(--interactive-accent);
+  border-radius: 4px;
+  background-color: var(--code-background);
+}
+
+.cm-embed-note-title,
+.embed-note-title {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-accent);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+.cm-embed-note-title:hover,
+.embed-note-title:hover {
+  text-decoration: underline;
+}
+
+.cm-embed-note-body,
+.embed-note-body {
+  display: block;
+}
+
+.cm-embed-note-body p,
+.embed-note-body p {
+  margin: 0 0 0.5em;
+}
+
+.cm-table-widget {
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.cm-editor .cm-embed-image,
+.markdown-rendered img.internal-embed {
+  max-width: 100%;
+  border-radius: 4px;
+  vertical-align: bottom;
+}
+
+/* Cap the height only when no explicit size is set, and keep the aspect
+   ratio when only a width is given — a |500 wider than the natural size
+   must scale, never distort. */
+.cm-editor .cm-embed-image:not([width]),
+.markdown-rendered img.internal-embed:not([width]) {
+  max-height: 420px;
+}
+
+.cm-editor .cm-embed-image:not([height]),
+.markdown-rendered img.internal-embed:not([height]) {
+  height: auto;
+}
+
+.cm-embed-missing,
+.embed-missing {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.cm-task-checkbox {
+  margin: 0 2px 0 0;
+  accent-color: var(--interactive-accent);
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+/* Code token palette for reading mode (classHighlighter tok-* classes). */
+
+.markdown-rendered .tok-keyword {
+  color: var(--color-6);
+}
+
+.markdown-rendered .tok-string,
+.markdown-rendered .tok-string2 {
+  color: var(--color-4);
+}
+
+.markdown-rendered .tok-comment {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.markdown-rendered .tok-number,
+.markdown-rendered .tok-bool,
+.markdown-rendered .tok-atom,
+.markdown-rendered .tok-literal {
+  color: var(--color-7);
+}
+
+.markdown-rendered .tok-typeName,
+.markdown-rendered .tok-className,
+.markdown-rendered .tok-namespace,
+.markdown-rendered .tok-propertyName {
+  color: var(--color-2);
+}
+
+.markdown-rendered .tok-function {
+  color: var(--color-6);
+}
+
+.markdown-rendered .tok-operator,
+.markdown-rendered .tok-punctuation {
+  color: var(--text-muted);
 }
 
 .cm-editor .cm-link {
@@ -658,69 +840,76 @@ body.is-readable-line-length .reading-view-content {
   margin: 0 auto;
 }
 
-.reading-view-content > :first-child {
+.markdown-rendered > :first-child {
   margin-top: 0;
 }
 
-.reading-view-content h1,
-.reading-view-content h2,
-.reading-view-content h3,
-.reading-view-content h4,
-.reading-view-content h5,
-.reading-view-content h6 {
+.markdown-rendered h1,
+.markdown-rendered h2,
+.markdown-rendered h3,
+.markdown-rendered h4,
+.markdown-rendered h5,
+.markdown-rendered h6 {
   margin: 1.2em 0 0.5em;
   color: var(--text-normal);
 }
 
-.reading-view-content h1 {
+.markdown-rendered h1 {
   font-size: 1.6em;
 }
 
-.reading-view-content h2 {
+.markdown-rendered h2 {
   font-size: 1.4em;
 }
 
-.reading-view-content h3 {
+.markdown-rendered h3 {
   font-size: 1.25em;
 }
 
-.reading-view-content h4 {
+.markdown-rendered h4 {
   font-size: 1.1em;
 }
 
-.reading-view-content h5 {
+.markdown-rendered h5 {
   font-size: 1em;
 }
 
-.reading-view-content h6 {
+.markdown-rendered h6 {
   font-size: 1em;
   color: var(--text-muted);
 }
 
-.reading-view-content p {
+.markdown-rendered p {
   margin: 0 0 1em;
 }
 
-.reading-view-content blockquote {
+.markdown-rendered blockquote {
   margin: 0 0 1em;
   padding-left: 12px;
   border-left: 2px solid var(--interactive-accent);
   color: var(--text-muted);
 }
 
-.reading-view-content blockquote p {
+.markdown-rendered blockquote p {
   margin-bottom: 0.5em;
 }
 
-.reading-view-content code {
-  padding: 0 3px;
+.markdown-rendered code {
+  padding: 1px 4px;
   background-color: var(--code-background);
-  border-radius: 3px;
+  border-radius: 4px;
   font-family: var(--font-monospace);
   font-size: 0.9em;
 }
 
-.reading-view-content pre {
+.markdown-rendered mark {
+  background-color: var(--text-highlight-bg);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.markdown-rendered pre {
+  position: relative;
   margin: 0 0 1em;
   padding: 12px;
   background-color: var(--code-background);
@@ -728,63 +917,73 @@ body.is-readable-line-length .reading-view-content {
   overflow-x: auto;
 }
 
-.reading-view-content pre code {
+.markdown-rendered pre[data-lang]::after {
+  content: attr(data-lang);
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  color: var(--text-faint);
+  font-family: var(--font-interface);
+  font-size: 11px;
+}
+
+.markdown-rendered pre code {
   padding: 0;
   background: none;
 }
 
-.reading-view-content a {
+.markdown-rendered a {
   color: var(--text-accent);
   text-decoration: none;
   cursor: pointer;
 }
 
-.reading-view-content a:hover {
+.markdown-rendered a:hover {
   color: var(--text-accent-hover);
   text-decoration: underline;
 }
 
-.reading-view-content ul,
-.reading-view-content ol {
+.markdown-rendered ul,
+.markdown-rendered ol {
   margin: 0 0 1em;
   padding-left: 1.5em;
 }
 
-.reading-view-content li > p {
+.markdown-rendered li > p {
   margin: 0;
 }
 
-.reading-view-content li.task-list-item {
+.markdown-rendered li.task-list-item {
   list-style: none;
 }
 
-.reading-view-content .task-checkbox {
+.markdown-rendered .task-checkbox {
   margin-right: 6px;
   accent-color: var(--interactive-accent);
   cursor: pointer;
 }
 
-.reading-view-content hr {
+.markdown-rendered hr {
   margin: 1.5em 0;
   border: none;
   border-top: 1px solid var(--background-modifier-border);
 }
 
-.reading-view-content table {
+.markdown-rendered table {
   margin: 0 0 1em;
   border-collapse: collapse;
 }
 
-.reading-view-content th,
-.reading-view-content td {
+.markdown-rendered th,
+.markdown-rendered td {
   padding: 4px 10px;
   border: 1px solid var(--background-modifier-border);
 }
 
-.reading-view-content th {
+.markdown-rendered th {
   background-color: var(--background-secondary);
 }
 
-.reading-view-content img {
+.markdown-rendered img {
   max-width: 100%;
 }

@@ -3,8 +3,11 @@
 // this parser so the two modes can never diverge.
 import { markdownLanguage } from "@codemirror/lang-markdown";
 import type { MarkdownParser } from "@lezer/markdown";
-import { wikilinks } from "./wikilinks";
+import { highlights, wikilinks } from "./wikilinks";
+
+/** The full extension set: wikilinks/embeds plus ==highlights==. */
+export const markdownExtensions = [wikilinks, highlights];
 
 export const markdownParser = (
   markdownLanguage.parser as MarkdownParser
-).configure(wikilinks);
+).configure(markdownExtensions);

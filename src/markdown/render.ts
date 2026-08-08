@@ -2,8 +2,11 @@
 // walking the shared Lezer tree — never a second parser. Syntax marks are
 // omitted; text content is always escaped (raw HTML in the source is
 // rendered as escaped text, not injected).
+import { LanguageDescription } from "@codemirror/language";
+import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
 import { markdownParser } from "./parser";
+import { isImageTarget } from "./wikilinks";
 
 function escapeHtml(text: string): string {
   return text
@@ -30,6 +33,7 @@ const SKIP = new Set([
   "LinkTitle",
   "LinkLabel",
   "LinkReference",
+  "HighlightMark",
 ]);
 
 const INLINE_WRAPPERS: Record<string, [string, string]> = {
@@ -37,6 +41,7 @@ const INLINE_WRAPPERS: Record<string, [string, string]> = {
   StrongEmphasis: ["<strong>", "</strong>"],
   Emphasis: ["<em>", "</em>"],
   Strikethrough: ["<del>", "</del>"],
+  Highlight: ["<mark>", "</mark>"],
 };
 
 const BLOCK_WRAPPERS: Record<string, [string, string]> = {
@@ -193,11 +198,16 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
       const info = node.getChild("CodeInfo");
       const code = codeText === null ? "" : doc.slice(codeText.from, codeText.to);
       const lang = info === null ? "" : doc.slice(info.from, info.to);
-      out.push(
-        lang === ""
-          ? "<pre><code>"
-          : `<pre><code class="language-${escapeHtml(lang)}">`,
-      );
+      if (lang === "") {
+        out.push("<pre><code>");
+      } else {
+        const display =
+          LanguageDescription.matchLanguageName(languages, lang, true)?.name ??
+          lang;
+        out.push(
+          `<pre data-lang="${escapeHtml(display)}"><code class="language-${escapeHtml(lang)}">`,
+        );
+      }
       out.push(escapeHtml(code), "</code></pre>");
       return;
     }
@@ -258,12 +268,37 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
       );
       return;
     }
-    case "Wikilink": {
+    case "Wikilink":
+    case "Embed": {
       const pathNode = node.getChild("WikilinkPath");
       const aliasNode = node.getChild("WikilinkAlias");
       const target = pathNode === null ? "" : doc.slice(pathNode.from, pathNode.to);
       const display =
         aliasNode === null ? target : doc.slice(aliasNode.from, aliasNode.to);
+      if (name === "Embed" && isImageTarget(target)) {
+        // The src stays unresolved here (pure module); the view fills it
+        // in through its resolveEmbedSrc hook. A numeric alias sets the
+        // display size, Obsidian-style: ![[img.png|50]] or |300x200.
+        const dims = /^(\d+)(?:x(\d+))?$/.exec(display.trim());
+        const size =
+          dims === null
+            ? ""
+            : ` width="${dims[1]}"` +
+              (dims[2] === undefined ? "" : ` height="${dims[2]}"`);
+        const alt = dims === null ? display : target;
+        out.push(
+          `<img class="internal-embed" data-target="${escapeHtml(target)}" alt="${escapeHtml(alt)}"${size}>`,
+        );
+        return;
+      }
+      if (name === "Embed") {
+        // Placeholder for note transclusion; the reading view fills it in
+        // (depth 1 — nested embeds inside stay as placeholders).
+        out.push(
+          `<span class="internal-embed embed-note" data-target="${escapeHtml(target)}">${escapeHtml(display)}</span>`,
+        );
+        return;
+      }
       out.push(
         `<a class="internal-link" data-target="${escapeHtml(target)}">${escapeHtml(display)}</a>`,
       );

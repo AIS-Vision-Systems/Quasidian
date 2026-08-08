@@ -28,6 +28,13 @@ describe("extractLinkTargets", () => {
   it("returns empty for documents without links", () => {
     expect(extractLinkTargets("res de res")).toEqual([]);
   });
+
+  it("counts embeds as links", () => {
+    expect(extractLinkTargets("![[img.png]] i ![[nota]]")).toEqual([
+      "img.png",
+      "nota",
+    ]);
+  });
 });
 
 describe("createBacklinkIndex", () => {

@@ -15,7 +15,7 @@ function wikilinkNodes(doc: string): NodeInfo[] {
   const nodes: NodeInfo[] = [];
   tree.iterate({
     enter(node) {
-      if (node.name.startsWith("Wikilink")) {
+      if (node.name.startsWith("Wikilink") || node.name === "Embed") {
         nodes.push({ name: node.name, from: node.from, to: node.to });
       }
     },
@@ -75,5 +75,35 @@ describe("wikilinks Lezer extension", () => {
   it("takes precedence over standard link syntax", () => {
     const names = wikilinkNodes("[[nota]]").map((node) => node.name);
     expect(names).toContain("Wikilink");
+  });
+});
+
+describe("embeds Lezer extension", () => {
+  it("parses ![[...]] as an Embed with the bang inside the first mark", () => {
+    expect(wikilinkNodes("![[img.png]]")).toEqual([
+      { name: "Embed", from: 0, to: 12 },
+      { name: "WikilinkMark", from: 0, to: 3 },
+      { name: "WikilinkPath", from: 3, to: 10 },
+      { name: "WikilinkMark", from: 10, to: 12 },
+    ]);
+  });
+
+  it("parses aliased embeds", () => {
+    expect(wikilinkNodes("![[img.png|logo]]")).toEqual([
+      { name: "Embed", from: 0, to: 17 },
+      { name: "WikilinkMark", from: 0, to: 3 },
+      { name: "WikilinkPath", from: 3, to: 10 },
+      { name: "WikilinkMark", from: 10, to: 11 },
+      { name: "WikilinkAlias", from: 11, to: 15 },
+      { name: "WikilinkMark", from: 15, to: 17 },
+    ]);
+  });
+
+  it("leaves standard markdown images alone", () => {
+    expect(wikilinkNodes("![alt](x.png)")).toEqual([]);
+  });
+
+  it("ignores unclosed embeds", () => {
+    expect(wikilinkNodes("![[img.png")).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import {
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { languages } from "@codemirror/language-data";
 import {
   HighlightStyle,
   indentUnit,
@@ -17,7 +18,8 @@ import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
-import { wikilinks } from "../markdown/wikilinks";
+import { markdownExtensions } from "../markdown/parser";
+import { highlightTag } from "../markdown/wikilinks";
 import { livePreview } from "./livePreview";
 
 // Renders markdown formatting (sizes, weights, code font) while Live Preview
@@ -37,11 +39,27 @@ const markdownHighlighting = HighlightStyle.define([
     fontFamily: "var(--font-monospace)",
     fontSize: "0.9em",
     backgroundColor: "var(--code-background)",
-    borderRadius: "3px",
+    borderRadius: "4px",
+    padding: "1px 4px",
   },
   { tag: tags.quote, color: "var(--text-muted)" },
   { tag: tags.processingInstruction, color: "var(--text-faint)" },
   { tag: tags.link, class: "cm-link" },
+  {
+    tag: highlightTag,
+    backgroundColor: "var(--text-highlight-bg)",
+    borderRadius: "2px",
+  },
+  // Code-block tokens, mapped onto the theme palette.
+  { tag: tags.keyword, color: "var(--color-6)" },
+  { tag: [tags.string, tags.special(tags.string)], color: "var(--color-4)" },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: "var(--text-faint)", fontStyle: "italic" },
+  { tag: [tags.number, tags.bool, tags.atom, tags.literal], color: "var(--color-7)" },
+  { tag: [tags.typeName, tags.className, tags.namespace], color: "var(--color-2)" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "var(--color-6)" },
+  { tag: tags.propertyName, color: "var(--color-2)" },
+  { tag: [tags.operator, tags.punctuation], color: "var(--text-muted)" },
+  { tag: [tags.regexp, tags.escape], color: "var(--color-7)" },
 ]);
 
 /** Wikilink target at `pos`, or null when the position is not inside one. */
@@ -60,9 +78,14 @@ function wikilinkTargetAt(state: EditorState, pos: number): string | null {
 export interface EditorHooks {
   onDocChanged(doc: string): void;
   onSaveRequested(): void;
+  onToggleModeRequested(): void;
   onWikilinkClick(target: string): void;
-  /** Basenames (without extension) of the folder's markdown files. */
+  /** File names offered after `[[`: markdown basenames and image files. */
   getWikilinkCompletions(): string[];
+  /** Resolves an embed target to a loadable URL, or null if unknown. */
+  resolveEmbedSrc(target: string): string | null;
+  /** Renders a note embed target to HTML, or null if unknown. */
+  renderEmbedNote(target: string): Promise<string | null>;
 }
 
 function wikilinkCompletionSource(hooks: EditorHooks) {
@@ -144,13 +167,28 @@ export function createEditor(
                 return true;
               },
             },
+            {
+              key: "Mod-e",
+              run: () => {
+                hooks.onToggleModeRequested();
+                return true;
+              },
+            },
           ]),
         ),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
-        markdown({ base: markdownLanguage, extensions: [wikilinks] }),
+        markdown({
+          base: markdownLanguage,
+          extensions: markdownExtensions,
+          codeLanguages: languages,
+        }),
         syntaxHighlighting(markdownHighlighting),
-        livePreview(),
+        livePreview({
+          resolveEmbedSrc: hooks.resolveEmbedSrc,
+          renderEmbedNote: hooks.renderEmbedNote,
+          onNavigate: hooks.onWikilinkClick,
+        }),
         lineNumbersCompartment.of(lineNumbersExtension(config)),
         indentCompartment.of(indentExtension(config)),
         spellcheckCompartment.of(spellcheckExtension(config)),
