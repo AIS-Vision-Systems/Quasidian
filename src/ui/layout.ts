@@ -1,4 +1,5 @@
 // App shell: sidebar with folder listing, CM6 editor, status bar.
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "../i18n/i18n";
 import {
@@ -128,6 +129,19 @@ export function mountLayout(root: HTMLElement): void {
   };
   const autosave = createAutosaveScheduler(() => void saveNow(), autosaveOptions);
 
+  function resolveEmbedSrc(target: string): string | null {
+    if (currentFolder === null) {
+      return null;
+    }
+    const resolution = resolveWikilink(
+      target,
+      currentFolder,
+      folderFiles,
+      getSettings().files.defaultExtension,
+    );
+    return resolution === null ? null : convertFileSrc(resolution.path);
+  }
+
   const editor = createEditor(editorHost, {
     onDocChanged(doc) {
       setWordCount(countWords(doc));
@@ -144,6 +158,7 @@ export function mountLayout(root: HTMLElement): void {
     getWikilinkCompletions() {
       return folderFiles.map((file) => file.name.replace(/\.md$/i, ""));
     },
+    resolveEmbedSrc,
   }, editorConfigFrom(getSettings()));
 
   const readingView = createReadingView({
@@ -155,6 +170,7 @@ export function mountLayout(root: HTMLElement): void {
       void saveNow();
       readingView.render(editor.getDoc());
     },
+    resolveEmbedSrc,
   });
   workspace.append(readingView.element);
 

@@ -331,6 +331,72 @@ body.is-readable-line-length .cm-editor .cm-content {
   padding-left: 12px;
 }
 
+.cm-editor .cm-codeblock-line {
+  background-color: var(--code-background);
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+}
+
+.cm-editor .cm-embed-image,
+.reading-view-content img.internal-embed {
+  max-width: 100%;
+  max-height: 420px;
+  border-radius: 4px;
+  vertical-align: bottom;
+}
+
+.cm-embed-missing,
+.embed-missing {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.cm-task-checkbox {
+  margin: 0 2px 0 0;
+  accent-color: var(--interactive-accent);
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+/* Code token palette for reading mode (classHighlighter tok-* classes). */
+
+.reading-view-content .tok-keyword {
+  color: var(--color-6);
+}
+
+.reading-view-content .tok-string,
+.reading-view-content .tok-string2 {
+  color: var(--color-4);
+}
+
+.reading-view-content .tok-comment {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.reading-view-content .tok-number,
+.reading-view-content .tok-bool,
+.reading-view-content .tok-atom,
+.reading-view-content .tok-literal {
+  color: var(--color-7);
+}
+
+.reading-view-content .tok-typeName,
+.reading-view-content .tok-className,
+.reading-view-content .tok-namespace,
+.reading-view-content .tok-propertyName {
+  color: var(--color-2);
+}
+
+.reading-view-content .tok-function {
+  color: var(--color-6);
+}
+
+.reading-view-content .tok-operator,
+.reading-view-content .tok-punctuation {
+  color: var(--text-muted);
+}
+
 .cm-editor .cm-link {
   color: var(--text-accent);
   cursor: pointer;
