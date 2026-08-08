@@ -2,8 +2,11 @@
 // [[path|alias]] and ![[path]]. Plugs into the shared markdown parser via
 // `markdown({ extensions })` — never a second parser. Pure module: only
 // @lezer/markdown and tags.
-import { tags } from "@lezer/highlight";
+import { Tag, tags } from "@lezer/highlight";
 import type { InlineContext, MarkdownConfig } from "@lezer/markdown";
+
+/** Styling tag for ==highlighted== text. */
+export const highlightTag = Tag.define();
 
 const BANG = 33; /* ! */
 const OPEN_BRACKET = 91; /* [ */
@@ -56,6 +59,30 @@ function parseBody(
   children.push(cx.elt("WikilinkMark", end, end + 2));
   return cx.addElement(cx.elt(nodeName, start, end + 2, children));
 }
+
+const EQUALS = 61; /* = */
+const HighlightDelim = { resolve: "Highlight", mark: "HighlightMark" };
+
+/** Obsidian-style ==highlight== inline syntax, delimiter-based like GFM
+ * strikethrough so nested formatting keeps working. */
+export const highlights: MarkdownConfig = {
+  defineNodes: [
+    { name: "Highlight", style: highlightTag },
+    { name: "HighlightMark", style: tags.processingInstruction },
+  ],
+  parseInline: [
+    {
+      name: "Highlight",
+      parse(cx, next, pos) {
+        if (next !== EQUALS || cx.char(pos + 1) !== EQUALS) {
+          return -1;
+        }
+        return cx.addDelimiter(HighlightDelim, pos, pos + 2, true, true);
+      },
+      after: "Emphasis",
+    },
+  ],
+};
 
 export const wikilinks: MarkdownConfig = {
   defineNodes: [

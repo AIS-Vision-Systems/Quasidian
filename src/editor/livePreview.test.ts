@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
-import { wikilinks } from "../markdown/wikilinks";
+import { markdownExtensions } from "../markdown/parser";
 import {
   computeHiddenRanges,
   computeImageEmbeds,
@@ -20,7 +20,9 @@ function hiddenRanges(
   const state = EditorState.create({
     doc,
     selection: EditorSelection.single(anchor, head),
-    extensions: [markdown({ base: markdownLanguage, extensions: [wikilinks] })],
+    extensions: [
+      markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+    ],
   });
   ensureSyntaxTree(state, doc.length, 5000);
   return computeHiddenRanges(state, 0, doc.length);
@@ -77,6 +79,27 @@ describe("computeHiddenRanges — italic, inline code, strikethrough", () => {
       { from: 3, to: 5 },
     ]);
     expect(hiddenRanges("~~s~~ x", 3)).toEqual([]);
+  });
+
+  it("hides == marks of highlights when outside", () => {
+    expect(hiddenRanges("==h== x", 7)).toEqual([
+      { from: 0, to: 2 },
+      { from: 3, to: 5 },
+    ]);
+    expect(hiddenRanges("==h== x", 3)).toEqual([]);
+  });
+});
+
+describe("computeHiddenRanges — setext headings", () => {
+  it("hides the underline when the selection is outside the heading", () => {
+    const doc = "Títol\n===\n\ntext";
+    expect(hiddenRanges(doc, doc.length)).toEqual([{ from: 6, to: 9 }]);
+  });
+
+  it("reveals the underline when the selection is in the heading", () => {
+    const doc = "Títol\n===\n\ntext";
+    expect(hiddenRanges(doc, 2)).toEqual([]);
+    expect(hiddenRanges(doc, 7)).toEqual([]);
   });
 });
 
@@ -150,7 +173,9 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     const state = EditorState.create({
       doc,
       selection: EditorSelection.single(anchor),
-      extensions: [markdown({ base: markdownLanguage, extensions: [wikilinks] })],
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+      ],
     });
     ensureSyntaxTree(state, doc.length, 5000);
     return state;
@@ -160,10 +185,18 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     const doc = "![[img.png]] x";
     const outside = stateFor(doc, doc.length);
     expect(computeImageEmbeds(outside, 0, doc.length)).toEqual([
-      { from: 0, to: 12, target: "img.png" },
+      { from: 0, to: 12, target: "img.png", alias: null },
     ]);
     const inside = stateFor(doc, 5);
     expect(computeImageEmbeds(inside, 0, doc.length)).toEqual([]);
+  });
+
+  it("carries the alias for image sizing", () => {
+    const doc = "![[img.png|50]] x";
+    const state = stateFor(doc, doc.length);
+    expect(computeImageEmbeds(state, 0, doc.length)).toEqual([
+      { from: 0, to: 15, target: "img.png", alias: "50" },
+    ]);
   });
 
   it("collects non-image embeds for transclusion widgets", () => {
@@ -171,7 +204,7 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     const state = stateFor(doc, doc.length);
     expect(computeImageEmbeds(state, 0, doc.length)).toEqual([]);
     expect(computeNoteEmbeds(state, 0, doc.length)).toEqual([
-      { from: 0, to: 9, target: "nota" },
+      { from: 0, to: 9, target: "nota", alias: null },
     ]);
     // The whole embed is widget-replaced, so nothing is mark-hidden.
     expect(computeHiddenRanges(state, 0, doc.length)).toEqual([]);

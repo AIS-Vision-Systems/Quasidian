@@ -22,6 +22,7 @@ import {
 } from "@codemirror/view";
 import { renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
+import { fillEmbedImages, highlightCodeBlocks } from "../ui/renderedContent";
 
 export interface HiddenRange {
   from: number;
@@ -42,6 +43,7 @@ const INLINE_MARKS: Record<string, string[]> = {
   EmphasisMark: ["Emphasis", "StrongEmphasis"],
   CodeMark: ["InlineCode"],
   StrikethroughMark: ["Strikethrough"],
+  HighlightMark: ["Highlight"],
 };
 
 function selectionTouches(
@@ -97,6 +99,14 @@ export function computeHiddenRanges(
         }
         return;
       }
+      if (node.name === "HeaderMark" && parent.name.startsWith("SetextHeading")) {
+        // The ===/--- underline hides unless the selection is somewhere
+        // in the heading (text or underline line).
+        if (!selectionTouches(state, parent.from, parent.to)) {
+          hidden.push({ from: node.from, to: node.to });
+        }
+        return;
+      }
       if (node.name === "QuoteMark" && parent.name === "Blockquote") {
         if (!selectionTouchesLine(state, node.from)) {
           hidden.push(withFollowingSpace(state, node.from, node.to));
@@ -138,6 +148,8 @@ export interface EmbedRange {
   from: number;
   to: number;
   target: string;
+  /** Alias text: display title for notes, dimensions for images. */
+  alias: string | null;
 }
 
 function computeEmbeds(
@@ -166,7 +178,16 @@ function computeEmbeds(
         return false;
       }
       if (!selectionTouches(state, node.from, node.to)) {
-        embeds.push({ from: node.from, to: node.to, target });
+        const aliasNode = node.node.getChild("WikilinkAlias");
+        embeds.push({
+          from: node.from,
+          to: node.to,
+          target,
+          alias:
+            aliasNode === null
+              ? null
+              : state.doc.sliceString(aliasNode.from, aliasNode.to),
+        });
       }
       return false;
     },
@@ -275,16 +296,38 @@ export function computeListMarks(
   return marks;
 }
 
+/** Parses Obsidian-style image dimensions from an alias: "50" or "300x200". */
+export function parseImageDimensions(
+  alias: string | null,
+): { width: number; height: number | null } | null {
+  if (alias === null) {
+    return null;
+  }
+  const match = /^(\d+)(?:x(\d+))?$/.exec(alias.trim());
+  if (match === null) {
+    return null;
+  }
+  return {
+    width: Number(match[1]),
+    height: match[2] === undefined ? null : Number(match[2]),
+  };
+}
+
 class ImageWidget extends WidgetType {
   constructor(
     readonly src: string | null,
     readonly target: string,
+    readonly alias: string | null,
   ) {
     super();
   }
 
   override eq(other: ImageWidget): boolean {
-    return other.src === this.src && other.target === this.target;
+    return (
+      other.src === this.src &&
+      other.target === this.target &&
+      other.alias === this.alias
+    );
   }
 
   toDOM(): HTMLElement {
@@ -297,7 +340,16 @@ class ImageWidget extends WidgetType {
     const image = document.createElement("img");
     image.className = "cm-embed-image";
     image.src = this.src;
-    image.alt = this.target;
+    const dimensions = parseImageDimensions(this.alias);
+    if (dimensions === null) {
+      image.alt = this.alias ?? this.target;
+    } else {
+      image.alt = this.target;
+      image.width = dimensions.width;
+      if (dimensions.height !== null) {
+        image.height = dimensions.height;
+      }
+    }
     return image;
   }
 }
@@ -305,13 +357,14 @@ class ImageWidget extends WidgetType {
 class NoteEmbedWidget extends WidgetType {
   constructor(
     readonly target: string,
+    readonly alias: string | null,
     readonly hooks: LivePreviewHooks,
   ) {
     super();
   }
 
   override eq(other: NoteEmbedWidget): boolean {
-    return other.target === this.target;
+    return other.target === this.target && other.alias === this.alias;
   }
 
   toDOM(): HTMLElement {
@@ -319,19 +372,21 @@ class NoteEmbedWidget extends WidgetType {
     container.className = "cm-embed-note";
     const title = document.createElement("span");
     title.className = "cm-embed-note-title";
-    title.textContent = this.target;
+    title.textContent = this.alias ?? this.target;
     title.addEventListener("mousedown", (event) => {
       event.preventDefault();
       this.hooks.onNavigate(this.target);
     });
     const body = document.createElement("span");
-    body.className = "cm-embed-note-body";
+    body.className = "cm-embed-note-body markdown-rendered";
     container.append(title, body);
     void this.hooks.renderEmbedNote(this.target).then((html) => {
       if (html === null) {
         title.classList.add("cm-embed-missing");
       } else {
         body.innerHTML = html;
+        fillEmbedImages(body, this.hooks.resolveEmbedSrc);
+        highlightCodeBlocks(body);
       }
     });
     return container;
@@ -402,7 +457,7 @@ class TableWidget extends WidgetType {
 
   toDOM(): HTMLElement {
     const container = document.createElement("div");
-    container.className = "cm-table-widget";
+    container.className = "cm-table-widget markdown-rendered";
     container.innerHTML = renderToHtml(this.source);
     return container;
   }
@@ -508,14 +563,18 @@ function buildDecorations(
     for (const embed of computeImageEmbeds(state, from, to)) {
       ranges.push(
         Decoration.replace({
-          widget: new ImageWidget(hooks.resolveEmbedSrc(embed.target), embed.target),
+          widget: new ImageWidget(
+            hooks.resolveEmbedSrc(embed.target),
+            embed.target,
+            embed.alias,
+          ),
         }).range(embed.from, embed.to),
       );
     }
     for (const embed of computeNoteEmbeds(state, from, to)) {
       ranges.push(
         Decoration.replace({
-          widget: new NoteEmbedWidget(embed.target, hooks),
+          widget: new NoteEmbedWidget(embed.target, embed.alias, hooks),
         }).range(embed.from, embed.to),
       );
     }

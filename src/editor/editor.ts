@@ -18,7 +18,8 @@ import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
-import { wikilinks } from "../markdown/wikilinks";
+import { markdownExtensions } from "../markdown/parser";
+import { highlightTag } from "../markdown/wikilinks";
 import { livePreview } from "./livePreview";
 
 // Renders markdown formatting (sizes, weights, code font) while Live Preview
@@ -44,6 +45,11 @@ const markdownHighlighting = HighlightStyle.define([
   { tag: tags.quote, color: "var(--text-muted)" },
   { tag: tags.processingInstruction, color: "var(--text-faint)" },
   { tag: tags.link, class: "cm-link" },
+  {
+    tag: highlightTag,
+    backgroundColor: "var(--text-highlight-bg)",
+    borderRadius: "2px",
+  },
   // Code-block tokens, mapped onto the theme palette.
   { tag: tags.keyword, color: "var(--color-6)" },
   { tag: [tags.string, tags.special(tags.string)], color: "var(--color-4)" },
@@ -174,7 +180,7 @@ export function createEditor(
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown({
           base: markdownLanguage,
-          extensions: [wikilinks],
+          extensions: markdownExtensions,
           codeLanguages: languages,
         }),
         syntaxHighlighting(markdownHighlighting),

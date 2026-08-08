@@ -32,6 +32,7 @@
   --background-modifier-border: rgba(255, 255, 255, 0.14);
   --background-modifier-hover: rgba(255, 255, 255, 0.08);
   --code-background: rgba(255, 255, 255, 0.09);
+  --text-highlight-bg: rgba(255, 208, 0, 0.35);
   --background-modifier-cover: rgba(0, 0, 0, 0.6);
   --shadow-color: rgba(0, 0, 0, 0.5);
 
@@ -69,6 +70,7 @@
   --background-modifier-border: rgba(0, 0, 0, 0.12);
   --background-modifier-hover: rgba(0, 0, 0, 0.06);
   --code-background: rgba(0, 0, 0, 0.05);
+  --text-highlight-bg: rgba(255, 208, 0, 0.45);
   --background-modifier-cover: rgba(0, 0, 0, 0.25);
   --shadow-color: rgba(0, 0, 0, 0.15);
 

@@ -28,11 +28,17 @@ describe("renderToHtml — blocks", () => {
     expect(renderToHtml("1. a")).toBe("<ol><li><p>a</p></li></ol>");
   });
 
-  it("renders fenced code with language class", () => {
+  it("renders fenced code with language class and display-name label", () => {
     const html = renderToHtml("```js\ncrida()\n```");
-    expect(html).toContain('<pre><code class="language-js">');
+    expect(html).toContain('<pre data-lang="JavaScript"><code class="language-js">');
     expect(html).toContain("crida()");
     expect(html).toContain("</code></pre>");
+  });
+
+  it("renders ==highlights== as mark", () => {
+    expect(renderToHtml("un ==ressaltat== aquí")).toBe(
+      "<p>un <mark>ressaltat</mark> aquí</p>",
+    );
   });
 
   it("renders horizontal rules", () => {
@@ -111,9 +117,18 @@ describe("renderToHtml — embeds", () => {
     );
   });
 
-  it("uses the alias as alt text", () => {
+  it("uses a non-numeric alias as alt text", () => {
     expect(renderToHtml("![[img.png|logo]]")).toBe(
       '<p><img class="internal-embed" data-target="img.png" alt="logo"></p>',
+    );
+  });
+
+  it("uses a numeric alias as display width, Obsidian-style", () => {
+    expect(renderToHtml("![[img.png|50]]")).toBe(
+      '<p><img class="internal-embed" data-target="img.png" alt="img.png" width="50"></p>',
+    );
+    expect(renderToHtml("![[img.png|300x200]]")).toBe(
+      '<p><img class="internal-embed" data-target="img.png" alt="img.png" width="300" height="200"></p>',
     );
   });
 
