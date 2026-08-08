@@ -3,7 +3,12 @@ import { ensureSyntaxTree } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { wikilinks } from "../markdown/wikilinks";
-import { computeHiddenRanges, type HiddenRange } from "./livePreview";
+import {
+  computeHiddenRanges,
+  computeImageEmbeds,
+  computeTaskMarkers,
+  type HiddenRange,
+} from "./livePreview";
 
 function hiddenRanges(
   doc: string,
@@ -135,6 +140,48 @@ describe("computeHiddenRanges — wikilinks", () => {
 
   it("reveals everything of an aliased wikilink when inside", () => {
     expect(hiddenRanges("[[nota|àlies]] x", 9)).toEqual([]);
+  });
+});
+
+describe("computeImageEmbeds and computeTaskMarkers", () => {
+  function stateFor(doc: string, anchor: number) {
+    const state = EditorState.create({
+      doc,
+      selection: EditorSelection.single(anchor),
+      extensions: [markdown({ base: markdownLanguage, extensions: [wikilinks] })],
+    });
+    ensureSyntaxTree(state, doc.length, 5000);
+    return state;
+  }
+
+  it("collects image embeds only when the selection is outside", () => {
+    const doc = "![[img.png]] x";
+    const outside = stateFor(doc, doc.length);
+    expect(computeImageEmbeds(outside, 0, doc.length)).toEqual([
+      { from: 0, to: 12, target: "img.png" },
+    ]);
+    const inside = stateFor(doc, 5);
+    expect(computeImageEmbeds(inside, 0, doc.length)).toEqual([]);
+  });
+
+  it("ignores non-image embeds (handled as links)", () => {
+    const doc = "![[nota]] x";
+    const state = stateFor(doc, doc.length);
+    expect(computeImageEmbeds(state, 0, doc.length)).toEqual([]);
+    // Their marks hide like a wikilink instead.
+    expect(computeHiddenRanges(state, 0, doc.length)).toEqual([
+      { from: 0, to: 3 },
+      { from: 7, to: 9 },
+    ]);
+  });
+
+  it("collects task markers only on inactive lines", () => {
+    const doc = "- [ ] fer\n- [x] fet";
+    // Cursor on the first line: only the second marker becomes a widget.
+    const state = stateFor(doc, 3);
+    expect(computeTaskMarkers(state, 0, doc.length)).toEqual([
+      { pos: 12, checked: true },
+    ]);
   });
 });
 

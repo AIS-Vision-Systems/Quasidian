@@ -7,6 +7,7 @@ import {
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { languages } from "@codemirror/language-data";
 import {
   HighlightStyle,
   indentUnit,
@@ -42,6 +43,16 @@ const markdownHighlighting = HighlightStyle.define([
   { tag: tags.quote, color: "var(--text-muted)" },
   { tag: tags.processingInstruction, color: "var(--text-faint)" },
   { tag: tags.link, class: "cm-link" },
+  // Code-block tokens, mapped onto the theme palette.
+  { tag: tags.keyword, color: "var(--color-6)" },
+  { tag: [tags.string, tags.special(tags.string)], color: "var(--color-4)" },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: "var(--text-faint)", fontStyle: "italic" },
+  { tag: [tags.number, tags.bool, tags.atom, tags.literal], color: "var(--color-7)" },
+  { tag: [tags.typeName, tags.className, tags.namespace], color: "var(--color-2)" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "var(--color-6)" },
+  { tag: tags.propertyName, color: "var(--color-2)" },
+  { tag: [tags.operator, tags.punctuation], color: "var(--text-muted)" },
+  { tag: [tags.regexp, tags.escape], color: "var(--color-7)" },
 ]);
 
 /** Wikilink target at `pos`, or null when the position is not inside one. */
@@ -63,6 +74,8 @@ export interface EditorHooks {
   onWikilinkClick(target: string): void;
   /** Basenames (without extension) of the folder's markdown files. */
   getWikilinkCompletions(): string[];
+  /** Resolves an embed target to a loadable URL, or null if unknown. */
+  resolveEmbedSrc(target: string): string | null;
 }
 
 function wikilinkCompletionSource(hooks: EditorHooks) {
@@ -148,9 +161,13 @@ export function createEditor(
         ),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
-        markdown({ base: markdownLanguage, extensions: [wikilinks] }),
+        markdown({
+          base: markdownLanguage,
+          extensions: [wikilinks],
+          codeLanguages: languages,
+        }),
         syntaxHighlighting(markdownHighlighting),
-        livePreview(),
+        livePreview({ resolveEmbedSrc: hooks.resolveEmbedSrc }),
         lineNumbersCompartment.of(lineNumbersExtension(config)),
         indentCompartment.of(indentExtension(config)),
         spellcheckCompartment.of(spellcheckExtension(config)),
