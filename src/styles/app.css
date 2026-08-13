@@ -1118,6 +1118,7 @@ body.is-readable-line-length .reading-view-content {
 
 .markdown-rendered li.task-list-item {
   list-style: none;
+  position: relative;
 }
 
 .markdown-rendered li.task-list-item:has(.task-checkbox:checked) {
@@ -1125,8 +1126,13 @@ body.is-readable-line-length .reading-view-content {
   text-decoration: line-through;
 }
 
+/* The checkbox hangs in the list padding like a marker, so task text
+   sits at the same column as bullet text. */
 .markdown-rendered .task-checkbox {
-  margin-right: 6px;
+  position: absolute;
+  left: -1.6em;
+  top: 0.25em;
+  margin: 0;
   accent-color: var(--interactive-accent);
   cursor: pointer;
 }
