@@ -267,14 +267,21 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     const doc = "- poma\n  - nena\n1. tres";
     const state = stateFor(doc, doc.length);
     expect(computeListLines(state, 0, doc.length)).toEqual([
-      { from: 0, width: 2, guides: [], leading: null },
+      { from: 0, width: 2, guides: [], leading: null, marker: null },
       {
         from: 7,
         width: 6,
         guides: [2],
         leading: { from: 7, to: 9, width: 4 },
+        marker: null,
       },
-      { from: 16, width: 3, guides: [], leading: null },
+      {
+        from: 16,
+        width: 3,
+        guides: [],
+        leading: null,
+        marker: { from: 16, to: 19, width: 3 },
+      },
     ]);
   });
 
@@ -282,7 +289,7 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     const doc = "- [ ] fer";
     const state = stateFor(doc, doc.length);
     expect(computeListLines(state, 0, doc.length)).toEqual([
-      { from: 0, width: 6, guides: [], leading: null },
+      { from: 0, width: 6, guides: [], leading: null, marker: null },
     ]);
   });
 
@@ -297,6 +304,7 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
       width: 10,
       guides: [2, 6],
       leading: { from: 10, to: 14, width: 8 },
+      marker: null,
     });
   });
 

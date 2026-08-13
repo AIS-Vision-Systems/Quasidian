@@ -421,6 +421,15 @@ body.is-readable-line-length .cm-editor .cm-content {
   white-space: pre;
 }
 
+/* Ordered markers at 1ch per char, so "1. " really measures 3 columns
+   and wrapped text meets the first letter exactly. */
+.cm-editor .cm-list-number {
+  display: inline-block;
+  text-indent: 0;
+  white-space: pre;
+  color: var(--text-muted);
+}
+
 .cm-editor .cm-task-done {
   text-decoration: line-through;
   color: var(--text-muted);

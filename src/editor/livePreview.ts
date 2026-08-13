@@ -392,6 +392,12 @@ export interface ListLineInfo {
   guides: number[];
   /** Leading whitespace to render at a fixed width, or null when none. */
   leading: { from: number; to: number; width: number } | null;
+  /**
+   * Ordered-list marker ("1. ") to render at a fixed width so the first
+   * letter lands exactly on the hanging-indent column, or null (bullets
+   * are already fixed-width widgets).
+   */
+  marker: { from: number; to: number; width: number } | null;
 }
 
 /**
@@ -475,7 +481,16 @@ export function computeListLines(
         wsLength === 0
           ? null
           : { from: line.from, to: line.from + wsLength, width: wsWidth };
-      byLine.set(line.from, { from: line.from, width, guides, leading });
+      let marker: ListLineInfo["marker"] = null;
+      if (item.parent?.name === "OrderedList" && taskMarker === null) {
+        const markEnd = withFollowingSpace(state, node.from, node.to).to;
+        marker = {
+          from: node.from,
+          to: markEnd,
+          width: markEnd - node.from,
+        };
+      }
+      byLine.set(line.from, { from: line.from, width, guides, leading, marker });
     },
   });
   return [...byLine.values()];
@@ -983,6 +998,14 @@ function buildDecorations(
             class: "cm-list-ws",
             attributes: { style: `width: ${info.leading.width}ch` },
           }).range(info.leading.from, info.leading.to),
+        );
+      }
+      if (info.marker !== null) {
+        ranges.push(
+          Decoration.mark({
+            class: "cm-list-number",
+            attributes: { style: `width: ${info.marker.width}ch` },
+          }).range(info.marker.from, info.marker.to),
         );
       }
     }
