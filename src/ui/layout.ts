@@ -24,6 +24,7 @@ import { isImageTarget } from "../markdown/wikilinks";
 import { getSettings, subscribeSettings } from "../ipc/settingsStore";
 import { editorConfigFrom } from "./applySettings";
 import { commandPaletteItems, type Command } from "./commands";
+import { createIcon } from "./icons";
 import { openPalette } from "./palette";
 import { createReadingView } from "./readingView";
 import { openSettingsModal } from "./settingsModal";
@@ -53,7 +54,7 @@ export function mountLayout(root: HTMLElement): void {
   searchTitle.textContent = t("search.title");
   const searchClose = document.createElement("button");
   searchClose.className = "search-close";
-  searchClose.textContent = "×";
+  searchClose.append(createIcon("x"));
   searchClose.title = t("search.close");
   searchClose.setAttribute("aria-label", t("search.close"));
   searchHeader.append(searchTitle, searchClose);
@@ -70,7 +71,7 @@ export function mountLayout(root: HTMLElement): void {
 
   const settingsButton = document.createElement("button");
   settingsButton.className = "sidebar-settings-button";
-  settingsButton.textContent = "⚙";
+  settingsButton.append(createIcon("settings"));
   settingsButton.title = t("settings.title");
   settingsButton.setAttribute("aria-label", t("settings.title"));
   settingsButton.addEventListener("click", () => openSettingsModal());
@@ -87,12 +88,12 @@ export function mountLayout(root: HTMLElement): void {
   headerActions.className = "view-header-actions";
   const modeHeaderButton = document.createElement("button");
   modeHeaderButton.className = "view-header-button";
-  modeHeaderButton.textContent = "📖";
+  modeHeaderButton.append(createIcon("book-open"));
   modeHeaderButton.title = t("command.toggleReadingMode");
   modeHeaderButton.addEventListener("click", () => void toggleMode());
   const backlinksHeaderButton = document.createElement("button");
   backlinksHeaderButton.className = "view-header-button";
-  backlinksHeaderButton.textContent = "🔗";
+  backlinksHeaderButton.append(createIcon("link"));
   backlinksHeaderButton.title = t("command.toggleBacklinks");
   backlinksHeaderButton.addEventListener("click", () => toggleBacklinksPanel());
   headerActions.append(modeHeaderButton, backlinksHeaderButton);
@@ -250,7 +251,9 @@ export function mountLayout(root: HTMLElement): void {
     modeButton.textContent = t(
       editing ? "statusBar.mode.edit" : "statusBar.mode.read",
     );
-    modeHeaderButton.textContent = editing ? "📖" : "✎";
+    modeHeaderButton.replaceChildren(
+      createIcon(editing ? "book-open" : "pencil"),
+    );
   }
 
   function scrollFraction(el: Element | null): number {
