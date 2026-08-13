@@ -314,7 +314,11 @@ export function computeTaskMarkers(
       if (node.name !== "TaskMarker") {
         return;
       }
-      if (!selectionTouchesLine(state, node.from)) {
+      // Reveals together with its list mark: only while the selection
+      // touches the "- [ ]" marker region, not the whole line.
+      const listMark = node.node.parent?.parent?.getChild("ListMark") ?? null;
+      const revealFrom = listMark === null ? node.from : listMark.from;
+      if (!selectionTouches(state, revealFrom, node.to + 1)) {
         markers.push({
           pos: node.from,
           checked: state.doc
@@ -336,9 +340,11 @@ export interface ListMarkInfo {
 }
 
 /**
- * Pure computation of bullet-list marks in [from, to] on inactive lines:
- * plain items show a bullet instead of the dash/star/plus mark; task items
- * hide the mark so only the checkbox shows. Ordered lists keep numbers.
+ * Pure computation of bullet-list marks in [from, to]: plain items show a
+ * bullet over the mark and its following space; task items hide the mark
+ * so only the checkbox shows. The raw mark is revealed only while the
+ * selection touches the marker itself (not the whole line). Ordered lists
+ * keep their numbers.
  */
 export function computeListMarks(
   state: EditorState,
@@ -360,18 +366,99 @@ export function computeListMarks(
       if (item.parent?.name !== "BulletList") {
         return;
       }
-      if (selectionTouchesLine(state, node.from)) {
+      const task = item.getChild("Task");
+      const taskMarker = task?.getChild("TaskMarker") ?? null;
+      const revealTo = (taskMarker ?? node).to + 1;
+      if (selectionTouches(state, node.from, revealTo)) {
         return;
       }
-      if (item.getChild("Task") !== null) {
-        const range = withFollowingSpace(state, node.from, node.to);
-        marks.push({ from: range.from, to: range.to, kind: "task" });
-      } else {
-        marks.push({ from: node.from, to: node.to, kind: "bullet" });
-      }
+      const range = withFollowingSpace(state, node.from, node.to);
+      marks.push({
+        from: range.from,
+        to: range.to,
+        kind: task !== null ? "task" : "bullet",
+      });
     },
   });
   return marks;
+}
+
+export interface ListIndentInfo {
+  /** Start of the line holding the list marker. */
+  from: number;
+  /** Chars from line start through the marker(s) and one space. */
+  width: number;
+}
+
+/**
+ * Pure computation of the hanging indent of list-marker lines in
+ * [from, to], for bullet, ordered and task items: wrapped text should
+ * align with the first letter of the item, not with the marker.
+ */
+export function computeListIndents(
+  state: EditorState,
+  from: number,
+  to: number,
+): ListIndentInfo[] {
+  // A line can hold nested markers ("- - x"): the innermost (widest) wins.
+  const byLine = new Map<number, number>();
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter(node) {
+      if (node.name !== "ListMark") {
+        return;
+      }
+      const item = node.node.parent;
+      if (item === null || item.name !== "ListItem") {
+        return;
+      }
+      const line = state.doc.lineAt(node.from);
+      const taskMarker = item.getChild("Task")?.getChild("TaskMarker") ?? null;
+      const width = (taskMarker ?? node).to - line.from + 1;
+      if (width > (byLine.get(line.from) ?? 0)) {
+        byLine.set(line.from, width);
+      }
+    },
+  });
+  return [...byLine.entries()].map(([lineFrom, width]) => ({
+    from: lineFrom,
+    width,
+  }));
+}
+
+export interface HeadingLineInfo {
+  /** Start of the heading's first line. */
+  from: number;
+  /** Heading level, 1-6. */
+  level: number;
+}
+
+/**
+ * Pure computation of heading lines in [from, to], used to give headings
+ * vertical breathing room (line padding) in editing mode.
+ */
+export function computeHeadingLines(
+  state: EditorState,
+  from: number,
+  to: number,
+): HeadingLineInfo[] {
+  const lines: HeadingLineInfo[] = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter(node) {
+      const match = /^(?:ATXHeading|SetextHeading)([1-6])$/.exec(node.name);
+      if (match === null) {
+        return;
+      }
+      lines.push({
+        from: state.doc.lineAt(node.from).from,
+        level: Number(match[1]),
+      });
+    },
+  });
+  return lines;
 }
 
 /** Parses Obsidian-style image dimensions from an alias: "50" or "300x200". */
@@ -643,6 +730,9 @@ const blockquoteLine = Decoration.line({ class: "cm-blockquote-line" });
 const codeblockLine = Decoration.line({ class: "cm-codeblock-line" });
 const codeblockBegin = Decoration.line({ class: "cm-codeblock-begin" });
 const codeblockEnd = Decoration.line({ class: "cm-codeblock-end" });
+const headingLines = [1, 2, 3, 4, 5, 6].map((level) =>
+  Decoration.line({ class: `cm-heading-line cm-heading-${level}` }),
+);
 const bulletDecoration = Decoration.replace({ widget: new BulletWidget() });
 const hrDecoration = Decoration.replace({ widget: new HrWidget() });
 
@@ -783,6 +873,17 @@ function buildDecorations(
       } else {
         ranges.push(bulletDecoration.range(mark.from, mark.to));
       }
+    }
+    for (const indent of computeListIndents(state, from, to)) {
+      ranges.push(
+        Decoration.line({
+          class: "cm-list-line",
+          attributes: { style: `--list-indent: ${indent.width}ch` },
+        }).range(indent.from),
+      );
+    }
+    for (const heading of computeHeadingLines(state, from, to)) {
+      ranges.push(headingLines[heading.level - 1].range(heading.from));
     }
     for (const rule of computeHorizontalRules(state, from, to)) {
       ranges.push(hrDecoration.range(rule.from, rule.to));

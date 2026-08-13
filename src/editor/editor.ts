@@ -32,11 +32,12 @@ import { livePreview } from "./livePreview";
 // Renders markdown formatting (sizes, weights, code font) while Live Preview
 // hides the marks themselves. Colors always go through CSS variables.
 const markdownHighlighting = HighlightStyle.define([
-  { tag: tags.heading1, fontSize: "1.6em", fontWeight: "700" },
-  { tag: tags.heading2, fontSize: "1.4em", fontWeight: "700" },
-  { tag: tags.heading3, fontSize: "1.25em", fontWeight: "700" },
-  { tag: tags.heading4, fontSize: "1.1em", fontWeight: "700" },
-  { tag: tags.heading5, fontSize: "1em", fontWeight: "700" },
+  // Obsidian's heading scale; reading mode mirrors it in app.css.
+  { tag: tags.heading1, fontSize: "1.802em", fontWeight: "700" },
+  { tag: tags.heading2, fontSize: "1.602em", fontWeight: "700" },
+  { tag: tags.heading3, fontSize: "1.424em", fontWeight: "700" },
+  { tag: tags.heading4, fontSize: "1.266em", fontWeight: "700" },
+  { tag: tags.heading5, fontSize: "1.125em", fontWeight: "700" },
   { tag: tags.heading6, fontSize: "1em", fontWeight: "700", color: "var(--text-muted)" },
   { tag: tags.strong, fontWeight: "700" },
   { tag: tags.emphasis, fontStyle: "italic" },

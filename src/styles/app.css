@@ -402,14 +402,56 @@ body.is-readable-line-length .cm-editor .cm-content {
 }
 
 .cm-editor .cm-list-bullet {
+  display: inline-block;
+  width: 2ch;
+  text-indent: 0;
   color: var(--text-muted);
 }
 
 .cm-editor .cm-hr {
   display: inline-block;
   width: 100%;
-  border-top: 1px solid var(--background-modifier-border);
+  border-top: 1px solid var(--hr-color);
   vertical-align: middle;
+}
+
+/* Vertical breathing room for headings, mirrored in reading mode. */
+.cm-editor .cm-heading-1 {
+  padding-top: calc(var(--font-text-size) * 1.6);
+  padding-bottom: calc(var(--font-text-size) * 0.5);
+}
+
+.cm-editor .cm-heading-2 {
+  padding-top: calc(var(--font-text-size) * 1.4);
+  padding-bottom: calc(var(--font-text-size) * 0.45);
+}
+
+.cm-editor .cm-heading-3 {
+  padding-top: calc(var(--font-text-size) * 1.2);
+  padding-bottom: calc(var(--font-text-size) * 0.4);
+}
+
+.cm-editor .cm-heading-4 {
+  padding-top: calc(var(--font-text-size) * 1);
+  padding-bottom: calc(var(--font-text-size) * 0.35);
+}
+
+.cm-editor .cm-heading-5,
+.cm-editor .cm-heading-6 {
+  padding-top: calc(var(--font-text-size) * 0.9);
+  padding-bottom: calc(var(--font-text-size) * 0.3);
+}
+
+/*
+ * List lines hang-indent so wrapped text aligns with the first letter,
+ * and sit 1em off the margin. --list-indent is the marker width in ch,
+ * set per line by the Live Preview plugin; alignment is exact for
+ * top-level bullets (2ch widget) and approximate for nested markers in
+ * proportional fonts.
+ */
+.cm-editor .cm-list-line {
+  padding-left: calc(1em + var(--list-indent, 2ch));
+  text-indent: calc(-1 * var(--list-indent, 2ch));
 }
 
 /* Spacing via padding, never margin: CodeMirror measures offsetHeight
@@ -911,38 +953,45 @@ body.is-readable-line-length .reading-view-content {
   margin-top: 0;
 }
 
+/* Sizes and spacing mirror the editor: same scale, and margins in
+   base-font units so both modes breathe identically. */
 .markdown-rendered h1,
 .markdown-rendered h2,
 .markdown-rendered h3,
 .markdown-rendered h4,
 .markdown-rendered h5,
 .markdown-rendered h6 {
-  margin: 1.2em 0 0.5em;
   color: var(--text-normal);
 }
 
 .markdown-rendered h1 {
-  font-size: 1.6em;
+  font-size: 1.802em;
+  margin: calc(var(--font-text-size) * 1.6) 0 calc(var(--font-text-size) * 0.5);
 }
 
 .markdown-rendered h2 {
-  font-size: 1.4em;
+  font-size: 1.602em;
+  margin: calc(var(--font-text-size) * 1.4) 0 calc(var(--font-text-size) * 0.45);
 }
 
 .markdown-rendered h3 {
-  font-size: 1.25em;
+  font-size: 1.424em;
+  margin: calc(var(--font-text-size) * 1.2) 0 calc(var(--font-text-size) * 0.4);
 }
 
 .markdown-rendered h4 {
-  font-size: 1.1em;
+  font-size: 1.266em;
+  margin: calc(var(--font-text-size) * 1) 0 calc(var(--font-text-size) * 0.35);
 }
 
 .markdown-rendered h5 {
-  font-size: 1em;
+  font-size: 1.125em;
+  margin: calc(var(--font-text-size) * 0.9) 0 calc(var(--font-text-size) * 0.3);
 }
 
 .markdown-rendered h6 {
   font-size: 1em;
+  margin: calc(var(--font-text-size) * 0.9) 0 calc(var(--font-text-size) * 0.3);
   color: var(--text-muted);
 }
 
@@ -1047,7 +1096,7 @@ body.is-readable-line-length .reading-view-content {
 .markdown-rendered hr {
   margin: 1.5em 0;
   border: none;
-  border-top: 1px solid var(--background-modifier-border);
+  border-top: 1px solid var(--hr-color);
 }
 
 .markdown-rendered table {
@@ -1058,7 +1107,7 @@ body.is-readable-line-length .reading-view-content {
 .markdown-rendered th,
 .markdown-rendered td {
   padding: 4px 10px;
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--hr-color);
 }
 
 .markdown-rendered th {
