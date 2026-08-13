@@ -9,6 +9,8 @@
   "command.toggleReadingMode": "Commuta el mode lectura",
   "command.toggleBacklinks": "Commuta el panell dret",
   "command.openFolder": "Obre una carpeta…",
+  "command.foldAll": "Plega tots els encapçalaments",
+  "command.unfoldAll": "Desplega tots els encapçalaments",
   "backlinks.title": "Backlinks",
   "backlinks.empty": "Cap fitxer enllaça aquí",
   "rightPanel.backlinks": "Backlinks",

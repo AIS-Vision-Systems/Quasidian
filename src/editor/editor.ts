@@ -17,10 +17,14 @@ import {
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import {
+  foldAll,
+  foldedRanges,
+  foldEffect,
   HighlightStyle,
   indentUnit,
   syntaxHighlighting,
   syntaxTree,
+  unfoldAll,
 } from "@codemirror/language";
 import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
@@ -34,6 +38,7 @@ import {
   markerBackspace,
   wrapSelection,
 } from "./autoPair";
+import { headingFolding, type FoldRange } from "./folding";
 import {
   emptyListItemExitCommand,
   inListItem,
@@ -181,6 +186,12 @@ export interface EditorHandle {
   focus(): void;
   /** Hot-applies configurable options without recreating the editor. */
   applyConfig(config: EditorConfig): void;
+  /** Currently folded ranges, for remembering them per file. */
+  getFolds(): FoldRange[];
+  /** Re-applies remembered folds (ranges outside the doc are dropped). */
+  setFolds(ranges: FoldRange[]): void;
+  foldAllSections(): void;
+  unfoldAllSections(): void;
 }
 
 export function createEditor(
@@ -303,6 +314,7 @@ export function createEditor(
           codeLanguages: languages,
         }),
         syntaxHighlighting(markdownHighlighting),
+        headingFolding(),
         livePreview({
           resolveEmbedSrc: hooks.resolveEmbedSrc,
           renderEmbedNote: hooks.renderEmbedNote,
@@ -389,6 +401,28 @@ export function createEditor(
           autoPairCompartment.reconfigure(autoPairExtension(next)),
         ],
       });
+    },
+    getFolds(): FoldRange[] {
+      const ranges: FoldRange[] = [];
+      foldedRanges(view.state).between(0, view.state.doc.length, (from, to) => {
+        ranges.push({ from, to });
+      });
+      return ranges;
+    },
+    setFolds(ranges: FoldRange[]): void {
+      const length = view.state.doc.length;
+      const effects = ranges
+        .filter((range) => range.from >= 0 && range.to <= length && range.from < range.to)
+        .map((range) => foldEffect.of(range));
+      if (effects.length > 0) {
+        view.dispatch({ effects });
+      }
+    },
+    foldAllSections(): void {
+      foldAll(view);
+    },
+    unfoldAllSections(): void {
+      unfoldAll(view);
     },
   };
 }

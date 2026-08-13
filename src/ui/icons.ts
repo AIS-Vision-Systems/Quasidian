@@ -14,7 +14,9 @@ export type IconName =
   | "list"
   | "arrow-up-right"
   | "panel-left"
-  | "panel-right";
+  | "panel-right"
+  | "chevron-down"
+  | "chevron-right";
 
 const ICON_PATHS: Record<IconName, string> = {
   "book-open":
@@ -52,6 +54,8 @@ const ICON_PATHS: Record<IconName, string> = {
     '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>',
   "panel-right":
     '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+  "chevron-down": '<path d="m6 9 6 6 6-6"/>',
+  "chevron-right": '<path d="m9 18 6-6-6-6"/>',
 };
 
 /** A 24x24 outline icon that inherits the text color. */
