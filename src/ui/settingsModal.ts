@@ -37,7 +37,14 @@ export function openSettingsModal(): void {
   sidebar.className = "settings-sidebar";
   const content = document.createElement("div");
   content.className = "settings-content";
-  modal.append(sidebar, content);
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "settings-close";
+  closeButton.textContent = "×";
+  closeButton.title = t("settings.close");
+  closeButton.setAttribute("aria-label", t("settings.close"));
+  closeButton.addEventListener("click", () => close());
+  modal.append(sidebar, content, closeButton);
   overlay.append(modal);
   document.body.append(overlay);
 

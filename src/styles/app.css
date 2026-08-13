@@ -381,14 +381,24 @@ body.is-readable-line-length .cm-editor .cm-content {
   font-family: var(--font-monospace);
   font-size: 0.9em;
   padding-left: 12px;
+  padding-right: 12px;
 }
 
-.cm-editor .cm-codeblock-open::after {
-  content: attr(data-lang);
-  float: right;
-  color: var(--text-faint);
-  font-family: var(--font-interface);
-  font-size: 11px;
+.cm-editor .cm-codeblock-begin {
+  border-radius: 4px 4px 0 0;
+}
+
+.cm-editor .cm-codeblock-end {
+  border-radius: 0 0 4px 4px;
+}
+
+.cm-editor .cm-codeblock-open {
+  position: relative;
+}
+
+.cm-editor .cm-codeblock-open .code-lang-pill {
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .cm-editor .cm-list-bullet {
@@ -670,6 +680,7 @@ body.is-readable-line-length .cm-editor .cm-content {
 }
 
 .settings-modal {
+  position: relative;
   display: flex;
   width: min(760px, 92vw);
   height: min(560px, 85vh);
@@ -678,6 +689,25 @@ body.is-readable-line-length .cm-editor .cm-content {
   border-radius: 10px;
   box-shadow: 0 10px 40px var(--shadow-color);
   overflow: hidden;
+}
+
+.settings-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-close:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 .settings-sidebar {
@@ -837,7 +867,8 @@ body.is-readable-line-length .cm-editor .cm-content {
   white-space: nowrap;
 }
 
-.status-bar-mode {
+.status-bar-mode,
+.status-bar-backlinks {
   padding: 0;
   background: transparent;
   border: none;
@@ -847,7 +878,8 @@ body.is-readable-line-length .cm-editor .cm-content {
   cursor: pointer;
 }
 
-.status-bar-mode:hover {
+.status-bar-mode:hover,
+.status-bar-backlinks:hover {
   color: var(--text-normal);
 }
 
@@ -952,19 +984,33 @@ body.is-readable-line-length .reading-view-content {
   overflow-x: auto;
 }
 
-.markdown-rendered pre[data-lang]::after {
-  content: attr(data-lang);
-  position: absolute;
-  top: 4px;
-  right: 10px;
-  color: var(--text-faint);
-  font-family: var(--font-interface);
-  font-size: 11px;
-}
-
 .markdown-rendered pre code {
   padding: 0;
   background: none;
+}
+
+/* Language pill on code blocks: shows the language (or a copy glyph)
+   and copies the block on click. Shared by reading mode and Live Preview. */
+.code-lang-pill {
+  position: absolute;
+  right: 8px;
+  padding: 2px 8px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.code-lang-pill:hover {
+  color: var(--text-normal);
+}
+
+.markdown-rendered pre .code-lang-pill {
+  top: 6px;
 }
 
 .markdown-rendered a {

@@ -1,6 +1,7 @@
 // App shell: sidebar with folder listing, CM6 editor, status bar.
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "../i18n/i18n";
 import {
   listFolder,
@@ -16,7 +17,7 @@ import { createBacklinkIndex } from "../lib/backlinkIndex";
 import { createSearchIndex, type SearchMatch } from "../lib/searchIndex";
 import { basename, dirname, normalizePath, samePath } from "../lib/paths";
 import type { EditorModeSetting } from "../lib/settings";
-import { countWords } from "../lib/text";
+import { countCharacters, countWords } from "../lib/text";
 import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
 import { renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
@@ -127,12 +128,17 @@ export function mountLayout(root: HTMLElement): void {
   statusBar.className = "status-bar";
   const statusError = document.createElement("span");
   statusError.className = "status-bar-error";
+  const statusBacklinks = document.createElement("button");
+  statusBacklinks.className = "status-bar-backlinks";
+  statusBacklinks.hidden = true;
+  statusBacklinks.addEventListener("click", () => toggleBacklinksPanel());
   const wordCount = document.createElement("span");
+  const charCount = document.createElement("span");
   const modeButton = document.createElement("button");
   modeButton.className = "status-bar-mode";
   modeButton.textContent = t("statusBar.mode.edit");
   modeButton.addEventListener("click", () => void toggleMode());
-  statusBar.append(statusError, wordCount, modeButton);
+  statusBar.append(statusError, statusBacklinks, wordCount, charCount, modeButton);
 
   root.append(sidebar, workspace, backlinksPanel, statusBar);
 
@@ -141,6 +147,7 @@ export function mountLayout(root: HTMLElement): void {
   let folderFiles: FolderFile[] = [];
   let folderImages: FolderFile[] = [];
   let lastWordCount = 0;
+  let lastCharCount = 0;
   let watchedFolder: string | null = null;
   let backlinksVisible = true;
   let reloadingFromDisk = false;
@@ -191,7 +198,7 @@ export function mountLayout(root: HTMLElement): void {
 
   const editor = createEditor(editorHost, {
     onDocChanged(doc) {
-      setWordCount(countWords(doc));
+      setCounts(doc);
       if (openedPath !== null && !reloadingFromDisk) {
         autosave.notifyChange();
       }
@@ -281,9 +288,13 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
-  function setWordCount(count: number): void {
-    lastWordCount = count;
-    wordCount.textContent = t("statusBar.words", { count });
+  function setCounts(doc: string): void {
+    lastWordCount = countWords(doc);
+    lastCharCount = countCharacters(doc);
+    wordCount.textContent = t("statusBar.words", { count: lastWordCount });
+    charCount.textContent = t("statusBar.characters", {
+      count: lastCharCount,
+    });
   }
 
   function setStatusError(message: string | null): void {
@@ -319,6 +330,7 @@ export function mountLayout(root: HTMLElement): void {
   function renderBacklinks(): void {
     if (openedPath === null || currentFolder === null) {
       backlinksCount.textContent = "";
+      statusBacklinks.hidden = true;
       const empty = document.createElement("li");
       empty.className = "backlinks-empty";
       empty.textContent = t("backlinks.empty");
@@ -332,6 +344,11 @@ export function mountLayout(root: HTMLElement): void {
       getSettings().files.defaultExtension,
     );
     backlinksCount.textContent = String(links.length);
+    statusBacklinks.hidden = false;
+    statusBacklinks.textContent = t("statusBar.backlinks", {
+      count: links.length,
+    });
+    statusBacklinks.title = t("command.toggleBacklinks");
     if (links.length === 0) {
       const empty = document.createElement("li");
       empty.className = "backlinks-empty";
@@ -548,13 +565,18 @@ export function mountLayout(root: HTMLElement): void {
     openedPath = path;
     setStatusError(null);
     welcome.remove();
-    viewTitle.textContent = basename(path).replace(/\.md$/i, "");
+    const noteName = basename(path).replace(/\.md$/i, "");
+    viewTitle.textContent = noteName;
+    // Window title "folder - note"; cosmetic, so failures are ignored.
+    void getCurrentWindow()
+      .setTitle(`${basename(dirname(path))} - ${noteName}`)
+      .catch(() => undefined);
     // The folder state must exist before setDoc: embed widgets resolve
     // their sources against it while building decorations.
     await refreshFolder(dirname(path));
     try {
       editor.setDoc(contents);
-      setWordCount(countWords(contents));
+      setCounts(contents);
       const mode =
         fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode;
       if (mode === "read") {
@@ -742,6 +764,9 @@ export function mountLayout(root: HTMLElement): void {
       currentMode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
     );
     wordCount.textContent = t("statusBar.words", { count: lastWordCount });
+    charCount.textContent = t("statusBar.characters", {
+      count: lastCharCount,
+    });
     welcome.textContent = t("workspace.welcome");
     modeHeaderButton.title = t("command.toggleReadingMode");
     backlinksHeaderButton.title = t("command.toggleBacklinks");
@@ -780,7 +805,7 @@ export function mountLayout(root: HTMLElement): void {
     reloadingFromDisk = true;
     editor.reloadDoc(contents);
     reloadingFromDisk = false;
-    setWordCount(countWords(contents));
+    setCounts(contents);
     if (currentMode === "read") {
       readingView.render(contents);
     }
@@ -812,7 +837,7 @@ export function mountLayout(root: HTMLElement): void {
   });
 
   setListMessage(t("sidebar.noFolder"));
-  setWordCount(0);
+  setCounts("");
   renderBacklinks();
 
   // Double-clicking an associated .md passes its path on the command line.

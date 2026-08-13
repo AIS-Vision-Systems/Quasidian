@@ -26,6 +26,8 @@ import { renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import {
   fillEmbedImages,
+  addCodePills,
+  createCodePill,
   highlightCodeBlocks,
   renderMathElements,
 } from "../ui/renderedContent";
@@ -466,6 +468,7 @@ class NoteEmbedWidget extends WidgetType {
         body.innerHTML = html;
         fillEmbedImages(body, this.hooks.resolveEmbedSrc);
         highlightCodeBlocks(body);
+        addCodePills(body);
         renderMathElements(body);
         for (const image of body.querySelectorAll("img")) {
           image.addEventListener("load", () => view.requestMeasure());
@@ -528,6 +531,27 @@ class BulletWidget extends WidgetType {
     bullet.className = "cm-list-bullet";
     bullet.textContent = "•";
     return bullet;
+  }
+}
+
+class CodePillWidget extends WidgetType {
+  constructor(
+    readonly label: string,
+    readonly code: string,
+  ) {
+    super();
+  }
+
+  override eq(other: CodePillWidget): boolean {
+    return other.label === this.label && other.code === this.code;
+  }
+
+  toDOM(): HTMLElement {
+    return createCodePill(this.label, () => this.code);
+  }
+
+  override ignoreEvent(): boolean {
+    return true;
   }
 }
 
@@ -617,6 +641,8 @@ class TableWidget extends WidgetType {
 const hideMark = Decoration.replace({});
 const blockquoteLine = Decoration.line({ class: "cm-blockquote-line" });
 const codeblockLine = Decoration.line({ class: "cm-codeblock-line" });
+const codeblockBegin = Decoration.line({ class: "cm-codeblock-begin" });
+const codeblockEnd = Decoration.line({ class: "cm-codeblock-end" });
 const bulletDecoration = Decoration.replace({ widget: new BulletWidget() });
 const hrDecoration = Decoration.replace({ widget: new HrWidget() });
 
@@ -656,8 +682,15 @@ function buildDecorations(
     }
   }
 
+  // Rounds the block's first and last line, like reading mode's <pre>.
+  function decorateCodeEdges(node: SyntaxNode): void {
+    ranges.push(codeblockBegin.range(state.doc.lineAt(node.from).from));
+    ranges.push(codeblockEnd.range(state.doc.lineAt(node.to).from));
+  }
+
   function decorateFencedCode(node: SyntaxNode): void {
     decorateLines(node, codeblockLine);
+    decorateCodeEdges(node);
     if (selectionTouches(state, node.from, node.to)) {
       return;
     }
@@ -671,11 +704,17 @@ function buildDecorations(
     const display = languageDisplayName(
       info === null ? "" : state.doc.sliceString(info.from, info.to),
     );
+    const codeText = node.getChild("CodeText");
+    const code =
+      codeText === null
+        ? ""
+        : state.doc.sliceString(codeText.from, codeText.to);
     ranges.push(
-      Decoration.line({
-        class: "cm-codeblock-open",
-        attributes: display === "" ? {} : { "data-lang": display },
-      }).range(openLine.from),
+      Decoration.line({ class: "cm-codeblock-open" }).range(openLine.from),
+      Decoration.widget({
+        widget: new CodePillWidget(display, code),
+        side: 1,
+      }).range(openLine.to),
     );
     if (openLine.to > openLine.from) {
       ranges.push(hideMark.range(openLine.from, openLine.to));
@@ -704,6 +743,7 @@ function buildDecorations(
         }
         if (node.name === "CodeBlock") {
           decorateLines(node.node, codeblockLine);
+          decorateCodeEdges(node.node);
           return false;
         }
         return;

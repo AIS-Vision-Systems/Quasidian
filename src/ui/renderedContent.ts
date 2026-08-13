@@ -5,6 +5,7 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { classHighlighter, highlightCode } from "@lezer/highlight";
 import katex from "katex";
+import { t } from "../i18n/i18n";
 
 export function fillEmbedImages(
   root: HTMLElement,
@@ -75,6 +76,77 @@ export function highlightCodeBlocks(root: HTMLElement): void {
     if (match !== null) {
       void highlightBlock(codeEl, match[1]);
     }
+  }
+}
+
+/** Clipboard write with a fallback for webviews without the async API. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    let copied: boolean;
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    }
+    area.remove();
+    return copied;
+  }
+}
+
+/**
+ * Rounded language pill sitting on a code block's top-right corner;
+ * clicking it copies the block. Shared by reading mode and the editor's
+ * Live Preview widget. An empty label falls back to a copy glyph.
+ */
+export function createCodePill(
+  label: string,
+  code: () => string,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "code-lang-pill";
+  button.textContent = label === "" ? "⧉" : label;
+  button.title = t("reading.copyCode");
+  button.setAttribute("aria-label", t("reading.copyCode"));
+  // Keep the editor selection where it is when the pill is clicked.
+  button.addEventListener("mousedown", (event) => event.preventDefault());
+  button.addEventListener("click", () => {
+    void copyText(code()).then((copied) => {
+      if (!copied) {
+        return;
+      }
+      const restore = button.textContent;
+      button.textContent = t("reading.codeCopied");
+      setTimeout(() => {
+        button.textContent = restore;
+      }, 1500);
+    });
+  });
+  return button;
+}
+
+/** Adds the copy pill to every code block under `root`. */
+export function addCodePills(root: HTMLElement): void {
+  for (const pre of root.querySelectorAll<HTMLPreElement>("pre")) {
+    if (pre.querySelector(".code-lang-pill") !== null) {
+      continue;
+    }
+    const code = pre.querySelector("code");
+    if (code === null) {
+      continue;
+    }
+    pre.append(
+      createCodePill(pre.dataset.lang ?? "", () => code.textContent ?? ""),
+    );
   }
 }
 

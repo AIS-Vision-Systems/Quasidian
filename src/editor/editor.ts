@@ -5,7 +5,13 @@ import {
   type CompletionContext,
   type CompletionResult,
 } from "@codemirror/autocomplete";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentLess,
+  indentMore,
+} from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import {
@@ -64,6 +70,40 @@ const markdownHighlighting = HighlightStyle.define([
   { tag: [tags.operator, tags.punctuation], color: "var(--text-muted)" },
   { tag: [tags.regexp, tags.escape], color: "var(--color-7)" },
 ]);
+
+/** Whether the main cursor sits inside a list item. */
+function inListItem(state: EditorState): boolean {
+  let node: SyntaxNode | null = syntaxTree(state).resolveInner(
+    state.selection.main.head,
+    -1,
+  );
+  while (node !== null) {
+    if (node.name === "ListItem") {
+      return true;
+    }
+    node = node.parent;
+  }
+  return false;
+}
+
+// Tab must never leave the editor: it indents selections and list items,
+// and inserts the configured indent unit anywhere else.
+function tabIndent(view: EditorView): boolean {
+  const { state } = view;
+  if (state.selection.ranges.some((range) => !range.empty)) {
+    return indentMore(view);
+  }
+  if (inListItem(state)) {
+    return indentMore(view);
+  }
+  view.dispatch(
+    state.update(state.replaceSelection(state.facet(indentUnit)), {
+      scrollIntoView: true,
+      userEvent: "input",
+    }),
+  );
+  return true;
+}
 
 /** Wikilink target at `pos`, or null when the position is not inside one. */
 function wikilinkTargetAt(state: EditorState, pos: number): string | null {
@@ -180,7 +220,11 @@ export function createEditor(
           ]),
         ),
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([
+          ...defaultKeymap,
+          ...historyKeymap,
+          { key: "Tab", run: tabIndent, shift: indentLess },
+        ]),
         markdown({
           base: markdownLanguage,
           extensions: markdownExtensions,

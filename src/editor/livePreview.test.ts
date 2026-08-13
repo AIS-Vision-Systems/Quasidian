@@ -103,6 +103,17 @@ describe("computeHiddenRanges — setext headings", () => {
     expect(hiddenRanges(doc, 2)).toEqual([]);
     expect(hiddenRanges(doc, 7)).toEqual([]);
   });
+
+  it("hides a 3-dash underline like the = one", () => {
+    const doc = "Títol\n---\n\ntext";
+    expect(hiddenRanges(doc, doc.length)).toEqual([{ from: 6, to: 9 }]);
+  });
+
+  it("treats a short dash line as plain paragraph text", () => {
+    // Typing "- " to start a list must not decorate the previous line.
+    expect(hiddenRanges("Text\n- ", 0)).toEqual([]);
+    expect(hiddenRanges("Text\n--", 0)).toEqual([]);
+  });
 });
 
 describe("computeHiddenRanges — headings", () => {
