@@ -21,6 +21,12 @@ describe("renderToHtml — blocks", () => {
     );
   });
 
+  it("renders dash setext headings only with 3+ dashes", () => {
+    expect(renderToHtml("Títol\n---")).toBe("<h2>Títol</h2>");
+    expect(renderToHtml("Títol\n===")).toBe("<h1>Títol</h1>");
+    expect(renderToHtml("Text\n- ")).toBe("<p>Text<br>- </p>");
+  });
+
   it("renders soft line breaks as real breaks, Obsidian-style", () => {
     expect(renderToHtml("Imatge:\n![[img.png]]")).toBe(
       '<p>Imatge:<br><img class="internal-embed" data-target="img.png" alt="img.png"></p>',

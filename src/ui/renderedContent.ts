@@ -5,6 +5,7 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { classHighlighter, highlightCode } from "@lezer/highlight";
 import katex from "katex";
+import { t } from "../i18n/i18n";
 
 export function fillEmbedImages(
   root: HTMLElement,
@@ -75,6 +76,62 @@ export function highlightCodeBlocks(root: HTMLElement): void {
     if (match !== null) {
       void highlightBlock(codeEl, match[1]);
     }
+  }
+}
+
+/** Clipboard write with a fallback for webviews without the async API. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    let copied: boolean;
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    }
+    area.remove();
+    return copied;
+  }
+}
+
+/** Adds a hover copy button to every code block under `root`. */
+export function addCopyButtons(root: HTMLElement): void {
+  for (const pre of root.querySelectorAll<HTMLPreElement>("pre")) {
+    if (pre.querySelector(".code-copy-button") !== null) {
+      continue;
+    }
+    const code = pre.querySelector("code");
+    if (code === null) {
+      continue;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "code-copy-button";
+    button.textContent = "⧉";
+    button.title = t("reading.copyCode");
+    button.setAttribute("aria-label", t("reading.copyCode"));
+    button.addEventListener("click", () => {
+      void copyText(code.textContent ?? "").then((copied) => {
+        if (!copied) {
+          return;
+        }
+        button.textContent = "✓";
+        button.title = t("reading.codeCopied");
+        setTimeout(() => {
+          button.textContent = "⧉";
+          button.title = t("reading.copyCode");
+        }, 1500);
+      });
+    });
+    pre.append(button);
   }
 }
 

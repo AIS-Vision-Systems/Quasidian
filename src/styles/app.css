@@ -670,6 +670,7 @@ body.is-readable-line-length .cm-editor .cm-content {
 }
 
 .settings-modal {
+  position: relative;
   display: flex;
   width: min(760px, 92vw);
   height: min(560px, 85vh);
@@ -678,6 +679,25 @@ body.is-readable-line-length .cm-editor .cm-content {
   border-radius: 10px;
   box-shadow: 0 10px 40px var(--shadow-color);
   overflow: hidden;
+}
+
+.settings-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-close:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 .settings-sidebar {
@@ -837,7 +857,8 @@ body.is-readable-line-length .cm-editor .cm-content {
   white-space: nowrap;
 }
 
-.status-bar-mode {
+.status-bar-mode,
+.status-bar-backlinks {
   padding: 0;
   background: transparent;
   border: none;
@@ -847,7 +868,8 @@ body.is-readable-line-length .cm-editor .cm-content {
   cursor: pointer;
 }
 
-.status-bar-mode:hover {
+.status-bar-mode:hover,
+.status-bar-backlinks:hover {
   color: var(--text-normal);
 }
 
@@ -965,6 +987,36 @@ body.is-readable-line-length .reading-view-content {
 .markdown-rendered pre code {
   padding: 0;
   background: none;
+}
+
+.code-copy-button {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  padding: 2px 6px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.markdown-rendered pre:hover .code-copy-button {
+  opacity: 1;
+}
+
+.code-copy-button:hover {
+  color: var(--text-normal);
+}
+
+/* The hover copy button takes the language label's corner. */
+.markdown-rendered pre[data-lang]:hover::after {
+  opacity: 0;
 }
 
 .markdown-rendered a {
