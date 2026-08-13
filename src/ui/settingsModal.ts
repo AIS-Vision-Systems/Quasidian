@@ -8,6 +8,7 @@ import {
   updateSettings,
 } from "../ipc/settingsStore";
 import type { Settings } from "../lib/settings";
+import { createIcon } from "./icons";
 
 type SectionId = "general" | "appearance" | "editor" | "files";
 
@@ -40,7 +41,7 @@ export function openSettingsModal(): void {
   const closeButton = document.createElement("button");
   closeButton.type = "button";
   closeButton.className = "settings-close";
-  closeButton.textContent = "×";
+  closeButton.append(createIcon("x"));
   closeButton.title = t("settings.close");
   closeButton.setAttribute("aria-label", t("settings.close"));
   closeButton.addEventListener("click", () => close());

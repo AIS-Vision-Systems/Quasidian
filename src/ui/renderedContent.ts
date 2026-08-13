@@ -6,6 +6,7 @@ import { languages } from "@codemirror/language-data";
 import { classHighlighter, highlightCode } from "@lezer/highlight";
 import katex from "katex";
 import { t } from "../i18n/i18n";
+import { createIcon } from "./icons";
 
 export function fillEmbedImages(
   root: HTMLElement,
@@ -114,7 +115,14 @@ export function createCodePill(
   const button = document.createElement("button");
   button.type = "button";
   button.className = "code-lang-pill";
-  button.textContent = label === "" ? "⧉" : label;
+  const showLabel = () => {
+    if (label === "") {
+      button.replaceChildren(createIcon("copy"));
+    } else {
+      button.textContent = label;
+    }
+  };
+  showLabel();
   button.title = t("reading.copyCode");
   button.setAttribute("aria-label", t("reading.copyCode"));
   // Keep the editor selection where it is when the pill is clicked.
@@ -124,11 +132,8 @@ export function createCodePill(
       if (!copied) {
         return;
       }
-      const restore = button.textContent;
       button.textContent = t("reading.codeCopied");
-      setTimeout(() => {
-        button.textContent = restore;
-      }, 1500);
+      setTimeout(showLabel, 1500);
     });
   });
   return button;
