@@ -4,9 +4,12 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { markdownExtensions } from "../markdown/parser";
 import {
+  computeDoneTaskLines,
+  computeHeadingLines,
   computeHiddenRanges,
   computeHorizontalRules,
   computeImageEmbeds,
+  computeListLines,
   computeListMarks,
   computeMathRanges,
   computeNoteEmbeds,
@@ -233,11 +236,20 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     expect(computeHiddenRanges(state, 0, doc.length)).toEqual([]);
   });
 
-  it("collects task markers only on inactive lines", () => {
+  it("collects task markers except when the selection touches the marker", () => {
     const doc = "- [ ] fer\n- [x] fet";
-    // Cursor on the first line: only the second marker becomes a widget.
+    // Cursor inside the first "- [ ]": only the second becomes a widget.
     const state = stateFor(doc, 3);
     expect(computeTaskMarkers(state, 0, doc.length)).toEqual([
+      { pos: 12, checked: true },
+    ]);
+  });
+
+  it("keeps task widgets while the cursor is in the task text", () => {
+    const doc = "- [ ] fer\n- [x] fet";
+    const state = stateFor(doc, 8);
+    expect(computeTaskMarkers(state, 0, doc.length)).toEqual([
+      { pos: 2, checked: false },
       { pos: 12, checked: true },
     ]);
   });
@@ -246,8 +258,69 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     const doc = "- poma\n- [ ] fer\n1. tres";
     const state = stateFor(doc, doc.length);
     expect(computeListMarks(state, 0, doc.length)).toEqual([
-      { from: 0, to: 1, kind: "bullet" },
+      { from: 0, to: 2, kind: "bullet" },
       { from: 7, to: 9, kind: "task" },
+    ]);
+  });
+
+  it("computes list lines: hanging indent, guides and fixed leading", () => {
+    const doc = "- poma\n  - nena\n1. tres";
+    const state = stateFor(doc, doc.length);
+    expect(computeListLines(state, 0, doc.length)).toEqual([
+      { from: 0, width: 2, guides: [], leading: null, marker: null },
+      {
+        from: 7,
+        width: 6,
+        guides: [2],
+        leading: { from: 7, to: 9, width: 4 },
+        marker: null,
+      },
+      {
+        from: 16,
+        width: 3,
+        guides: [],
+        leading: null,
+        marker: { from: 16, to: 19, width: 3 },
+      },
+    ]);
+  });
+
+  it("extends the hanging indent over task markers", () => {
+    const doc = "- [ ] fer";
+    const state = stateFor(doc, doc.length);
+    expect(computeListLines(state, 0, doc.length)).toEqual([
+      { from: 0, width: 6, guides: [], leading: null, marker: null },
+    ]);
+  });
+
+  it("stacks one guide per ancestor level", () => {
+    const doc = "- a\n  - b\n    - c";
+    const state = stateFor(doc, doc.length);
+    const third = computeListLines(state, 0, doc.length).find(
+      (info) => info.from === 10,
+    );
+    expect(third).toEqual({
+      from: 10,
+      width: 10,
+      guides: [2, 6],
+      leading: { from: 10, to: 14, width: 8 },
+      marker: null,
+    });
+  });
+
+  it("collects the lines of checked tasks", () => {
+    const doc = "- [ ] fer\n- [x] fet";
+    const state = stateFor(doc, doc.length);
+    expect(computeDoneTaskLines(state, 0, doc.length)).toEqual([10]);
+  });
+
+  it("collects heading lines with their level, for both syntaxes", () => {
+    const doc = "# A\ntext\n### B\nTítol\n---";
+    const state = stateFor(doc, doc.length);
+    expect(computeHeadingLines(state, 0, doc.length)).toEqual([
+      { from: 0, level: 1 },
+      { from: 9, level: 3 },
+      { from: 15, level: 2 },
     ]);
   });
 
@@ -282,11 +355,18 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     expect(computeHorizontalRules(onLine, 0, doc.length)).toEqual([]);
   });
 
-  it("keeps list marks raw on the active line", () => {
+  it("keeps the raw mark only while the selection touches it", () => {
     const doc = "- poma\n- pera";
+    // Cursor right after the first "- ": that mark stays raw.
     const state = stateFor(doc, 2);
     expect(computeListMarks(state, 0, doc.length)).toEqual([
-      { from: 7, to: 8, kind: "bullet" },
+      { from: 7, to: 9, kind: "bullet" },
+    ]);
+    // Cursor in the item text, same line: the bullet stays rendered.
+    const inText = stateFor(doc, 5);
+    expect(computeListMarks(inText, 0, doc.length)).toEqual([
+      { from: 0, to: 2, kind: "bullet" },
+      { from: 7, to: 9, kind: "bullet" },
     ]);
   });
 
