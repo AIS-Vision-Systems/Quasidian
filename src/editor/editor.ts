@@ -29,7 +29,7 @@ import { tags } from "@lezer/highlight";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag } from "../markdown/wikilinks";
-import { markdownDoublePair, wrapSelection } from "./autoPair";
+import { markdownMarkerPair, wrapSelection } from "./autoPair";
 import {
   emptyListItemExitCommand,
   inListItem,
@@ -252,7 +252,7 @@ export function createEditor(
             return true;
           }
           if (config.autoPairMarkdown) {
-            const pair = markdownDoublePair(view.state, text);
+            const pair = markdownMarkerPair(view.state, text);
             if (pair !== null) {
               view.dispatch({
                 ...pair,

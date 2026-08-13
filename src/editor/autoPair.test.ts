@@ -4,7 +4,7 @@ import {
   EditorState,
   type TransactionSpec,
 } from "@codemirror/state";
-import { markdownDoublePair, wrapSelection } from "./autoPair";
+import { markdownMarkerPair, wrapSelection } from "./autoPair";
 
 function stateFor(doc: string, anchor: number, head?: number): EditorState {
   return EditorState.create({
@@ -58,48 +58,61 @@ describe("wrapSelection", () => {
   });
 });
 
-describe("markdownDoublePair", () => {
-  it("closes the double when the second marker is typed", () => {
-    const state = stateFor("a*", 2);
-    const result = apply(state, markdownDoublePair(state, "*"));
-    expect(result.doc).toBe("a****");
+describe("markdownMarkerPair", () => {
+  it("pairs on the first keystroke", () => {
+    const state = stateFor("a ", 2);
+    const result = apply(state, markdownMarkerPair(state, "*"));
+    expect(result.doc).toBe("a **");
     expect(result.from).toBe(3);
   });
 
-  it("pairs ==, ~~ and $$ the same way", () => {
-    const state = stateFor("=", 1);
-    const result = apply(state, markdownDoublePair(state, "="));
-    expect(result.doc).toBe("====");
+  it("grows an empty pair from inside", () => {
+    // "*|*" typing * becomes "**|**".
+    const state = stateFor("**", 1);
+    const result = apply(state, markdownMarkerPair(state, "*"));
+    expect(result.doc).toBe("****");
     expect(result.from).toBe(2);
   });
 
-  it("never grows triples", () => {
-    const state = stateFor("a**", 3);
-    expect(markdownDoublePair(state, "*")).toBeNull();
-  });
-
-  it("does not pair when the double closes an open marker", () => {
-    const state = stateFor("**bold*", 7);
-    expect(markdownDoublePair(state, "*")).toBeNull();
-  });
-
-  it("pairs again after a balanced pair on the same line", () => {
-    const state = stateFor("**a** b*", 8);
-    const result = apply(state, markdownDoublePair(state, "*"));
-    expect(result.doc).toBe("**a** b****");
-  });
-
-  it("skips over the closing double instead of inserting", () => {
-    // "**|**": typing * moves the cursor over the first closing char.
+  it("pairs a different marker inside an empty pair", () => {
+    // "**|**" typing _ becomes "**_|_**".
     const state = stateFor("****", 2);
-    const result = apply(state, markdownDoublePair(state, "*"));
-    expect(result.doc).toBe("****");
+    const result = apply(state, markdownMarkerPair(state, "_"));
+    expect(result.doc).toBe("**__**");
     expect(result.from).toBe(3);
   });
 
+  it("skips over the closing twin instead of inserting", () => {
+    const state = stateFor("*bold*", 5);
+    const result = apply(state, markdownMarkerPair(state, "*"));
+    expect(result.doc).toBe("*bold*");
+    expect(result.from).toBe(6);
+  });
+
+  it("never pairs touching letters or digits", () => {
+    const afterWord = stateFor("var", 3);
+    expect(markdownMarkerPair(afterWord, "_")).toBeNull();
+    const beforeWord = stateFor(" nom", 1);
+    expect(markdownMarkerPair(beforeWord, "_")).toBeNull();
+    const price = stateFor("cost 10", 7);
+    expect(markdownMarkerPair(price, "$")).toBeNull();
+  });
+
+  it("does not pair when the marker closes an open run on the line", () => {
+    const state = stateFor("*cursiva ", 9);
+    expect(markdownMarkerPair(state, "*")).toBeNull();
+  });
+
+  it("pairs again after a balanced run on the same line", () => {
+    const state = stateFor("**a** ", 6);
+    const result = apply(state, markdownMarkerPair(state, "*"));
+    expect(result.doc).toBe("**a** **");
+    expect(result.from).toBe(7);
+  });
+
   it("ignores other chars and non-empty selections", () => {
-    expect(markdownDoublePair(stateFor("a(", 2), "(")).toBeNull();
+    expect(markdownMarkerPair(stateFor("a(", 2), "(")).toBeNull();
     const selected = stateFor("a*b", 0, 3);
-    expect(markdownDoublePair(selected, "*")).toBeNull();
+    expect(markdownMarkerPair(selected, "*")).toBeNull();
   });
 });

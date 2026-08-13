@@ -18,8 +18,10 @@ const WRAP_PAIRS: Record<string, string> = {
   "`": "`",
 };
 
-/** Markers whose doubled form auto-closes (**, __, ==, ~~, $$). */
-const DOUBLE_MARKERS = new Set(["*", "_", "=", "~", "$"]);
+/** Markers that auto-close while typing (*, _, =, ~, $). */
+const MARKERS = new Set(["*", "_", "=", "~", "$"]);
+
+const WORD_CHAR = /[\p{L}\p{N}]/u;
 
 /**
  * Wraps every non-empty selection range with the typed pair instead of
@@ -56,57 +58,61 @@ export function wrapSelection(
 }
 
 /**
- * Markdown double-marker auto-pair: typing the char that completes a
- * double (the second `*` of `**`) also inserts the closing double, so
- * the result is `**|**`. Typing the marker right before a closing
- * double skips over one char instead of inserting. Whether the new
- * double opens (pair) or closes (leave alone) is decided by counting
- * the doubles already present on the line. Null when the rule does not
- * apply and the input should fall through.
+ * Markdown marker auto-pair: typing a marker inserts its closing twin
+ * right away (`*` gives `*|*`), and typing another marker from inside
+ * an empty pair grows it (`*|*` + `*` gives `**|**`; `**|**` + `_`
+ * gives `**_|_**`). Guards: typing the marker right before its closing
+ * twin skips over it; markers touching letters or digits never pair
+ * (snake_case, prices); and an odd count of the marker earlier on the
+ * line means this one closes an open run, so it is left alone. Null
+ * when the input should fall through.
  */
-export function markdownDoublePair(
+export function markdownMarkerPair(
   state: EditorState,
   typed: string,
 ): { changes?: { from: number; insert: string }; selection: { anchor: number } } | null {
-  if (!DOUBLE_MARKERS.has(typed)) {
+  if (!MARKERS.has(typed)) {
     return null;
   }
   if (state.selection.ranges.length !== 1 || !state.selection.main.empty) {
     return null;
   }
   const pos = state.selection.main.head;
-  const double = typed + typed;
-  // Inside `XX|XX`: typing the marker walks over the closing pair.
-  if (
-    state.sliceDoc(pos, pos + 2) === double &&
-    state.sliceDoc(pos - 1, pos) === typed
-  ) {
+  const prev = state.sliceDoc(pos - 1, pos);
+  const next = state.sliceDoc(pos, pos + 1);
+  // Inside an empty pair of the same marker: grow it outward.
+  if (prev === typed && next === typed) {
+    return {
+      changes: { from: pos, insert: typed + typed },
+      selection: { anchor: pos + 1 },
+    };
+  }
+  // Right before the closing twin: walk over it instead of inserting.
+  if (next === typed) {
     return { selection: { anchor: pos + 1 } };
   }
-  // Completing a double: previous char is the marker, and the one before
-  // is not (never grow triples).
+  // Fresh pair only between non-word characters.
   if (
-    state.sliceDoc(pos - 1, pos) !== typed ||
-    state.sliceDoc(pos - 2, pos - 1) === typed
+    (prev !== "" && WORD_CHAR.test(prev)) ||
+    (next !== "" && WORD_CHAR.test(next))
   ) {
     return null;
   }
-  // An odd number of earlier doubles on the line means this one closes
-  // an open marker — leave it alone.
+  // An odd count earlier on the line means this marker closes an open
+  // run — leave it alone.
   const line = state.doc.lineAt(pos);
-  const before = state.sliceDoc(line.from, pos - 1);
-  let doubles = 0;
-  for (let i = 0; i + 1 < before.length; i++) {
-    if (before[i] === typed && before[i + 1] === typed) {
-      doubles++;
-      i++;
+  const before = state.sliceDoc(line.from, pos);
+  let count = 0;
+  for (const ch of before) {
+    if (ch === typed) {
+      count++;
     }
   }
-  if (doubles % 2 === 1) {
+  if (count % 2 === 1) {
     return null;
   }
   return {
-    changes: { from: pos, insert: typed + double },
+    changes: { from: pos, insert: typed + typed },
     selection: { anchor: pos + 1 },
   };
 }
