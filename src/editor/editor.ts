@@ -2,6 +2,8 @@
 // outside the active line/selection); styling goes through CSS variables.
 import {
   autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
   type CompletionContext,
   type CompletionResult,
 } from "@codemirror/autocomplete";
@@ -27,6 +29,7 @@ import { tags } from "@lezer/highlight";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag } from "../markdown/wikilinks";
+import { markdownDoublePair, wrapSelection } from "./autoPair";
 import {
   emptyListItemExitCommand,
   inListItem,
@@ -154,6 +157,8 @@ export interface EditorConfig {
   showLineNumbers: boolean;
   indentation: "spaces" | "tabs";
   spellcheck: boolean;
+  autoPairBrackets: boolean;
+  autoPairMarkdown: boolean;
 }
 
 export interface EditorHandle {
@@ -184,9 +189,15 @@ export function createEditor(
   const lineNumbersCompartment = new Compartment();
   const indentCompartment = new Compartment();
   const spellcheckCompartment = new Compartment();
+  const autoPairCompartment = new Compartment();
 
   function lineNumbersExtension(c: EditorConfig) {
     return c.showLineNumbers ? lineNumbers() : [];
+  }
+  function autoPairExtension(c: EditorConfig) {
+    return c.autoPairBrackets
+      ? [closeBrackets(), keymap.of(closeBracketsKeymap)]
+      : [];
   }
   function indentExtension(c: EditorConfig) {
     return indentUnit.of(c.indentation === "tabs" ? "\t" : "    ");
@@ -223,6 +234,38 @@ export function createEditor(
           ]),
         ),
         history(),
+        // Wrap-on-type is always on; the markdown double-marker pairing
+        // follows its setting. Runs before closeBrackets' own handler so
+        // selections are always wrapped, never replaced.
+        EditorView.inputHandler.of((view, _from, _to, text) => {
+          if (text.length !== 1) {
+            return false;
+          }
+          const wrap = wrapSelection(view.state, text);
+          if (wrap !== null) {
+            view.dispatch({
+              changes: wrap.changes,
+              selection: wrap.selection,
+              userEvent: "input.type",
+              scrollIntoView: true,
+            });
+            return true;
+          }
+          if (config.autoPairMarkdown) {
+            const pair = markdownDoublePair(view.state, text);
+            if (pair !== null) {
+              view.dispatch({
+                ...pair,
+                userEvent: "input.type",
+                scrollIntoView: true,
+              });
+              return true;
+            }
+          }
+          return false;
+        }),
+        // Before the default keymap: closeBrackets' Backspace must win.
+        autoPairCompartment.of(autoPairExtension(config)),
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,
@@ -317,6 +360,7 @@ export function createEditor(
           lineNumbersCompartment.reconfigure(lineNumbersExtension(next)),
           indentCompartment.reconfigure(indentExtension(next)),
           spellcheckCompartment.reconfigure(spellcheckExtension(next)),
+          autoPairCompartment.reconfigure(autoPairExtension(next)),
         ],
       });
     },

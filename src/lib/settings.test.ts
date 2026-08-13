@@ -23,6 +23,15 @@ describe("parseSettings", () => {
     );
     expect(settings.editor).toEqual(DEFAULT_SETTINGS.editor);
   });
+
+  it("defaults both auto-pair options to enabled", () => {
+    const settings = parseSettings("{}");
+    expect(settings.editor.autoPairBrackets).toBe(true);
+    expect(settings.editor.autoPairMarkdown).toBe(true);
+    const off = parseSettings('{"editor":{"autoPairMarkdown":false}}');
+    expect(off.editor.autoPairMarkdown).toBe(false);
+    expect(off.editor.autoPairBrackets).toBe(true);
+  });
 });
 
 describe("mergeSettings", () => {
