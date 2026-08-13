@@ -5,7 +5,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { renderToHtml } from "../markdown/render";
 import {
-  addCopyButtons,
+  addCodePills,
   fillEmbedImages,
   highlightCodeBlocks,
   renderMathElements,
@@ -86,13 +86,13 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
           body.innerHTML = html;
           fillEmbedImages(body, hooks.resolveEmbedSrc);
           highlightCodeBlocks(body);
-          addCopyButtons(body);
+          addCodePills(body);
           renderMathElements(body);
           embed.append(title, body);
         });
       }
       highlightCodeBlocks(content);
-      addCopyButtons(content);
+      addCodePills(content);
       renderMathElements(content);
     },
   };
