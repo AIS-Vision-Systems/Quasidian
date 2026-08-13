@@ -49,3 +49,9 @@ export function openMarkdownFileDialog(options: {
     filters: [{ name: options.filterName, extensions: ["md"] }],
   });
 }
+
+export function openFolderDialog(options: {
+  title: string;
+}): Promise<string | null> {
+  return open({ title: options.title, multiple: false, directory: true });
+}

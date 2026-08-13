@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "../i18n/i18n";
 import {
   listFolder,
+  openFolderDialog,
   openMarkdownFileDialog,
   readFile,
   startupFile,
@@ -17,6 +18,8 @@ import { createBacklinkIndex } from "../lib/backlinkIndex";
 import { createSearchIndex, type SearchMatch } from "../lib/searchIndex";
 import { basename, dirname, normalizePath, samePath } from "../lib/paths";
 import type { EditorModeSetting } from "../lib/settings";
+import { extractLinkTargets } from "../lib/backlinkIndex";
+import { computeOutline } from "../lib/outline";
 import { countCharacters, countWords } from "../lib/text";
 import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
 import { renderToHtml } from "../markdown/render";
@@ -33,13 +36,26 @@ export function mountLayout(root: HTMLElement): void {
   const sidebar = document.createElement("aside");
   sidebar.className = "sidebar";
 
+  // Left top bar: open file, open folder, search.
+  const sidebarHeader = document.createElement("div");
+  sidebarHeader.className = "sidebar-header";
+  const openFileButton = document.createElement("button");
+  openFileButton.className = "view-header-button";
+  openFileButton.append(createIcon("file-plus"));
+  openFileButton.addEventListener("click", () => void openFileFromDialog());
+  const openFolderButton = document.createElement("button");
+  openFolderButton.className = "view-header-button";
+  openFolderButton.append(createIcon("folder"));
+  openFolderButton.addEventListener("click", () => void openFolderFromDialog());
+  const searchButton = document.createElement("button");
+  searchButton.className = "view-header-button";
+  searchButton.append(createIcon("search"));
+  searchButton.addEventListener("click", () => toggleSearch());
+  sidebarHeader.append(openFileButton, openFolderButton, searchButton);
+  sidebar.append(sidebarHeader);
+
   const sidebarFiles = document.createElement("div");
   sidebarFiles.className = "sidebar-view";
-
-  const openButton = document.createElement("button");
-  openButton.className = "sidebar-open-button";
-  openButton.textContent = t("sidebar.openFile");
-  sidebarFiles.append(openButton);
 
   const fileList = document.createElement("ul");
   fileList.className = "file-list";
@@ -80,8 +96,13 @@ export function mountLayout(root: HTMLElement): void {
   const workspace = document.createElement("main");
   workspace.className = "workspace";
 
+  // Center top bar: collapse left, centered file name, mode, collapse right.
   const viewHeader = document.createElement("div");
   viewHeader.className = "view-header";
+  const collapseLeftButton = document.createElement("button");
+  collapseLeftButton.className = "view-header-button";
+  collapseLeftButton.append(createIcon("panel-left"));
+  collapseLeftButton.addEventListener("click", () => toggleSidebar());
   const viewTitle = document.createElement("span");
   viewTitle.className = "view-title";
   const headerActions = document.createElement("div");
@@ -91,13 +112,12 @@ export function mountLayout(root: HTMLElement): void {
   modeHeaderButton.append(createIcon("book-open"));
   modeHeaderButton.title = t("command.toggleReadingMode");
   modeHeaderButton.addEventListener("click", () => void toggleMode());
-  const backlinksHeaderButton = document.createElement("button");
-  backlinksHeaderButton.className = "view-header-button";
-  backlinksHeaderButton.append(createIcon("link"));
-  backlinksHeaderButton.title = t("command.toggleBacklinks");
-  backlinksHeaderButton.addEventListener("click", () => toggleBacklinksPanel());
-  headerActions.append(modeHeaderButton, backlinksHeaderButton);
-  viewHeader.append(viewTitle, headerActions);
+  const collapseRightButton = document.createElement("button");
+  collapseRightButton.className = "view-header-button";
+  collapseRightButton.append(createIcon("panel-right"));
+  collapseRightButton.addEventListener("click", () => toggleRightPanel());
+  headerActions.append(modeHeaderButton, collapseRightButton);
+  viewHeader.append(collapseLeftButton, viewTitle, headerActions);
 
   const workspaceBody = document.createElement("div");
   workspaceBody.className = "workspace-body";
@@ -112,18 +132,39 @@ export function mountLayout(root: HTMLElement): void {
   workspaceBody.append(welcome, editorHost);
   workspace.append(viewHeader, workspaceBody);
 
+  // Right panel: one list, three views (backlinks, outgoing, outline).
+  type RightView = "backlinks" | "outgoing" | "outline";
+  let rightView: RightView = "backlinks";
   const backlinksPanel = document.createElement("aside");
   backlinksPanel.className = "backlinks-panel";
-  const backlinksHeader = document.createElement("div");
-  backlinksHeader.className = "backlinks-header";
+  const rightHeader = document.createElement("div");
+  rightHeader.className = "backlinks-header";
+  const rightViewButtons = new Map<RightView, HTMLButtonElement>();
+  const rightViewsBar = document.createElement("div");
+  rightViewsBar.className = "right-panel-views";
+  for (const [view, icon] of [
+    ["backlinks", "link"],
+    ["outgoing", "arrow-up-right"],
+    ["outline", "list"],
+  ] as const) {
+    const button = document.createElement("button");
+    button.className = "view-header-button";
+    button.append(createIcon(icon));
+    button.addEventListener("click", () => {
+      rightView = view;
+      renderRightPanel();
+    });
+    rightViewButtons.set(view, button);
+    rightViewsBar.append(button);
+  }
   const backlinksTitle = document.createElement("span");
-  backlinksTitle.textContent = t("backlinks.title");
+  backlinksTitle.className = "right-panel-title";
   const backlinksCount = document.createElement("span");
   backlinksCount.className = "backlinks-count";
-  backlinksHeader.append(backlinksTitle, backlinksCount);
+  rightHeader.append(rightViewsBar, backlinksTitle, backlinksCount);
   const backlinksList = document.createElement("ul");
   backlinksList.className = "backlinks-list";
-  backlinksPanel.append(backlinksHeader, backlinksList);
+  backlinksPanel.append(rightHeader, backlinksList);
 
   const statusBar = document.createElement("footer");
   statusBar.className = "status-bar";
@@ -132,7 +173,7 @@ export function mountLayout(root: HTMLElement): void {
   const statusBacklinks = document.createElement("button");
   statusBacklinks.className = "status-bar-backlinks";
   statusBacklinks.hidden = true;
-  statusBacklinks.addEventListener("click", () => toggleBacklinksPanel());
+  statusBacklinks.addEventListener("click", () => showBacklinksView());
   const wordCount = document.createElement("span");
   const charCount = document.createElement("span");
   const modeButton = document.createElement("button");
@@ -150,7 +191,8 @@ export function mountLayout(root: HTMLElement): void {
   let lastWordCount = 0;
   let lastCharCount = 0;
   let watchedFolder: string | null = null;
-  let backlinksVisible = true;
+  let sidebarVisible = true;
+  let rightVisible = true;
   let reloadingFromDisk = false;
   let searchVisible = false;
   const backlinkIndex = createBacklinkIndex();
@@ -203,6 +245,7 @@ export function mountLayout(root: HTMLElement): void {
       if (openedPath !== null && !reloadingFromDisk) {
         autosave.notifyChange();
       }
+      scheduleRightPanelRefresh();
     },
     onSaveRequested() {
       void saveNow();
@@ -330,33 +373,35 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
-  function renderBacklinks(): void {
+  function emptyItem(labelKey: string): HTMLLIElement {
+    const empty = document.createElement("li");
+    empty.className = "backlinks-empty";
+    empty.textContent = t(labelKey);
+    return empty;
+  }
+
+  function currentBacklinks(): string[] {
     if (openedPath === null || currentFolder === null) {
-      backlinksCount.textContent = "";
-      statusBacklinks.hidden = true;
-      const empty = document.createElement("li");
-      empty.className = "backlinks-empty";
-      empty.textContent = t("backlinks.empty");
-      backlinksList.replaceChildren(empty);
-      return;
+      return [];
     }
-    const links = backlinkIndex.backlinksOf(
+    return backlinkIndex.backlinksOf(
       openedPath,
       currentFolder,
       folderFiles,
       getSettings().files.defaultExtension,
     );
+  }
+
+  function renderBacklinksView(): void {
+    if (openedPath === null || currentFolder === null) {
+      backlinksCount.textContent = "";
+      backlinksList.replaceChildren(emptyItem("backlinks.empty"));
+      return;
+    }
+    const links = currentBacklinks();
     backlinksCount.textContent = String(links.length);
-    statusBacklinks.hidden = false;
-    statusBacklinks.textContent = t("statusBar.backlinks", {
-      count: links.length,
-    });
-    statusBacklinks.title = t("command.toggleBacklinks");
     if (links.length === 0) {
-      const empty = document.createElement("li");
-      empty.className = "backlinks-empty";
-      empty.textContent = t("backlinks.empty");
-      backlinksList.replaceChildren(empty);
+      backlinksList.replaceChildren(emptyItem("backlinks.empty"));
       return;
     }
     backlinksList.replaceChildren(
@@ -368,6 +413,123 @@ export function mountLayout(root: HTMLElement): void {
         return item;
       }),
     );
+  }
+
+  function renderOutgoingView(): void {
+    if (openedPath === null || currentFolder === null) {
+      backlinksCount.textContent = "";
+      backlinksList.replaceChildren(emptyItem("rightPanel.outgoingEmpty"));
+      return;
+    }
+    const targets = [...new Set(extractLinkTargets(editor.getDoc()))];
+    backlinksCount.textContent = String(targets.length);
+    if (targets.length === 0) {
+      backlinksList.replaceChildren(emptyItem("rightPanel.outgoingEmpty"));
+      return;
+    }
+    backlinksList.replaceChildren(
+      ...targets.map((target) => {
+        const item = document.createElement("li");
+        item.className = "file-item";
+        const resolution =
+          currentFolder === null
+            ? null
+            : resolveWikilink(
+                target,
+                currentFolder,
+                folderFiles,
+                getSettings().files.defaultExtension,
+              );
+        item.classList.toggle(
+          "is-unresolved",
+          resolution === null || !resolution.exists,
+        );
+        item.textContent = target;
+        item.addEventListener("click", () => void openWikilink(target));
+        return item;
+      }),
+    );
+  }
+
+  function renderOutlineView(): void {
+    backlinksCount.textContent = "";
+    if (openedPath === null) {
+      backlinksList.replaceChildren(emptyItem("rightPanel.outlineEmpty"));
+      return;
+    }
+    const doc = editor.getDoc();
+    const items = computeOutline(doc);
+    if (items.length === 0) {
+      backlinksList.replaceChildren(emptyItem("rightPanel.outlineEmpty"));
+      return;
+    }
+    backlinksList.replaceChildren(
+      ...items.map((heading) => {
+        const item = document.createElement("li");
+        item.className = "file-item outline-item";
+        item.style.paddingLeft = `${(heading.level - 1) * 14 + 8}px`;
+        item.textContent = heading.text;
+        item.addEventListener("click", () => {
+          if (currentMode === "edit") {
+            editor.revealRange(heading.from, heading.from);
+          } else {
+            // The reading view has no position mapping; approximate.
+            setScrollFraction(
+              readingView.element,
+              heading.from / Math.max(1, doc.length),
+            );
+          }
+        });
+        return item;
+      }),
+    );
+  }
+
+  function renderRightPanel(): void {
+    for (const [view, button] of rightViewButtons) {
+      button.classList.toggle("is-active", view === rightView);
+      button.title = t(`rightPanel.${view}`);
+    }
+    backlinksTitle.textContent = t(`rightPanel.${rightView}`);
+    if (rightView === "backlinks") {
+      renderBacklinksView();
+    } else if (rightView === "outgoing") {
+      renderOutgoingView();
+    } else {
+      renderOutlineView();
+    }
+  }
+
+  // Outline and outgoing links follow the doc as it changes, coalesced.
+  let rightPanelDebounce: ReturnType<typeof setTimeout> | null = null;
+  function scheduleRightPanelRefresh(): void {
+    if (!rightVisible || rightView === "backlinks") {
+      return;
+    }
+    if (rightPanelDebounce !== null) {
+      clearTimeout(rightPanelDebounce);
+    }
+    rightPanelDebounce = setTimeout(() => {
+      rightPanelDebounce = null;
+      renderRightPanel();
+    }, 300);
+  }
+
+  /** Data changed: refresh the status-bar count and the visible panel. */
+  function renderBacklinks(): void {
+    if (openedPath === null || currentFolder === null) {
+      statusBacklinks.hidden = true;
+    } else {
+      const links = currentBacklinks();
+      statusBacklinks.hidden = false;
+      statusBacklinks.textContent = t("statusBar.backlinks", {
+        count: links.length,
+      });
+      statusBacklinks.title = t("rightPanel.backlinks");
+    }
+    if (rightVisible) {
+      renderRightPanel();
+    }
   }
 
   async function rebuildIndex(): Promise<void> {
@@ -606,6 +768,38 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
+  /** Opens a folder without a file: welcome view over its file list. */
+  async function openFolder(path: string): Promise<void> {
+    if (openedPath !== null && autosave.isDirty()) {
+      await saveNow();
+    }
+    autosave.cancel();
+    openedPath = null;
+    editor.setDoc("");
+    editorHost.classList.add("is-hidden");
+    readingView.element.classList.add("is-hidden");
+    if (!welcome.isConnected) {
+      workspaceBody.prepend(welcome);
+    }
+    viewTitle.textContent = "";
+    setCounts("");
+    setStatusError(null);
+    await refreshFolder(path);
+    renderBacklinks();
+    void getCurrentWindow()
+      .setTitle(basename(path))
+      .catch(() => undefined);
+  }
+
+  async function openFolderFromDialog(): Promise<void> {
+    const folder = await openFolderDialog({
+      title: t("dialog.openFolder.title"),
+    });
+    if (folder !== null) {
+      await openFolder(folder);
+    }
+  }
+
   function openQuickSwitcher(): void {
     openPalette({
       placeholder: t("switcher.placeholder"),
@@ -662,9 +856,14 @@ export function mountLayout(root: HTMLElement): void {
       run: () => void toggleMode(),
     },
     {
+      id: "open-folder",
+      nameKey: "command.openFolder",
+      run: () => void openFolderFromDialog(),
+    },
+    {
       id: "toggle-backlinks",
       nameKey: "command.toggleBacklinks",
-      run: toggleBacklinksPanel,
+      run: toggleRightPanel,
     },
     {
       id: "global-search",
@@ -674,11 +873,26 @@ export function mountLayout(root: HTMLElement): void {
     },
   ];
 
-  function toggleBacklinksPanel(): void {
-    backlinksVisible = !backlinksVisible;
-    backlinksPanel.classList.toggle("is-hidden", !backlinksVisible);
-    if (backlinksVisible) {
-      renderBacklinks();
+  function toggleSidebar(): void {
+    sidebarVisible = !sidebarVisible;
+    root.classList.toggle("left-collapsed", !sidebarVisible);
+  }
+
+  function toggleRightPanel(): void {
+    rightVisible = !rightVisible;
+    backlinksPanel.classList.toggle("is-hidden", !rightVisible);
+    if (rightVisible) {
+      renderRightPanel();
+    }
+  }
+
+  /** Opens the right panel on the backlinks view (status-bar shortcut). */
+  function showBacklinksView(): void {
+    rightView = "backlinks";
+    if (!rightVisible) {
+      toggleRightPanel();
+    } else {
+      renderRightPanel();
     }
   }
 
@@ -695,8 +909,6 @@ export function mountLayout(root: HTMLElement): void {
       },
     });
   }
-
-  openButton.addEventListener("click", () => void openFileFromDialog());
 
   let searchDebounce: ReturnType<typeof setTimeout> | null = null;
   searchInput.addEventListener("input", () => {
@@ -760,7 +972,14 @@ export function mountLayout(root: HTMLElement): void {
   });
 
   function refreshTexts(): void {
-    openButton.textContent = t("sidebar.openFile");
+    openFileButton.title = t("sidebar.openFile");
+    openFileButton.setAttribute("aria-label", t("sidebar.openFile"));
+    openFolderButton.title = t("sidebar.openFolder");
+    openFolderButton.setAttribute("aria-label", t("sidebar.openFolder"));
+    searchButton.title = t("search.title");
+    searchButton.setAttribute("aria-label", t("search.title"));
+    collapseLeftButton.title = t("workspace.collapseLeft");
+    collapseRightButton.title = t("workspace.collapseRight");
     settingsButton.title = t("settings.title");
     settingsButton.setAttribute("aria-label", t("settings.title"));
     modeButton.textContent = t(
@@ -772,8 +991,6 @@ export function mountLayout(root: HTMLElement): void {
     });
     welcome.textContent = t("workspace.welcome");
     modeHeaderButton.title = t("command.toggleReadingMode");
-    backlinksHeaderButton.title = t("command.toggleBacklinks");
-    backlinksTitle.textContent = t("backlinks.title");
     searchTitle.textContent = t("search.title");
     searchInput.placeholder = t("search.placeholder");
     searchClose.title = t("search.close");
@@ -841,6 +1058,7 @@ export function mountLayout(root: HTMLElement): void {
 
   setListMessage(t("sidebar.noFolder"));
   setCounts("");
+  refreshTexts();
   renderBacklinks();
 
   // Double-clicking an associated .md passes its path on the command line.

@@ -24,6 +24,14 @@ body {
     "statusbar statusbar statusbar";
 }
 
+#app.left-collapsed {
+  grid-template-columns: 0 1fr auto;
+}
+
+#app.left-collapsed .sidebar {
+  display: none;
+}
+
 /* --- Sidebar --- */
 
 .sidebar {
@@ -37,19 +45,9 @@ body {
   overflow-y: auto;
 }
 
-.sidebar-open-button {
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
-  background-color: var(--interactive-accent);
-  color: var(--text-on-accent);
-  font-family: var(--font-interface);
-  font-size: var(--font-text-size);
-  cursor: pointer;
-}
-
-.sidebar-open-button:hover {
-  background-color: var(--interactive-accent-hover);
+.sidebar-header {
+  display: flex;
+  gap: 2px;
 }
 
 .file-list {
@@ -257,12 +255,32 @@ body {
 
 .backlinks-header {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: 8px;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
+}
+
+.right-panel-views {
+  display: flex;
+  gap: 2px;
+}
+
+.right-panel-title {
+  flex: 1;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-item.is-unresolved {
+  color: var(--text-faint);
+}
+
+.outline-item {
+  font-size: var(--font-ui-small);
 }
 
 .backlinks-count {
@@ -293,6 +311,7 @@ body {
 }
 
 .view-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -301,7 +320,12 @@ body {
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
+/* Centered on the bar itself, independent of the side buttons. */
 .view-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 55%;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   overflow: hidden;
@@ -328,6 +352,11 @@ body {
 }
 
 .view-header-button:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.view-header-button.is-active {
   background-color: var(--background-modifier-hover);
   color: var(--text-normal);
 }
