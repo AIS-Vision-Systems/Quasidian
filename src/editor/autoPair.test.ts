@@ -4,7 +4,11 @@ import {
   EditorState,
   type TransactionSpec,
 } from "@codemirror/state";
-import { markdownMarkerPair, wrapSelection } from "./autoPair";
+import {
+  markdownMarkerPair,
+  markerBackspace,
+  wrapSelection,
+} from "./autoPair";
 
 function stateFor(doc: string, anchor: number, head?: number): EditorState {
   return EditorState.create({
@@ -114,5 +118,23 @@ describe("markdownMarkerPair", () => {
     expect(markdownMarkerPair(stateFor("a(", 2), "(")).toBeNull();
     const selected = stateFor("a*b", 0, 3);
     expect(markdownMarkerPair(selected, "*")).toBeNull();
+  });
+});
+
+describe("markerBackspace", () => {
+  it("deletes both sides of an empty marker pair", () => {
+    // "***|***" collapses one level per press.
+    const state = stateFor("******", 3);
+    const result = apply(state, markerBackspace(state));
+    expect(result.doc).toBe("****");
+    expect(result.from).toBe(2);
+    const last = stateFor("**", 1);
+    expect(apply(last, markerBackspace(last)).doc).toBe("");
+  });
+
+  it("leaves normal deletions alone", () => {
+    expect(markerBackspace(stateFor("*a*", 3))).toBeNull();
+    expect(markerBackspace(stateFor("(x)", 1))).toBeNull();
+    expect(markerBackspace(stateFor("ab", 1))).toBeNull();
   });
 });

@@ -58,6 +58,29 @@ export function wrapSelection(
 }
 
 /**
+ * Backspace between the two sides of an empty marker pair deletes both
+ * (`*|*` collapses to nothing, `***|***` to `**|**`), mirroring what
+ * closeBrackets does for brackets and quotes. Null when the cursor is
+ * not inside such a pair.
+ */
+export function markerBackspace(
+  state: EditorState,
+): { changes: { from: number; to: number }; selection: { anchor: number } } | null {
+  if (state.selection.ranges.length !== 1 || !state.selection.main.empty) {
+    return null;
+  }
+  const pos = state.selection.main.head;
+  const prev = state.sliceDoc(pos - 1, pos);
+  if (!MARKERS.has(prev) || state.sliceDoc(pos, pos + 1) !== prev) {
+    return null;
+  }
+  return {
+    changes: { from: pos - 1, to: pos + 1 },
+    selection: { anchor: pos - 1 },
+  };
+}
+
+/**
  * Markdown marker auto-pair: typing a marker inserts its closing twin
  * right away (`*` gives `*|*`), and typing another marker from inside
  * an empty pair grows it (`*|*` + `*` gives `**|**`; `**|**` + `_`

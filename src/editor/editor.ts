@@ -29,7 +29,11 @@ import { tags } from "@lezer/highlight";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag } from "../markdown/wikilinks";
-import { markdownMarkerPair, wrapSelection } from "./autoPair";
+import {
+  markdownMarkerPair,
+  markerBackspace,
+  wrapSelection,
+} from "./autoPair";
 import {
   emptyListItemExitCommand,
   inListItem,
@@ -266,6 +270,28 @@ export function createEditor(
         }),
         // Before the default keymap: closeBrackets' Backspace must win.
         autoPairCompartment.of(autoPairExtension(config)),
+        // Backspace inside an empty marker pair deletes both sides,
+        // like closeBrackets does for brackets.
+        keymap.of([
+          {
+            key: "Backspace",
+            run: (view) => {
+              if (!config.autoPairMarkdown) {
+                return false;
+              }
+              const del = markerBackspace(view.state);
+              if (del === null) {
+                return false;
+              }
+              view.dispatch({
+                ...del,
+                userEvent: "delete.backward",
+                scrollIntoView: true,
+              });
+              return true;
+            },
+          },
+        ]),
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,
