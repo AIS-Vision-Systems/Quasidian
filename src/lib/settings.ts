@@ -29,6 +29,10 @@ export interface EditorSettings {
   vimMode: boolean;
   indentation: IndentationSetting;
   spellcheck: boolean;
+  /** Auto-close brackets and quotes while typing. */
+  autoPairBrackets: boolean;
+  /** Auto-close markdown double markers (**, ==, $$, …) while typing. */
+  autoPairMarkdown: boolean;
 }
 
 export interface FilesSettings {
@@ -62,6 +66,8 @@ export const DEFAULT_SETTINGS: Settings = {
     vimMode: false,
     indentation: "spaces",
     spellcheck: false,
+    autoPairBrackets: true,
+    autoPairMarkdown: true,
   },
   files: {
     confirmDelete: true,
@@ -163,6 +169,14 @@ export function mergeSettings(raw: unknown): Settings {
         "tabs",
       ]),
       spellcheck: pickBoolean(editor.spellcheck, d.editor.spellcheck),
+      autoPairBrackets: pickBoolean(
+        editor.autoPairBrackets,
+        d.editor.autoPairBrackets,
+      ),
+      autoPairMarkdown: pickBoolean(
+        editor.autoPairMarkdown,
+        d.editor.autoPairMarkdown,
+      ),
     },
     files: {
       confirmDelete: pickBoolean(files.confirmDelete, d.files.confirmDelete),

@@ -333,6 +333,20 @@ export function openSettingsModal(): void {
         "settings.spellcheck.desc",
         toggle(e.spellcheck, (spellcheck) => patch({ spellcheck })),
       ),
+      row(
+        "settings.autoPairBrackets.name",
+        "settings.autoPairBrackets.desc",
+        toggle(e.autoPairBrackets, (autoPairBrackets) =>
+          patch({ autoPairBrackets }),
+        ),
+      ),
+      row(
+        "settings.autoPairMarkdown.name",
+        "settings.autoPairMarkdown.desc",
+        toggle(e.autoPairMarkdown, (autoPairMarkdown) =>
+          patch({ autoPairMarkdown }),
+        ),
+      ),
     ];
   }
 

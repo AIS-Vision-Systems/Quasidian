@@ -71,5 +71,7 @@ export function editorConfigFrom(settings: Settings): EditorConfig {
     showLineNumbers: settings.editor.showLineNumbers,
     indentation: settings.editor.indentation,
     spellcheck: settings.editor.spellcheck,
+    autoPairBrackets: settings.editor.autoPairBrackets,
+    autoPairMarkdown: settings.editor.autoPairMarkdown,
   };
 }
