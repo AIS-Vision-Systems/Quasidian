@@ -1,6 +1,6 @@
 # CLAUDE.md — Quasidian
 
-Quasidian is a minimalist desktop markdown editor that mimics Obsidian's look and behavior (Live Preview, wikilinks, dark theme) without the weight. The full spec and milestone plan live in `docs/SPEC.md` — read it before starting any milestone.
+Quasidian is a minimalist desktop markdown editor that mimics Obsidian's look and behavior (Live Preview, wikilinks, dark theme) without the weight. The phase-1 spec lives in `docs/SPEC.md` (milestones 1–11, complete); the phase-2 spec and milestone plan live in `docs/SPEC2.md` — read both before starting any milestone.
 
 ## Stack
 
