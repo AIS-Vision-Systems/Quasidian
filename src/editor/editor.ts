@@ -27,6 +27,12 @@ import { tags } from "@lezer/highlight";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag } from "../markdown/wikilinks";
+import {
+  emptyListItemExitCommand,
+  inListItem,
+  listIndentCommand,
+  listOutdentCommand,
+} from "./listCommands";
 import { livePreview } from "./livePreview";
 
 // Renders markdown formatting (sizes, weights, code font) while Live Preview
@@ -72,30 +78,19 @@ const markdownHighlighting = HighlightStyle.define([
   { tag: [tags.regexp, tags.escape], color: "var(--color-7)" },
 ]);
 
-/** Whether the main cursor sits inside a list item. */
-function inListItem(state: EditorState): boolean {
-  let node: SyntaxNode | null = syntaxTree(state).resolveInner(
-    state.selection.main.head,
-    -1,
-  );
-  while (node !== null) {
-    if (node.name === "ListItem") {
-      return true;
-    }
-    node = node.parent;
-  }
-  return false;
-}
-
-// Tab must never leave the editor: it indents selections and list items,
-// and inserts the configured indent unit anywhere else.
+// Tab must never leave the editor: it indents selections and list items
+// (one list level, with ordered-list renumbering), and inserts the
+// configured indent unit anywhere else.
 function tabIndent(view: EditorView): boolean {
   const { state } = view;
   if (state.selection.ranges.some((range) => !range.empty)) {
     return indentMore(view);
   }
   if (inListItem(state)) {
-    return indentMore(view);
+    // A first item has nothing to nest under: swallow the Tab anyway
+    // rather than breaking the list with a plain indent.
+    listIndentCommand(view);
+    return true;
   }
   view.dispatch(
     state.update(state.replaceSelection(state.facet(indentUnit)), {
@@ -104,6 +99,10 @@ function tabIndent(view: EditorView): boolean {
     }),
   );
   return true;
+}
+
+function shiftTabIndent(view: EditorView): boolean {
+  return listOutdentCommand(view) || indentLess(view);
 }
 
 /** Wikilink target at `pos`, or null when the position is not inside one. */
@@ -218,13 +217,16 @@ export function createEditor(
                 return true;
               },
             },
+            // Before lang-markdown's Enter (list continuation): an empty
+            // item climbs one level instead of adding another marker.
+            { key: "Enter", run: emptyListItemExitCommand },
           ]),
         ),
         history(),
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,
-          { key: "Tab", run: tabIndent, shift: indentLess },
+          { key: "Tab", run: tabIndent, shift: shiftTabIndent },
         ]),
         markdown({
           base: markdownLanguage,

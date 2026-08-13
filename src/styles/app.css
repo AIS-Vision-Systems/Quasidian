@@ -406,6 +406,23 @@ body.is-readable-line-length .cm-editor .cm-content {
   width: 2ch;
   text-indent: 0;
   color: var(--text-muted);
+  /* Bigger dot without touching the 2ch layout box. */
+  transform: scale(1.35);
+  transform-origin: 0.4ch center;
+}
+
+/* Leading whitespace of list lines at a fixed 1ch-per-char width, so
+   marker columns and indent guides stay put in proportional fonts. */
+.cm-editor .cm-list-ws {
+  display: inline-block;
+  text-indent: 0;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.cm-editor .cm-task-done {
+  text-decoration: line-through;
+  color: var(--text-muted);
 }
 
 .cm-editor .cm-hr {
@@ -603,11 +620,11 @@ body.is-readable-line-length .cm-editor .cm-content {
 .cm-editor .cm-link {
   color: var(--text-accent);
   cursor: pointer;
+  text-decoration: underline;
 }
 
 .cm-editor .cm-link:hover {
   color: var(--text-accent-hover);
-  text-decoration: underline;
 }
 
 .cm-tooltip.cm-tooltip-autocomplete {
@@ -1064,19 +1081,34 @@ body.is-readable-line-length .reading-view-content {
 
 .markdown-rendered a {
   color: var(--text-accent);
-  text-decoration: none;
+  text-decoration: underline;
   cursor: pointer;
 }
 
 .markdown-rendered a:hover {
   color: var(--text-accent-hover);
-  text-decoration: underline;
 }
 
 .markdown-rendered ul,
 .markdown-rendered ol {
   margin: 0 0 1em;
-  padding-left: 1.5em;
+  padding-left: 1.7em;
+}
+
+/* Same disc at every level, muted markers, like the editor's bullets. */
+.markdown-rendered ul {
+  list-style-type: disc;
+}
+
+.markdown-rendered li::marker {
+  color: var(--text-muted);
+}
+
+/* Nested lists: compact spacing and an indent guide per level. */
+.markdown-rendered li > ul,
+.markdown-rendered li > ol {
+  margin-bottom: 0;
+  border-left: 1px solid var(--indentation-guide);
 }
 
 .markdown-rendered li > p {
@@ -1085,6 +1117,11 @@ body.is-readable-line-length .reading-view-content {
 
 .markdown-rendered li.task-list-item {
   list-style: none;
+}
+
+.markdown-rendered li.task-list-item:has(.task-checkbox:checked) {
+  color: var(--text-muted);
+  text-decoration: line-through;
 }
 
 .markdown-rendered .task-checkbox {

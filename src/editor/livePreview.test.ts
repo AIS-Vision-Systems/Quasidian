@@ -4,11 +4,12 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { markdownExtensions } from "../markdown/parser";
 import {
+  computeDoneTaskLines,
   computeHeadingLines,
   computeHiddenRanges,
   computeHorizontalRules,
   computeImageEmbeds,
-  computeListIndents,
+  computeListLines,
   computeListMarks,
   computeMathRanges,
   computeNoteEmbeds,
@@ -262,22 +263,47 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     ]);
   });
 
-  it("computes hanging indents for bullet, nested and ordered items", () => {
+  it("computes list lines: hanging indent, guides and fixed leading", () => {
     const doc = "- poma\n  - nena\n1. tres";
     const state = stateFor(doc, doc.length);
-    expect(computeListIndents(state, 0, doc.length)).toEqual([
-      { from: 0, width: 2 },
-      { from: 7, width: 4 },
-      { from: 16, width: 3 },
+    expect(computeListLines(state, 0, doc.length)).toEqual([
+      { from: 0, width: 2, guides: [], leading: null },
+      {
+        from: 7,
+        width: 4,
+        guides: [2],
+        leading: { from: 7, to: 9, width: 2 },
+      },
+      { from: 16, width: 3, guides: [], leading: null },
     ]);
   });
 
   it("extends the hanging indent over task markers", () => {
     const doc = "- [ ] fer";
     const state = stateFor(doc, doc.length);
-    expect(computeListIndents(state, 0, doc.length)).toEqual([
-      { from: 0, width: 6 },
+    expect(computeListLines(state, 0, doc.length)).toEqual([
+      { from: 0, width: 6, guides: [], leading: null },
     ]);
+  });
+
+  it("stacks one guide per ancestor level", () => {
+    const doc = "- a\n  - b\n    - c";
+    const state = stateFor(doc, doc.length);
+    const third = computeListLines(state, 0, doc.length).find(
+      (info) => info.from === 10,
+    );
+    expect(third).toEqual({
+      from: 10,
+      width: 6,
+      guides: [2, 4],
+      leading: { from: 10, to: 14, width: 4 },
+    });
+  });
+
+  it("collects the lines of checked tasks", () => {
+    const doc = "- [ ] fer\n- [x] fet";
+    const state = stateFor(doc, doc.length);
+    expect(computeDoneTaskLines(state, 0, doc.length)).toEqual([10]);
   });
 
   it("collects heading lines with their level, for both syntaxes", () => {

@@ -46,6 +46,7 @@
   --shadow-color: rgba(0, 0, 0, 0.5);
   /* --- and table lines, brighter than the chrome borders on purpose. */
   --hr-color: rgba(255, 255, 255, 0.3);
+  --indentation-guide: rgba(255, 255, 255, 0.16);
 
   --text-normal: #dadada;
   --text-muted: #9e9e9e;
@@ -82,6 +83,7 @@
   --background-modifier-cover: rgba(0, 0, 0, 0.25);
   --shadow-color: rgba(0, 0, 0, 0.15);
   --hr-color: rgba(0, 0, 0, 0.25);
+  --indentation-guide: rgba(0, 0, 0, 0.16);
 
   --text-normal: var(--color-1);
   --text-muted: rgba(2, 8, 50, 0.65);

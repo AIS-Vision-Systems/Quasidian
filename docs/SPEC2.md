@@ -31,10 +31,11 @@ Llegeix `SPEC.md` abans de començar: tot el que hi diu segueix vigent excepte o
     - Barra inferior completa: backlinks del fitxer obert, paraules, caràcters, mode edició/lectura (paraules i mode ja hi són).
     - Botó de copiar el contingut als code blocks del mode lectura (l'etiqueta del llenguatge ja hi és).
 13. **Tema i tipografia**:
-    - Text blanc (`--text-normal` blanc suau, no el crema actual), enllaços liles i selecció amb fons lila: `--text-accent` i `--text-selection` derivats del color d'accent configurable (hi ha `--interactive-accent-rgb` per a l'alfa de la selecció).
+    - Text blanc (`--text-normal` blanc suau, no el crema actual), enllaços liles i selecció amb fons lila: `--text-accent` i `--text-selection` derivats del color d'accent configurable. Els enllaços van subratllats sempre (el hover només aclareix el color).
     - Línies horitzontals `---` i vores de taula més visibles/brillants, amb variable pròpia (p. ex. `--hr-color`) per no apujar `--background-modifier-border`, que comparteix tot el chrome.
     - Headings amb lletra més grossa i més espai vertical, sobretot a sobre (escala tipus Obsidian: h1 ~1.8em … h6 1em). En mode edició cal decoració de línia per nivell (l'estil actual només afecta el text, no la línia); el mode lectura ha de quedar mirall.
-    - Llistes: el guió/número només es mostra quan el cursor el toca (no amb tota la línia activa); la resta del temps, bullet. Bullet més indentat (no arran de text) i sagnat penjant: les línies embolcallades s'alineen amb la primera lletra, no amb el guió. Igual per a llistes numerades.
+    - Llistes iguals als dos modes, estil Obsidian: el guió/número només es mostra quan el cursor el toca (no amb tota la línia activa); la resta del temps, bullet — més gran i més indentat (no arran de text). Sagnat penjant: les línies embolcallades s'alineen amb la primera lletra, no amb el guió; igual per a numeracions. Línies verticals de guia per a cada nivell de niuament. Tasques completades amb el text ratllat i esmorteït.
+    - Comportament d'edició de llistes: Tab inicia un nou nivell (les numerades recomencen per 1.), Shift+Tab retorna l'ítem al nivell anterior, i Enter en un ítem buit retrocedeix un nivell (o surt a text pla si és al primer). Les llistes numerades es renumeren automàticament a cada canvi estructural.
 14. **Icones i identitat**:
     - Substituir els emojis de botons (`📖 ✎ 🔗 ⚙ ×`) per icones SVG inline estil lucide (les d'Obsidian), a totes les barres i botons presents i futurs.
     - Icona pròpia de l'aplicació (substituir les icones stock de Tauri a `src-tauri/icons/` amb `tauri icon`).

@@ -383,25 +383,42 @@ export function computeListMarks(
   return marks;
 }
 
-export interface ListIndentInfo {
+export interface ListLineInfo {
   /** Start of the line holding the list marker. */
   from: number;
-  /** Chars from line start through the marker(s) and one space. */
+  /** Hanging indent: chars from line start through the marker + space. */
   width: number;
+  /** Indent-guide columns (in ch): content column of each ancestor item. */
+  guides: number[];
+  /** Leading whitespace to render at a fixed width, or null when none. */
+  leading: { from: number; to: number; width: number } | null;
+}
+
+/** Content column of a list item: end of its marker(s) + one space. */
+function itemContentColumn(state: EditorState, item: SyntaxNode): number {
+  const mark = item.getChild("ListMark");
+  if (mark === null) {
+    return 0;
+  }
+  const taskMarker = item.getChild("Task")?.getChild("TaskMarker") ?? null;
+  const line = state.doc.lineAt(mark.from);
+  return (taskMarker ?? mark).to - line.from + 1;
 }
 
 /**
- * Pure computation of the hanging indent of list-marker lines in
- * [from, to], for bullet, ordered and task items: wrapped text should
- * align with the first letter of the item, not with the marker.
+ * Pure computation of list-marker lines in [from, to], for bullet,
+ * ordered and task items: the hanging indent that aligns wrapped text
+ * with the first letter, the ancestor columns where indent guides are
+ * drawn, and the leading whitespace that must render at a fixed width so
+ * columns stay put in proportional fonts.
  */
-export function computeListIndents(
+export function computeListLines(
   state: EditorState,
   from: number,
   to: number,
-): ListIndentInfo[] {
+): ListLineInfo[] {
   // A line can hold nested markers ("- - x"): the innermost (widest) wins.
-  const byLine = new Map<number, number>();
+  const byLine = new Map<number, ListLineInfo>();
   syntaxTree(state).iterate({
     from,
     to,
@@ -416,15 +433,56 @@ export function computeListIndents(
       const line = state.doc.lineAt(node.from);
       const taskMarker = item.getChild("Task")?.getChild("TaskMarker") ?? null;
       const width = (taskMarker ?? node).to - line.from + 1;
-      if (width > (byLine.get(line.from) ?? 0)) {
-        byLine.set(line.from, width);
+      const existing = byLine.get(line.from);
+      if (existing !== undefined && existing.width >= width) {
+        return;
+      }
+      const guides: number[] = [];
+      for (
+        let ancestor = item.parent?.parent ?? null;
+        ancestor !== null && ancestor.name === "ListItem";
+        ancestor = ancestor.parent?.parent ?? null
+      ) {
+        const mark = ancestor.getChild("ListMark");
+        // Ancestors sharing this line ("- - x") have no column to guide.
+        if (mark !== null && state.doc.lineAt(mark.from).from !== line.from) {
+          guides.unshift(itemContentColumn(state, ancestor));
+        }
+      }
+      const wsLength = /^[ \t]*/.exec(line.text)?.[0].length ?? 0;
+      const leading =
+        wsLength === 0
+          ? null
+          : { from: line.from, to: line.from + wsLength, width: wsLength };
+      byLine.set(line.from, { from: line.from, width, guides, leading });
+    },
+  });
+  return [...byLine.values()];
+}
+
+/**
+ * Pure computation of the lines holding a checked task in [from, to];
+ * their text renders struck through, like in reading mode.
+ */
+export function computeDoneTaskLines(
+  state: EditorState,
+  from: number,
+  to: number,
+): number[] {
+  const lines: number[] = [];
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter(node) {
+      if (node.name !== "TaskMarker") {
+        return;
+      }
+      if (state.doc.sliceString(node.from, node.to).toLowerCase().includes("x")) {
+        lines.push(state.doc.lineAt(node.from).from);
       }
     },
   });
-  return [...byLine.entries()].map(([lineFrom, width]) => ({
-    from: lineFrom,
-    width,
-  }));
+  return lines;
 }
 
 export interface HeadingLineInfo {
@@ -733,6 +791,7 @@ const codeblockEnd = Decoration.line({ class: "cm-codeblock-end" });
 const headingLines = [1, 2, 3, 4, 5, 6].map((level) =>
   Decoration.line({ class: `cm-heading-line cm-heading-${level}` }),
 );
+const taskDoneLine = Decoration.line({ class: "cm-task-done" });
 const bulletDecoration = Decoration.replace({ widget: new BulletWidget() });
 const hrDecoration = Decoration.replace({ widget: new HrWidget() });
 
@@ -874,13 +933,40 @@ function buildDecorations(
         ranges.push(bulletDecoration.range(mark.from, mark.to));
       }
     }
-    for (const indent of computeListIndents(state, from, to)) {
+    for (const info of computeListLines(state, from, to)) {
+      const style = [`--list-indent: ${info.width}ch`];
+      if (info.guides.length > 0) {
+        // One vertical 1px gradient layer per ancestor level, at that
+        // level's content column; the line box spans wrapped lines, so
+        // guides stay continuous.
+        const guide =
+          "linear-gradient(var(--indentation-guide), var(--indentation-guide))";
+        style.push(
+          `background-image: ${info.guides.map(() => guide).join(", ")}`,
+          `background-position: ${info.guides
+            .map((column) => `calc(1em + ${column}ch - 1px) 0`)
+            .join(", ")}`,
+          "background-size: 1px 100%",
+          "background-repeat: no-repeat",
+        );
+      }
       ranges.push(
         Decoration.line({
           class: "cm-list-line",
-          attributes: { style: `--list-indent: ${indent.width}ch` },
-        }).range(indent.from),
+          attributes: { style: style.join("; ") },
+        }).range(info.from),
       );
+      if (info.leading !== null) {
+        ranges.push(
+          Decoration.mark({
+            class: "cm-list-ws",
+            attributes: { style: `width: ${info.leading.width}ch` },
+          }).range(info.leading.from, info.leading.to),
+        );
+      }
+    }
+    for (const lineFrom of computeDoneTaskLines(state, from, to)) {
+      ranges.push(taskDoneLine.range(lineFrom));
     }
     for (const heading of computeHeadingLines(state, from, to)) {
       ranges.push(headingLines[heading.level - 1].range(heading.from));
