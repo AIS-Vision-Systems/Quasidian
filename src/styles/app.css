@@ -411,13 +411,14 @@ body.is-readable-line-length .cm-editor .cm-content {
   transform-origin: 0.4ch center;
 }
 
-/* Leading whitespace of list lines at a fixed 1ch-per-char width, so
-   marker columns and indent guides stay put in proportional fonts. */
+/* Leading whitespace of list lines at a fixed width (2ch per column, an
+   Obsidian-like visual step), so marker columns and indent guides stay
+   put in proportional fonts. No overflow:hidden — it would move the
+   inline-block baseline to its bottom edge and inflate the line height. */
 .cm-editor .cm-list-ws {
   display: inline-block;
   text-indent: 0;
   white-space: pre;
-  overflow: hidden;
 }
 
 .cm-editor .cm-task-done {

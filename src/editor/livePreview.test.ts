@@ -270,9 +270,9 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
       { from: 0, width: 2, guides: [], leading: null },
       {
         from: 7,
-        width: 4,
+        width: 6,
         guides: [2],
-        leading: { from: 7, to: 9, width: 2 },
+        leading: { from: 7, to: 9, width: 4 },
       },
       { from: 16, width: 3, guides: [], leading: null },
     ]);
@@ -294,9 +294,9 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     );
     expect(third).toEqual({
       from: 10,
-      width: 6,
-      guides: [2, 4],
-      leading: { from: 10, to: 14, width: 4 },
+      width: 10,
+      guides: [2, 6],
+      leading: { from: 10, to: 14, width: 8 },
     });
   });
 

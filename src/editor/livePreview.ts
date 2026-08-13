@@ -394,7 +394,23 @@ export interface ListLineInfo {
   leading: { from: number; to: number; width: number } | null;
 }
 
-/** Content column of a list item: end of its marker(s) + one space. */
+/**
+ * Each leading-whitespace column renders this many ch, so nesting steps
+ * read clearly (Obsidian-like) instead of two skinny source spaces.
+ */
+const INDENT_SCALE = 2;
+
+/** Leading-whitespace columns of a line (tabs count double). */
+function leadingColumns(lineText: string): number {
+  const ws = /^[ \t]*/.exec(lineText)?.[0] ?? "";
+  let columns = 0;
+  for (const ch of ws) {
+    columns += ch === "\t" ? 2 : 1;
+  }
+  return columns;
+}
+
+/** Rendered content column of a list item: scaled leading + marker + space. */
 function itemContentColumn(state: EditorState, item: SyntaxNode): number {
   const mark = item.getChild("ListMark");
   if (mark === null) {
@@ -402,7 +418,9 @@ function itemContentColumn(state: EditorState, item: SyntaxNode): number {
   }
   const taskMarker = item.getChild("Task")?.getChild("TaskMarker") ?? null;
   const line = state.doc.lineAt(mark.from);
-  return (taskMarker ?? mark).to - line.from + 1;
+  const wsLength = /^[ \t]*/.exec(line.text)?.[0].length ?? 0;
+  const markerLength = (taskMarker ?? mark).to - (line.from + wsLength) + 1;
+  return leadingColumns(line.text) * INDENT_SCALE + markerLength;
 }
 
 /**
@@ -432,7 +450,11 @@ export function computeListLines(
       }
       const line = state.doc.lineAt(node.from);
       const taskMarker = item.getChild("Task")?.getChild("TaskMarker") ?? null;
-      const width = (taskMarker ?? node).to - line.from + 1;
+      const wsLength = /^[ \t]*/.exec(line.text)?.[0].length ?? 0;
+      const wsWidth = leadingColumns(line.text) * INDENT_SCALE;
+      const markerLength =
+        (taskMarker ?? node).to - (line.from + wsLength) + 1;
+      const width = wsWidth + markerLength;
       const existing = byLine.get(line.from);
       if (existing !== undefined && existing.width >= width) {
         return;
@@ -449,11 +471,10 @@ export function computeListLines(
           guides.unshift(itemContentColumn(state, ancestor));
         }
       }
-      const wsLength = /^[ \t]*/.exec(line.text)?.[0].length ?? 0;
       const leading =
         wsLength === 0
           ? null
-          : { from: line.from, to: line.from + wsLength, width: wsLength };
+          : { from: line.from, to: line.from + wsLength, width: wsWidth };
       byLine.set(line.from, { from: line.from, width, guides, leading });
     },
   });
