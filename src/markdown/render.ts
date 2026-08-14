@@ -380,29 +380,22 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
       const label = node.getChild("FootnoteLabel");
       const id =
         label === null ? "" : escapeHtml(doc.slice(label.from, label.to));
+      const number = footnoteNumbers.get(id) ?? "?";
       out.push(
-        `<sup class="footnote-ref"><a class="footnote-link" id="fnref-${id}" href="#fn-${id}">${id}</a></sup>`,
+        `<sup class="footnote-ref"><a class="footnote-link" id="fnref-${id}" href="#fn-${id}">[${number}]</a></sup>`,
       );
       return;
     }
-    case "FootnoteDef": {
-      const label = node.getChild("FootnoteLabel");
-      const id =
-        label === null ? "" : escapeHtml(doc.slice(label.from, label.to));
-      const marks = node.getChildren("FootnoteMark");
-      let contentFrom = marks[1]?.to ?? node.from;
-      if (doc[contentFrom] === " " || doc[contentFrom] === "\t") {
-        contentFrom++;
-      }
+    case "FootnoteInline": {
+      const number = inlineNoteNumbers.get(node.from) ?? "?";
       out.push(
-        `<div class="footnote-def" id="fn-${id}"><sup class="footnote-def-label">${id}</sup> `,
-      );
-      renderInline(node, Math.min(contentFrom, node.to), node.to, doc, out);
-      out.push(
-        ` <a class="footnote-back" href="#fnref-${id}">↩</a></div>`,
+        `<sup class="footnote-ref"><a class="footnote-link" id="fnref-i${number}" href="#fn-i${number}">[${number}]</a></sup>`,
       );
       return;
     }
+    case "FootnoteDef":
+      // Collected and rendered at the bottom of the note.
+      return;
     case "Frontmatter": {
       if (renderProperties) {
         out.push(renderPropertiesHtml(parseFrontmatter(doc), false));
@@ -618,12 +611,108 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
 // through every renderer.
 let renderProperties = true;
 
+// Footnote numbering for the current render: labels are numbered by
+// first appearance (references first, then leftover definitions), and
+// inline notes `^[…]` take the next number at their position.
+let footnoteNumbers = new Map<string, number>();
+let inlineNoteNumbers = new Map<number, number>();
+
+/**
+ * Content HTML of the definition for `label`, or of the inline note at
+ * `notePos` — used by the footnote hover popups so both modes share the
+ * render pipeline.
+ */
+export function renderFootnoteContent(
+  doc: string,
+  label: string | null,
+  notePos?: number,
+): string | null {
+  const tree = markdownParser.parse(doc);
+  let html: string | null = null;
+  tree.iterate({
+    enter(ref) {
+      if (html !== null) {
+        return false;
+      }
+      if (label !== null && ref.name === "FootnoteDef") {
+        const node = ref.node;
+        const labelNode = node.getChild("FootnoteLabel");
+        if (
+          labelNode === null ||
+          doc.slice(labelNode.from, labelNode.to) !== label
+        ) {
+          return;
+        }
+        const marks = node.getChildren("FootnoteMark");
+        let contentFrom = marks[1]?.to ?? node.from;
+        if (doc[contentFrom] === " " || doc[contentFrom] === "\t") {
+          contentFrom++;
+        }
+        const out: string[] = ["<p>"];
+        renderInline(node, Math.min(contentFrom, node.to), node.to, doc, out);
+        out.push("</p>");
+        html = out.join("");
+      } else if (
+        label === null &&
+        ref.name === "FootnoteInline" &&
+        ref.from === notePos
+      ) {
+        const node = ref.node;
+        const marks = node.getChildren("FootnoteMark");
+        const from = marks[0]?.to ?? node.from;
+        const to = marks[marks.length - 1]?.from ?? node.to;
+        const out: string[] = ["<p>"];
+        renderInline(node, from, to, doc, out);
+        out.push("</p>");
+        html = out.join("");
+      }
+    },
+  });
+  return html;
+}
+
 export function renderToHtml(
   doc: string,
   options?: { properties?: boolean },
 ): string {
   renderProperties = options?.properties ?? true;
   const tree = markdownParser.parse(doc);
+
+  // Pre-scan: assign footnote numbers and collect definitions/inline
+  // notes so they all render at the bottom, Obsidian-style.
+  footnoteNumbers = new Map();
+  inlineNoteNumbers = new Map();
+  const defs: SyntaxNode[] = [];
+  const inlineNotes: SyntaxNode[] = [];
+  let next = 1;
+  tree.iterate({
+    enter(ref) {
+      if (ref.name === "FootnoteRef") {
+        const label = ref.node.getChild("FootnoteLabel");
+        if (label !== null) {
+          const id = escapeHtml(doc.slice(label.from, label.to));
+          if (!footnoteNumbers.has(id)) {
+            footnoteNumbers.set(id, next++);
+          }
+        }
+      } else if (ref.name === "FootnoteInline") {
+        inlineNoteNumbers.set(ref.from, next++);
+        inlineNotes.push(ref.node);
+      } else if (ref.name === "FootnoteDef") {
+        defs.push(ref.node);
+      }
+    },
+  });
+  for (const def of defs) {
+    const label = def.getChild("FootnoteLabel");
+    if (label !== null) {
+      const id = escapeHtml(doc.slice(label.from, label.to));
+      if (!footnoteNumbers.has(id)) {
+        footnoteNumbers.set(id, next++);
+      }
+    }
+  }
+
   const out: string[] = [];
   for (
     let child = tree.topNode.firstChild;
@@ -631,6 +720,51 @@ export function renderToHtml(
     child = child.nextSibling
   ) {
     renderNode(child, doc, out);
+  }
+
+  // Footnote section: every definition and inline note, in number order,
+  // after a separator line.
+  const entries: { number: number; html: string }[] = [];
+  for (const def of defs) {
+    const label = def.getChild("FootnoteLabel");
+    const id =
+      label === null ? "" : escapeHtml(doc.slice(label.from, label.to));
+    const number = footnoteNumbers.get(id) ?? 0;
+    const marks = def.getChildren("FootnoteMark");
+    let contentFrom = marks[1]?.to ?? def.from;
+    if (doc[contentFrom] === " " || doc[contentFrom] === "\t") {
+      contentFrom++;
+    }
+    const parts: string[] = [
+      `<li class="footnote-def" id="fn-${id}" value="${number}">`,
+    ];
+    renderInline(def, Math.min(contentFrom, def.to), def.to, doc, parts);
+    parts.push(
+      ` <a class="footnote-back" href="#fnref-${id}">↩</a></li>`,
+    );
+    entries.push({ number, html: parts.join("") });
+  }
+  for (const note of inlineNotes) {
+    const number = inlineNoteNumbers.get(note.from) ?? 0;
+    const marks = note.getChildren("FootnoteMark");
+    const from = marks[0]?.to ?? note.from;
+    const to = marks[marks.length - 1]?.from ?? note.to;
+    const parts: string[] = [
+      `<li class="footnote-def" id="fn-i${number}" value="${number}">`,
+    ];
+    renderInline(note, from, to, doc, parts);
+    parts.push(
+      ` <a class="footnote-back" href="#fnref-i${number}">↩</a></li>`,
+    );
+    entries.push({ number, html: parts.join("") });
+  }
+  if (entries.length > 0) {
+    entries.sort((a, b) => a.number - b.number);
+    out.push('<div class="footnotes"><hr class="footnotes-sep"><ol class="footnotes-list">');
+    for (const entry of entries) {
+      out.push(entry.html);
+    }
+    out.push("</ol></div>");
   }
   return out.join("");
 }

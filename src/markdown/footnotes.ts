@@ -40,6 +40,7 @@ function parseFootnoteDef(cx: BlockContext, line: Line): boolean {
 export const footnotes: MarkdownConfig = {
   defineNodes: [
     { name: "FootnoteRef", style: footnoteTag },
+    { name: "FootnoteInline", style: footnoteTag },
     { name: "FootnoteDef", block: true },
     { name: "FootnoteMark", style: tags.processingInstruction },
     { name: "FootnoteLabel", style: footnoteTag },
@@ -52,6 +53,31 @@ export const footnotes: MarkdownConfig = {
     },
   ],
   parseInline: [
+    {
+      // Direct footnotes `^[text]`: auto-numbered, no separate definition.
+      name: "FootnoteInline",
+      before: "Link",
+      parse(cx, next, pos) {
+        if (next !== CARET || cx.char(pos + 1) !== BRACKET_OPEN) {
+          return -1;
+        }
+        let i = pos + 2;
+        while (i < cx.end && cx.char(i) !== BRACKET_CLOSE) {
+          i++;
+        }
+        if (i >= cx.end || i === pos + 2) {
+          return -1;
+        }
+        const content = cx.slice(pos + 2, i);
+        return cx.addElement(
+          cx.elt("FootnoteInline", pos, i + 1, [
+            cx.elt("FootnoteMark", pos, pos + 2),
+            ...cx.parser.parseInline(content, pos + 2),
+            cx.elt("FootnoteMark", i, i + 1),
+          ]),
+        );
+      },
+    },
     {
       name: "FootnoteRef",
       before: "Link",

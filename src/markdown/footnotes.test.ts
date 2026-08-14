@@ -50,6 +50,13 @@ describe("footnotes Lezer extension", () => {
     expect(bold).toBe(true);
   });
 
+  it("parses direct inline footnotes ^[text]", () => {
+    const found = nodes("a ^[directa] b");
+    expect(found[0]).toEqual({ name: "FootnoteInline", from: 2, to: 12 });
+    expect(found).toContainEqual({ name: "FootnoteMark", from: 2, to: 4 });
+    expect(found).toContainEqual({ name: "FootnoteMark", from: 11, to: 12 });
+  });
+
   it("ignores malformed references", () => {
     expect(nodes("[^]")).toEqual([]);
     expect(nodes("[^amb espai]")).toEqual([]);

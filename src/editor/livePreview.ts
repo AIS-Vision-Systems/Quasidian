@@ -11,7 +11,7 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
-import { Prec, StateField, type EditorState, type Range } from "@codemirror/state";
+import { EditorState, Prec, StateField, type Range } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -84,7 +84,7 @@ const INLINE_MARKS: Record<string, string[]> = {
   CodeMark: ["InlineCode"],
   StrikethroughMark: ["Strikethrough"],
   HighlightMark: ["Highlight"],
-  FootnoteMark: ["FootnoteRef"],
+  FootnoteMark: ["FootnoteRef", "FootnoteInline"],
 };
 
 function selectionTouches(
@@ -2113,6 +2113,113 @@ const blockDecorations = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
+/**
+ * The blank line after a table is protected: navigable but never
+ * deletable (two tables must not merge), and typing on it pushes the
+ * text to a fresh line below so it always stays blank.
+ */
+export const tableBlankGuard = EditorState.transactionFilter.of((tr) => {
+  if (!tr.docChanged) {
+    return tr;
+  }
+  const state = tr.startState;
+  interface Guard {
+    tableFrom: number;
+    newline: number;
+    lineFrom: number;
+    lineTo: number;
+  }
+  const guards: Guard[] = [];
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== "Table") {
+        return;
+      }
+      const end = state.doc.lineAt(node.to).to;
+      if (end < state.doc.length) {
+        const guardLine = state.doc.lineAt(end + 1);
+        if (guardLine.text.trim() === "") {
+          guards.push({
+            tableFrom: state.doc.lineAt(node.from).from,
+            newline: end,
+            lineFrom: guardLine.from,
+            lineTo: guardLine.to,
+          });
+        }
+      }
+      return false;
+    },
+  });
+  if (guards.length === 0) {
+    return tr;
+  }
+  const insideTable = (pos: number): boolean => {
+    let node: SyntaxNode | null = syntaxTree(state).resolveInner(
+      Math.min(pos, state.doc.length),
+      1,
+    );
+    while (node !== null) {
+      if (node.name === "Table") {
+        return true;
+      }
+      node = node.parent;
+    }
+    return false;
+  };
+  let blocked = false;
+  const retyped: { pos: number; text: string }[] = [];
+  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    const text = inserted.toString();
+    for (const guard of guards) {
+      // Removing the newline right after the table (unless the whole
+      // table is deleted with it, or a newline is put back).
+      if (
+        fromA <= guard.newline &&
+        toA > guard.newline &&
+        fromA > guard.tableFrom &&
+        !text.includes("\n")
+      ) {
+        blocked = true;
+      }
+      // Removing the guard's own newline when a table follows would
+      // merge the two tables (deleting the whole table above is fine).
+      if (
+        fromA <= guard.lineTo &&
+        toA > guard.lineTo &&
+        fromA > guard.tableFrom &&
+        !text.includes("\n") &&
+        insideTable(guard.lineTo + 1)
+      ) {
+        blocked = true;
+      }
+      // Plain typing on the blank guard line.
+      if (
+        fromA === toA &&
+        fromA >= guard.lineFrom &&
+        fromA <= guard.lineTo &&
+        text !== "" &&
+        !text.startsWith("\n")
+      ) {
+        retyped.push({ pos: fromA, text });
+      }
+    }
+  });
+  if (blocked) {
+    return [];
+  }
+  const typed = retyped[0];
+  if (typed !== undefined) {
+    return [
+      {
+        changes: { from: typed.pos, to: typed.pos, insert: `\n${typed.text}` },
+        selection: { anchor: typed.pos + 1 + typed.text.length },
+        scrollIntoView: true,
+      },
+    ];
+  }
+  return tr;
+});
+
 /** Frontmatter and tables are atomic: the cursor never sits inside. */
 const frontmatterAtomic = EditorView.atomicRanges.of((view) => {
   const ranges: Range<Decoration>[] = [];
@@ -2196,6 +2303,7 @@ export function livePreview(hooks: LivePreviewHooks) {
   return [
     blockDecorations,
     frontmatterAtomic,
+    tableBlankGuard,
     Prec.high(
       keymap.of([
         { key: "ArrowDown", run: (view) => moveIntoBlock(view, true) },

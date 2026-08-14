@@ -36,7 +36,10 @@ export type IconName =
   | "flame"
   | "alert-triangle"
   | "check"
-  | "help-circle";
+  | "help-circle"
+  | "minus"
+  | "quote"
+  | "sigma";
 
 const ICON_PATHS: Record<IconName, string> = {
   "book-open":
@@ -124,6 +127,11 @@ const ICON_PATHS: Record<IconName, string> = {
     '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>' +
     '<path d="M12 9v4"/><path d="M12 17h.01"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  minus: '<path d="M5 12h14"/>',
+  quote:
+    '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/><path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
+  sigma:
+    '<path d="M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2"/>',
   "help-circle":
     '<circle cx="12" cy="12" r="10"/>' +
     '<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',

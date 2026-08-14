@@ -42,7 +42,12 @@ import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag } from "../markdown/wikilinks";
 import { openContextMenu } from "../ui/contextMenu";
-import { scheduleHoverHide, scheduleHoverShow } from "../ui/hoverPreview";
+import { renderFootnoteContent } from "../markdown/render";
+import {
+  scheduleHoverHide,
+  scheduleHoverShow,
+  scheduleHtmlHover,
+} from "../ui/hoverPreview";
 import {
   copyText,
   type EmbedNoteResult,
@@ -214,6 +219,51 @@ function insertTableCommand(view: EditorView): void {
   });
 }
 
+/** Inserts `snippet` as its own block; cursor at `cursorOffset` into it. */
+function insertBlockSnippet(
+  view: EditorView,
+  snippet: string,
+  cursorOffset: number,
+): void {
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  const prefix = line.text.trim() === "" ? "" : "\n\n";
+  const from = line.to;
+  view.dispatch({
+    changes: { from, insert: `${prefix}${snippet}` },
+    selection: { anchor: from + prefix.length + cursorOffset },
+    scrollIntoView: true,
+  });
+  view.focus();
+}
+
+/**
+ * Inserts a `[^n]` reference at the cursor (next free number) and its
+ * definition at the end of the note, cursor on the definition.
+ */
+function insertFootnoteCommand(view: EditorView): void {
+  const { state } = view;
+  const doc = state.doc.toString();
+  let max = 0;
+  for (const match of doc.matchAll(/\[\^(\d+)\]/g)) {
+    max = Math.max(max, Number(match[1]));
+  }
+  const label = `${max + 1}`;
+  const head = state.selection.main.to;
+  const ref = `[^${label}]`;
+  const tail = doc === "" ? "" : doc.endsWith("\n") ? "\n" : "\n\n";
+  const def = `${tail}[^${label}]: `;
+  view.dispatch({
+    changes: [
+      { from: head, insert: ref },
+      { from: state.doc.length, insert: def },
+    ],
+    selection: { anchor: state.doc.length + ref.length + def.length },
+    scrollIntoView: true,
+  });
+  view.focus();
+}
+
 function openEditorMenu(view: EditorView, x: number, y: number): void {
   const hasSelection = !view.state.selection.main.empty;
   openContextMenu(x, y, [
@@ -248,9 +298,41 @@ function openEditorMenu(view: EditorView, x: number, y: number): void {
       onClick: () => insertLink(view),
     },
     {
-      label: t("menu.insertTable"),
-      icon: "table",
-      onClick: () => insertTableCommand(view),
+      label: t("menu.insert"),
+      icon: "plus",
+      submenu: [
+        {
+          label: t("menu.insertFootnote"),
+          icon: "text",
+          onClick: () => insertFootnoteCommand(view),
+        },
+        {
+          label: t("menu.table"),
+          icon: "table",
+          onClick: () => insertTableCommand(view),
+        },
+        {
+          label: t("menu.insertCallout"),
+          icon: "quote",
+          onClick: () => insertBlockSnippet(view, "> [!note] \n> ", 10),
+        },
+        {
+          label: t("menu.insertHr"),
+          icon: "minus",
+          onClick: () => insertBlockSnippet(view, "---\n", 4),
+        },
+        "separator",
+        {
+          label: t("menu.insertCodeBlock"),
+          icon: "code",
+          onClick: () => insertBlockSnippet(view, "```\n\n```\n", 4),
+        },
+        {
+          label: t("menu.insertMathBlock"),
+          icon: "sigma",
+          onClick: () => insertBlockSnippet(view, "$$\n\n$$\n", 3),
+        },
+      ],
     },
     {
       label: t("menu.format"),
@@ -279,6 +361,36 @@ function openEditorMenu(view: EditorView, x: number, y: number): void {
       ],
     },
   ]);
+}
+
+/** Footnote content for the ref or inline note at `pos`, or null. */
+function footnoteHoverAt(
+  state: EditorState,
+  pos: number,
+): { key: string; html: string } | null {
+  let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 0);
+  while (
+    node !== null &&
+    node.name !== "FootnoteRef" &&
+    node.name !== "FootnoteInline"
+  ) {
+    node = node.parent;
+  }
+  if (node === null) {
+    return null;
+  }
+  const doc = state.doc.toString();
+  if (node.name === "FootnoteInline") {
+    const html = renderFootnoteContent(doc, null, node.from);
+    return html === null ? null : { key: `fni-${node.from}`, html };
+  }
+  const label = node.getChild("FootnoteLabel");
+  if (label === null) {
+    return null;
+  }
+  const id = doc.slice(label.from, label.to);
+  const html = renderFootnoteContent(doc, id);
+  return html === null ? null : { key: `fn-${id}`, html };
 }
 
 /** Wikilink target at `pos`, or null when the position is not inside one. */
@@ -543,6 +655,17 @@ export function createEditor(
             const target =
               pos === null ? null : wikilinkTargetAt(view.state, pos);
             if (target === null) {
+              const note =
+                pos === null ? null : footnoteHoverAt(view.state, pos);
+              if (note !== null) {
+                scheduleHtmlHover(
+                  event.clientX,
+                  event.clientY,
+                  note.key,
+                  note.html,
+                );
+                return false;
+              }
               scheduleHoverHide();
               return false;
             }

@@ -12,6 +12,7 @@ import { createIcon } from "./icons";
 import {
   scheduleHoverHide,
   scheduleHoverShow,
+  scheduleHtmlHover,
 } from "./hoverPreview";
 import {
   addCodePills,
@@ -111,7 +112,8 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
   content.className = "reading-view-content markdown-rendered";
   element.append(content);
 
-  // Hovering an internal link previews the note (or section).
+  // Hovering an internal link previews the note (or section); hovering
+  // a footnote reference previews the footnote's content.
   element.addEventListener("mouseover", (event) => {
     const target = event.target;
     const link =
@@ -123,13 +125,33 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
         isResolved: hooks.isResolved,
         onNavigate: hooks.onInternalLink,
       });
+      return;
+    }
+    const footnote =
+      target instanceof Element ? target.closest("a.footnote-link") : null;
+    if (footnote !== null) {
+      const href = footnote.getAttribute("href") ?? "";
+      const def = href.startsWith("#fn-")
+        ? content.querySelector(`[id="${href.slice(1)}"]`)
+        : null;
+      if (def !== null) {
+        const clone = def.cloneNode(true) as HTMLElement;
+        clone.querySelector(".footnote-back")?.remove();
+        scheduleHtmlHover(
+          event.clientX,
+          event.clientY,
+          href,
+          `<p>${clone.innerHTML}</p>`,
+        );
+      }
     }
   });
   element.addEventListener("mouseout", (event) => {
     const target = event.target;
     if (
       target instanceof Element &&
-      target.closest("a.internal-link") !== null
+      (target.closest("a.internal-link") !== null ||
+        target.closest("a.footnote-link") !== null)
     ) {
       scheduleHoverHide();
     }

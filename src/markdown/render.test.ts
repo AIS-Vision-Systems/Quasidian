@@ -15,14 +15,26 @@ describe("renderToHtml — blocks", () => {
     expect(renderToHtml("`codi`")).toBe("<p><code>codi</code></p>");
   });
 
-  it("renders footnote references and definitions", () => {
+  it("renders footnote references and collects definitions at the bottom", () => {
     const html = renderToHtml("text[^1]\n\n[^1]: la nota");
     expect(html).toContain(
-      '<sup class="footnote-ref"><a class="footnote-link" id="fnref-1" href="#fn-1">1</a></sup>',
+      '<sup class="footnote-ref"><a class="footnote-link" id="fnref-1" href="#fn-1">[1]</a></sup>',
     );
-    expect(html).toContain('<div class="footnote-def" id="fn-1">');
+    expect(html).toContain('<hr class="footnotes-sep">');
+    expect(html).toContain('<ol class="footnotes-list">');
+    expect(html).toContain('<li class="footnote-def" id="fn-1"');
     expect(html).toContain("la nota");
     expect(html).toContain('href="#fnref-1"');
+    // The definition renders at the bottom, after the last paragraph.
+    expect(html.indexOf("la nota")).toBeGreaterThan(html.indexOf("</p>"));
+  });
+
+  it("renders direct footnotes ^[...] with automatic numbers", () => {
+    const html = renderToHtml("abans^[nota directa] i despres[^x]\n\n[^x]: def");
+    expect(html).toContain('id="fnref-i1" href="#fn-i1">[1]');
+    expect(html).toContain('<li class="footnote-def" id="fn-i1"');
+    expect(html).toContain("nota directa");
+    expect(html).toContain('href="#fn-x">[2]');
   });
 
   it("renders callouts with type, icon, title and content", () => {
@@ -38,6 +50,11 @@ describe("renderToHtml — blocks", () => {
   it("uses the type as title when the callout has none", () => {
     const html = renderToHtml("> [!tip]\n> Cos");
     expect(html).toContain(">Tip</");
+  });
+
+  it("colors the success family green, check alias included", () => {
+    const html = renderToHtml("> [!check] Fet\n> cos");
+    expect(html).toContain("--callout-color:68,207,110");
   });
 
   it("renders blockquotes", () => {

@@ -1385,6 +1385,12 @@ body.is-readable-line-length .reading-view-content {
   padding-bottom: 20px;
 }
 
+/* The wrap's padding provides the block spacing; without this the
+   table's own bottom margin pushes the add-row button too far down. */
+.table-wrap > table {
+  margin: 0;
+}
+
 .table-edge-add {
   position: absolute;
   display: flex;
@@ -1764,9 +1770,9 @@ body.is-readable-line-length .reading-view-content {
 
 .callout {
   margin: 0 0 1em;
-  padding: 12px 14px;
-  background-color: rgba(var(--callout-color), 0.1);
-  border-radius: 8px;
+  padding: 14px 16px;
+  background-color: rgba(var(--callout-color), 0.18);
+  border-radius: 10px;
 }
 
 .callout-title {
@@ -1793,7 +1799,7 @@ body.is-readable-line-length .reading-view-content {
 
 /* Editing mode: tinted lines, icon and bold title. */
 .cm-editor .cm-callout-line {
-  background-color: rgba(var(--callout-color), 0.1);
+  background-color: rgba(var(--callout-color), 0.18);
   border-left-color: rgb(var(--callout-color));
 }
 
@@ -1824,18 +1830,33 @@ body.is-readable-line-length .reading-view-content {
   font-size: 0.85em;
 }
 
-.footnote-def {
-  margin: 0 0 0.5em;
+/* Footnote section at the bottom of the note, after a separator. */
+.footnotes {
+  margin-top: 2em;
+}
+
+.footnotes .footnotes-sep {
+  margin: 0 0 0.8em;
+}
+
+.footnotes-list {
+  margin: 0;
+  padding-left: 1.6em;
   color: var(--text-muted);
   font-size: calc(var(--font-text-size) * 0.9);
 }
 
-.footnote-def-label {
-  color: var(--text-accent);
+.footnotes-list .footnote-def {
+  margin: 0 0 0.4em;
+}
+
+.footnotes-list .footnote-def::marker {
+  color: var(--text-faint);
 }
 
 .footnote-back {
   font-size: 0.85em;
+  text-decoration: none;
 }
 
 /* Reading-mode section folding. */

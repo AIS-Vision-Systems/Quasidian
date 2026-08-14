@@ -10,23 +10,32 @@ export interface CalloutHeader {
   markerLength: number;
 }
 
+// The type catalogue follows Obsidian's callout help page (aliases
+// included).
 const CALLOUT_STYLES: Record<string, { color: string; icon: IconName }> = {
   note: { color: "68,138,255", icon: "pencil" },
   info: { color: "68,138,255", icon: "info" },
   todo: { color: "68,138,255", icon: "check" },
+  abstract: { color: "0,176,255", icon: "list" },
+  summary: { color: "0,176,255", icon: "list" },
+  tldr: { color: "0,176,255", icon: "list" },
   tip: { color: "0,191,188", icon: "flame" },
   hint: { color: "0,191,188", icon: "flame" },
   important: { color: "0,191,188", icon: "flame" },
   success: { color: "68,207,110", icon: "check" },
+  check: { color: "68,207,110", icon: "check" },
   done: { color: "68,207,110", icon: "check" },
   question: { color: "233,151,63", icon: "help-circle" },
   help: { color: "233,151,63", icon: "help-circle" },
+  faq: { color: "233,151,63", icon: "help-circle" },
   warning: { color: "233,151,63", icon: "alert-triangle" },
   caution: { color: "233,151,63", icon: "alert-triangle" },
   attention: { color: "233,151,63", icon: "alert-triangle" },
   danger: { color: "233,49,71", icon: "alert-triangle" },
   error: { color: "233,49,71", icon: "alert-triangle" },
   failure: { color: "233,49,71", icon: "x" },
+  fail: { color: "233,49,71", icon: "x" },
+  missing: { color: "233,49,71", icon: "x" },
   bug: { color: "233,49,71", icon: "x" },
   example: { color: "168,130,255", icon: "list" },
   quote: { color: "158,158,158", icon: "text" },
