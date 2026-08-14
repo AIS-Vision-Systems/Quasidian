@@ -170,6 +170,8 @@ export interface EmbedFillHooks {
   /** When set, links inside embed bodies preview on hover. */
   onLinkHover?(x: number, y: number, target: string): void;
   onLinkLeave?(): void;
+  /** Navigation for links clicked inside popups/embeds. */
+  onNavigate?(target: string): void;
 }
 
 /** Dims internal links whose note does not exist. */

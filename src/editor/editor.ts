@@ -515,6 +515,7 @@ export function createEditor(
               resolveEmbedSrc: hooks.resolveEmbedSrc,
               renderEmbedNote: hooks.renderEmbedNote,
               isResolved: hooks.isResolved,
+              onNavigate: hooks.onWikilinkClick,
             });
             return false;
           },

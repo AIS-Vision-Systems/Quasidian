@@ -678,12 +678,25 @@ class NoteEmbedWidget extends WidgetType {
       renderEmbedNote: this.hooks.renderEmbedNote,
       isResolved: this.hooks.isResolved,
       onRendered: () => view.requestMeasure(),
+      onNavigate: this.hooks.onNavigate,
     };
     // Embedded content behaves like rendered content: plain hover
     // previews its links, even in editing mode.
     fillHooks.onLinkHover = (x, y, target) =>
       scheduleHoverShow(x, y, target, fillHooks);
     fillHooks.onLinkLeave = () => scheduleHoverHide();
+    // …and clicking one of its links opens (or creates) the note.
+    container.addEventListener("click", (event) => {
+      const clicked = event.target;
+      const link =
+        clicked instanceof Element
+          ? clicked.closest("a.internal-link")
+          : null;
+      if (link instanceof HTMLElement && link.dataset.target !== undefined) {
+        event.preventDefault();
+        this.hooks.onNavigate(link.dataset.target);
+      }
+    });
     void this.hooks.renderEmbedNote(this.target).then((result) => {
       if (result === null) {
         title.classList.add("cm-embed-missing");

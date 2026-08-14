@@ -121,6 +121,7 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
         resolveEmbedSrc: hooks.resolveEmbedSrc,
         renderEmbedNote: hooks.renderEmbedNote,
         isResolved: hooks.isResolved,
+        onNavigate: hooks.onInternalLink,
       });
     }
   });
