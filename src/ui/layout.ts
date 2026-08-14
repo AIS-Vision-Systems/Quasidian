@@ -1245,10 +1245,35 @@ export function mountLayout(root: HTMLElement): void {
   });
   searchClose.addEventListener("click", closeSearch);
 
+  // The WebView's own context menu (reload, print…) never applies here;
+  // our menus preventDefault on their targets before this runs.
+  window.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+
   window.addEventListener("keydown", (event) => {
     // Already consumed (e.g. the editor keymap handled Ctrl+E): acting
     // again here would toggle twice and look like a no-op.
     if (event.defaultPrevented) {
+      return;
+    }
+    // WebView chrome shortcuts: reload would wipe the session, and
+    // Ctrl+S must save the note instead of the page.
+    if (
+      event.key === "F5" ||
+      ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r")
+    ) {
+      event.preventDefault();
+      return;
+    }
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      event.key.toLowerCase() === "s"
+    ) {
+      event.preventDefault();
+      void saveNow();
       return;
     }
     if (

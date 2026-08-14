@@ -108,14 +108,18 @@ export function renderPropertiesHtml(
     out.push("</span></div>");
   });
   if (interactive) {
-    // Known keys (tags/aliases first) as a datalist; free text still works.
+    // Known keys (tags/aliases first) as a datalist; free text still
+    // works, and keys already present in the note are not offered.
+    const present = new Set(
+      data.properties.map((property) => property.key.toLowerCase()),
+    );
     const ordered = [
       "tags",
       "aliases",
       ...knownKeys.filter(
         (key) => !["tags", "aliases"].includes(key.toLowerCase()),
       ),
-    ];
+    ].filter((key) => !present.has(key.toLowerCase()));
     const seen = new Set<string>();
     const options = ordered
       .filter((key) => {

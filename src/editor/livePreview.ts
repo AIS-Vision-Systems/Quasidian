@@ -1025,6 +1025,20 @@ class PropertiesWidget extends WidgetType {
           return;
         }
         const lower = key.toLowerCase();
+        // Same key again: merge into the existing property, never dupe.
+        const existing = data.properties.findIndex(
+          (property) => property.key.toLowerCase() === lower,
+        );
+        if (existing >= 0) {
+          replaceBlock(
+            data.properties.map((property, index) =>
+              index === existing && value !== undefined && value !== ""
+                ? { ...property, values: [...property.values, value] }
+                : property,
+            ),
+          );
+          return;
+        }
         const isList = ["tags", "tag", "aliases", "alias"].includes(lower);
         replaceBlock([
           ...data.properties,
