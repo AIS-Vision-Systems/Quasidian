@@ -2,12 +2,16 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { ask } from "@tauri-apps/plugin-dialog";
+import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n/i18n";
 import {
+  deleteFile,
   listFolder,
   openFolderDialog,
   openMarkdownFileDialog,
   readFile,
+  renameFile,
   startupFile,
   watchFolder,
   writeFile,
@@ -16,10 +20,17 @@ import { createEditor } from "../editor/editor";
 import { createAutosaveScheduler } from "../editor/autosave";
 import { createBacklinkIndex } from "../lib/backlinkIndex";
 import { createSearchIndex, type SearchMatch } from "../lib/searchIndex";
-import { basename, dirname, normalizePath, samePath } from "../lib/paths";
+import {
+  basename,
+  dirname,
+  joinPath,
+  normalizePath,
+  samePath,
+} from "../lib/paths";
 import type { EditorModeSetting } from "../lib/settings";
 import { extractLinkTargets } from "../lib/backlinkIndex";
 import { computeOutline } from "../lib/outline";
+import { applyRewrites, renameLinkTargets } from "../lib/renameLinks";
 import { countCharacters, countWords } from "../lib/text";
 import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
 import { renderToHtml } from "../markdown/render";
@@ -27,7 +38,9 @@ import { isImageTarget } from "../markdown/wikilinks";
 import { getSettings, subscribeSettings } from "../ipc/settingsStore";
 import { editorConfigFrom } from "./applySettings";
 import { commandPaletteItems, type Command } from "./commands";
+import { openContextMenu, openPromptModal } from "./contextMenu";
 import { createIcon } from "./icons";
+import { copyText } from "./renderedContent";
 import { openPalette } from "./palette";
 import { createReadingView } from "./readingView";
 import { openSettingsModal } from "./settingsModal";
@@ -85,13 +98,6 @@ export function mountLayout(root: HTMLElement): void {
   sidebarSearch.append(searchHeader, searchInput, searchStatus, searchResults);
   sidebar.append(sidebarSearch);
 
-  const settingsButton = document.createElement("button");
-  settingsButton.className = "sidebar-settings-button";
-  settingsButton.append(createIcon("settings"));
-  settingsButton.title = t("settings.title");
-  settingsButton.setAttribute("aria-label", t("settings.title"));
-  settingsButton.addEventListener("click", () => openSettingsModal());
-  sidebar.append(settingsButton);
 
   const workspace = document.createElement("main");
   workspace.className = "workspace";
@@ -117,6 +123,12 @@ export function mountLayout(root: HTMLElement): void {
   collapseRightButton.append(createIcon("panel-right"));
   collapseRightButton.addEventListener("click", () => toggleRightPanel());
   headerActions.append(modeHeaderButton, collapseRightButton);
+  viewTitle.addEventListener("contextmenu", (event) => {
+    if (openedPath !== null) {
+      event.preventDefault();
+      openFileMenu(event.clientX, event.clientY, openedPath);
+    }
+  });
   viewHeader.append(collapseLeftButton, viewTitle, headerActions);
 
   const workspaceBody = document.createElement("div");
@@ -168,6 +180,19 @@ export function mountLayout(root: HTMLElement): void {
 
   const statusBar = document.createElement("footer");
   statusBar.className = "status-bar";
+  // Left side: command palette, quick switcher and settings.
+  const statusPalette = document.createElement("button");
+  statusPalette.className = "status-bar-icon";
+  statusPalette.append(createIcon("terminal"));
+  statusPalette.addEventListener("click", () => openCommandPalette());
+  const statusSwitcher = document.createElement("button");
+  statusSwitcher.className = "status-bar-icon";
+  statusSwitcher.append(createIcon("file-search"));
+  statusSwitcher.addEventListener("click", () => openQuickSwitcher());
+  const settingsButton = document.createElement("button");
+  settingsButton.className = "status-bar-icon";
+  settingsButton.append(createIcon("settings"));
+  settingsButton.addEventListener("click", () => openSettingsModal());
   const statusError = document.createElement("span");
   statusError.className = "status-bar-error";
   const statusBacklinks = document.createElement("button");
@@ -180,7 +205,16 @@ export function mountLayout(root: HTMLElement): void {
   modeButton.className = "status-bar-mode";
   modeButton.textContent = t("statusBar.mode.edit");
   modeButton.addEventListener("click", () => void toggleMode());
-  statusBar.append(statusError, statusBacklinks, wordCount, charCount, modeButton);
+  statusBar.append(
+    settingsButton,
+    statusPalette,
+    statusSwitcher,
+    statusError,
+    statusBacklinks,
+    wordCount,
+    charCount,
+    modeButton,
+  );
 
   root.append(sidebar, workspace, backlinksPanel, statusBar);
 
@@ -691,6 +725,10 @@ export function mountLayout(root: HTMLElement): void {
         );
         item.textContent = entry.name.replace(/\.md$/i, "");
         item.addEventListener("click", () => void openFile(entry.path));
+        item.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          openFileMenu(event.clientX, event.clientY, entry.path);
+        });
         return item;
       }),
     );
@@ -788,14 +826,8 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
-  /** Opens a folder without a file: welcome view over its file list. */
-  async function openFolder(path: string): Promise<void> {
-    if (openedPath !== null) {
-      fileFolds.set(normalizePath(openedPath), editor.getFolds());
-    }
-    if (openedPath !== null && autosave.isDirty()) {
-      await saveNow();
-    }
+  /** Clears the workspace to the welcome view (delete, folder open). */
+  function closeCurrentFile(): void {
     autosave.cancel();
     openedPath = null;
     editor.setDoc("");
@@ -806,6 +838,190 @@ export function mountLayout(root: HTMLElement): void {
     }
     viewTitle.textContent = "";
     setCounts("");
+  }
+
+  /** Moves per-file in-memory state (mode, folds) to a renamed path. */
+  function moveFileState(from: string, to: string): void {
+    const oldKey = normalizePath(from);
+    const newKey = normalizePath(to);
+    const mode = fileModes.get(oldKey);
+    if (mode !== undefined) {
+      fileModes.delete(oldKey);
+      fileModes.set(newKey, mode);
+    }
+    const folds = fileFolds.get(oldKey);
+    if (folds !== undefined) {
+      fileFolds.delete(oldKey);
+      fileFolds.set(newKey, folds);
+    }
+  }
+
+  async function renameFromMenu(path: string): Promise<void> {
+    const current = basename(path).replace(/\.md$/i, "");
+    const name = await openPromptModal({
+      title: t("menu.rename"),
+      initial: current,
+      acceptLabel: t("menu.rename").replace(/…$/, ""),
+    });
+    if (name === null || name === current) {
+      return;
+    }
+    const target = joinPath(
+      dirname(path),
+      name.toLowerCase().endsWith(".md") ? name : `${name}.md`,
+    );
+    // Files linking here, resolved with the pre-rename index and listing.
+    const linkers =
+      currentFolder === null
+        ? []
+        : backlinkIndex.backlinksOf(
+            path,
+            currentFolder,
+            folderFiles,
+            getSettings().files.defaultExtension,
+          );
+    try {
+      if (openedPath !== null && samePath(path, openedPath) && autosave.isDirty()) {
+        await saveNow();
+      }
+      await renameFile(path, target);
+    } catch (error) {
+      setStatusError(t("error.renameFile", { error: String(error) }));
+      return;
+    }
+    moveFileState(path, target);
+    // Repoint the wikilinks of every linker to the new name.
+    for (const linker of linkers) {
+      try {
+        const isOpen = openedPath !== null && samePath(linker, openedPath);
+        const contents = isOpen ? editor.getDoc() : await readFile(linker);
+        const rewrites = renameLinkTargets(
+          contents,
+          currentFolder ?? dirname(linker),
+          folderFiles,
+          path,
+          target,
+          getSettings().files.defaultExtension,
+        );
+        if (rewrites.length === 0) {
+          continue;
+        }
+        const updated = applyRewrites(contents, rewrites);
+        await writeFile(linker, updated);
+        backlinkIndex.setFile(linker, updated);
+        searchIndex.setFile(linker, updated);
+        if (isOpen) {
+          reloadingFromDisk = true;
+          editor.reloadDoc(updated);
+          reloadingFromDisk = false;
+          setCounts(updated);
+          if (currentMode === "read") {
+            readingView.render(updated);
+          }
+        }
+      } catch (error) {
+        setStatusError(t("error.writeFile", { error: String(error) }));
+      }
+    }
+    if (openedPath !== null && samePath(path, openedPath)) {
+      openedPath = target;
+      const noteName = basename(target).replace(/\.md$/i, "");
+      viewTitle.textContent = noteName;
+      void getCurrentWindow()
+        .setTitle(`${basename(dirname(target))} - ${noteName}`)
+        .catch(() => undefined);
+    }
+    if (currentFolder !== null) {
+      await refreshFolder(currentFolder);
+      await rebuildIndex();
+    }
+  }
+
+  async function deleteFromMenu(path: string): Promise<void> {
+    if (getSettings().files.confirmDelete) {
+      const confirmed = await ask(
+        t("dialog.delete.message", { name: basename(path) }),
+        { title: t("menu.delete"), kind: "warning" },
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+    try {
+      await deleteFile(path);
+    } catch (error) {
+      setStatusError(t("error.deleteFile", { error: String(error) }));
+      return;
+    }
+    fileModes.delete(normalizePath(path));
+    fileFolds.delete(normalizePath(path));
+    if (openedPath !== null && samePath(path, openedPath)) {
+      closeCurrentFile();
+    }
+    if (currentFolder !== null) {
+      await refreshFolder(currentFolder);
+      await rebuildIndex();
+    }
+    renderBacklinks();
+  }
+
+  function openFileMenu(x: number, y: number, path: string): void {
+    openContextMenu(x, y, [
+      {
+        label: t("menu.rename"),
+        icon: "pencil",
+        onClick: () => void renameFromMenu(path),
+      },
+      {
+        label: t("menu.copyPath"),
+        icon: "copy",
+        submenu: [
+          {
+            label: t("menu.copyAbsolutePath"),
+            onClick: () => void copyText(path),
+          },
+          {
+            label: t("menu.copyRelativePath"),
+            onClick: () => void copyText(basename(path)),
+          },
+        ],
+      },
+      "separator",
+      {
+        label: t("menu.openInDefaultApp"),
+        icon: "external-link",
+        onClick: () =>
+          void openPath(path).catch((error) =>
+            setStatusError(t("error.openFile", { error: String(error) })),
+          ),
+      },
+      {
+        label: t("menu.showInExplorer"),
+        icon: "folder",
+        onClick: () =>
+          void revealItemInDir(path).catch((error) =>
+            setStatusError(t("error.openFile", { error: String(error) })),
+          ),
+      },
+      "separator",
+      {
+        label: t("menu.delete"),
+        icon: "trash",
+        danger: true,
+        onClick: () => void deleteFromMenu(path),
+      },
+    ]);
+  }
+
+  /** Opens a folder without a file: welcome view over its file list. */
+  async function openFolder(path: string): Promise<void> {
+    if (openedPath !== null) {
+      fileFolds.set(normalizePath(openedPath), editor.getFolds());
+    }
+    if (openedPath !== null && autosave.isDirty()) {
+      await saveNow();
+    }
+    closeCurrentFile();
     setStatusError(null);
     await refreshFolder(path);
     renderBacklinks();
@@ -1021,6 +1237,10 @@ export function mountLayout(root: HTMLElement): void {
     collapseRightButton.title = t("workspace.collapseRight");
     settingsButton.title = t("settings.title");
     settingsButton.setAttribute("aria-label", t("settings.title"));
+    statusPalette.title = t("command.commandPalette");
+    statusPalette.setAttribute("aria-label", t("command.commandPalette"));
+    statusSwitcher.title = t("command.quickSwitcher");
+    statusSwitcher.setAttribute("aria-label", t("command.quickSwitcher"));
     modeButton.textContent = t(
       currentMode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
     );

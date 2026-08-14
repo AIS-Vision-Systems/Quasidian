@@ -77,6 +77,21 @@ fn ensure_dir(path: String) -> Result<(), String> {
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())
 }
 
+/// Refuses to overwrite an existing file: renaming must never destroy
+/// another note silently.
+#[tauri::command]
+fn rename_file(from: String, to: String) -> Result<(), String> {
+    if std::path::Path::new(&to).exists() {
+        return Err("destination already exists".into());
+    }
+    std::fs::rename(&from, &to).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_file(path: String) -> Result<(), String> {
+    std::fs::remove_file(&path).map_err(|e| e.to_string())
+}
+
 /// File passed on the command line (e.g. double-clicking an associated
 /// .md), if it exists.
 #[tauri::command]
@@ -113,6 +128,8 @@ pub fn run() {
             write_file,
             write_file_atomic,
             ensure_dir,
+            rename_file,
+            delete_file,
             list_folder,
             watch_folder,
             startup_file

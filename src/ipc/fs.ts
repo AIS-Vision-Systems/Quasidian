@@ -24,6 +24,15 @@ export function ensureDir(path: string): Promise<void> {
   return invoke("ensure_dir", { path });
 }
 
+/** Fails if the destination already exists. */
+export function renameFile(from: string, to: string): Promise<void> {
+  return invoke("rename_file", { from, to });
+}
+
+export function deleteFile(path: string): Promise<void> {
+  return invoke("delete_file", { path });
+}
+
 export function listFolder(path: string): Promise<FileEntry[]> {
   return invoke("list_folder", { path });
 }

@@ -16,7 +16,17 @@ export type IconName =
   | "panel-left"
   | "panel-right"
   | "chevron-down"
-  | "chevron-right";
+  | "chevron-right"
+  | "terminal"
+  | "file-search"
+  | "trash"
+  | "external-link"
+  | "scissors"
+  | "clipboard"
+  | "bold"
+  | "italic"
+  | "highlighter"
+  | "code";
 
 const ICON_PATHS: Record<IconName, string> = {
   "book-open":
@@ -56,6 +66,37 @@ const ICON_PATHS: Record<IconName, string> = {
     '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
   "chevron-down": '<path d="m6 9 6 6 6-6"/>',
   "chevron-right": '<path d="m9 18 6-6-6-6"/>',
+  terminal:
+    '<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>',
+  "file-search":
+    '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>' +
+    '<path d="M14 2v4a2 2 0 0 0 2 2h4"/>' +
+    '<circle cx="11.5" cy="14.5" r="2.5"/><path d="M13.3 16.3 15 18"/>',
+  trash:
+    '<path d="M3 6h18"/>' +
+    '<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>' +
+    '<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>' +
+    '<line x1="10" x2="10" y1="11" y2="17"/>' +
+    '<line x1="14" x2="14" y1="11" y2="17"/>',
+  "external-link":
+    '<path d="M15 3h6v6"/><path d="M10 14 21 3"/>' +
+    '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  scissors:
+    '<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/>' +
+    '<path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/>' +
+    '<path d="M14.8 14.8 20 20"/>',
+  clipboard:
+    '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>' +
+    '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+  bold: '<path d="M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8"/>',
+  italic:
+    '<line x1="19" x2="10" y1="4" y2="4"/>' +
+    '<line x1="14" x2="5" y1="20" y2="20"/>' +
+    '<line x1="15" x2="9" y1="4" y2="20"/>',
+  highlighter:
+    '<path d="m9 11-6 6v3h9l3-3"/>' +
+    '<path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>',
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
 };
 
 /** A 24x24 outline icon that inherits the text color. */
