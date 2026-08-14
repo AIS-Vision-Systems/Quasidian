@@ -374,6 +374,13 @@ export function openSettingsModal(): void {
           patch({ defaultExtension }),
         ),
       ),
+      row(
+        "settings.restoreSession.name",
+        "settings.restoreSession.desc",
+        toggle(f.restoreSession, (restoreSession) =>
+          patch({ restoreSession }),
+        ),
+      ),
     ];
   }
 

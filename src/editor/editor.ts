@@ -412,7 +412,8 @@ export interface EditorHooks {
   onDocChanged(doc: string): void;
   onSaveRequested(): void;
   onToggleModeRequested(): void;
-  onWikilinkClick(target: string): void;
+  /** `newTab` is set on Ctrl+Shift+click (edit) / Ctrl+click (read). */
+  onWikilinkClick(target: string, newTab?: boolean): void;
   /** File names offered after `[[`: markdown basenames and image files. */
   getWikilinkCompletions(): string[];
   /** Heading texts of a note, offered after `#` inside a wikilink. */
@@ -692,7 +693,7 @@ export function createEditor(
               return false;
             }
             event.preventDefault();
-            hooks.onWikilinkClick(target);
+            hooks.onWikilinkClick(target, event.shiftKey);
             return true;
           },
         }),
