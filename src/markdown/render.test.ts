@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { renderToHtml } from "./render";
 
 describe("renderToHtml — blocks", () => {
-  it("renders headings without marks", () => {
-    expect(renderToHtml("# Títol")).toBe("<h1>Títol</h1>");
-    expect(renderToHtml("### Fondo")).toBe("<h3>Fondo</h3>");
+  it("renders headings without marks, with their document position", () => {
+    expect(renderToHtml("# Títol")).toBe('<h1 data-pos="0">Títol</h1>');
+    expect(renderToHtml("### Fondo")).toBe('<h3 data-pos="0">Fondo</h3>');
   });
 
   it("renders paragraphs and inline formatting", () => {
@@ -22,8 +22,8 @@ describe("renderToHtml — blocks", () => {
   });
 
   it("renders dash setext headings only with 3+ dashes", () => {
-    expect(renderToHtml("Títol\n---")).toBe("<h2>Títol</h2>");
-    expect(renderToHtml("Títol\n===")).toBe("<h1>Títol</h1>");
+    expect(renderToHtml("Títol\n---")).toBe('<h2 data-pos="0">Títol</h2>');
+    expect(renderToHtml("Títol\n===")).toBe('<h1 data-pos="0">Títol</h1>');
     expect(renderToHtml("Text\n- ")).toBe("<p>Text<br>- </p>");
   });
 
@@ -34,11 +34,13 @@ describe("renderToHtml — blocks", () => {
     expect(renderToHtml("una\ndues")).toBe("<p>una<br>dues</p>");
   });
 
-  it("renders bullet and ordered lists", () => {
+  it("renders bullet and ordered lists with item positions", () => {
     expect(renderToHtml("- a\n- b")).toBe(
-      "<ul><li><p>a</p></li><li><p>b</p></li></ul>",
+      '<ul><li data-pos="0"><p>a</p></li><li data-pos="4"><p>b</p></li></ul>',
     );
-    expect(renderToHtml("1. a")).toBe("<ol><li><p>a</p></li></ol>");
+    expect(renderToHtml("1. a")).toBe(
+      '<ol><li data-pos="0"><p>a</p></li></ol>',
+    );
   });
 
   it("renders fenced code with language class and display-name label", () => {
@@ -80,7 +82,7 @@ describe("renderToHtml — blocks", () => {
 describe("renderToHtml — task lists", () => {
   it("renders checkboxes with document positions", () => {
     const html = renderToHtml("- [ ] fer\n- [x] fet");
-    expect(html).toContain('<li class="task-list-item">');
+    expect(html).toContain('<li class="task-list-item" data-pos="0">');
     expect(html).toContain('data-pos="2"');
     expect(html).toContain('data-pos="12"');
     expect(html).toContain("checked");

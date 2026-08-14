@@ -9,6 +9,8 @@
   "command.toggleReadingMode": "Toggle reading mode",
   "command.toggleBacklinks": "Toggle right panel",
   "command.openFolder": "Open a folder…",
+  "command.foldAll": "Fold all headings",
+  "command.unfoldAll": "Unfold all headings",
   "backlinks.title": "Backlinks",
   "backlinks.empty": "No files link here",
   "rightPanel.backlinks": "Backlinks",

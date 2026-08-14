@@ -9,6 +9,8 @@
   "command.toggleReadingMode": "Conmutar el modo lectura",
   "command.toggleBacklinks": "Conmutar el panel derecho",
   "command.openFolder": "Abrir una carpeta…",
+  "command.foldAll": "Plegar todos los encabezados",
+  "command.unfoldAll": "Desplegar todos los encabezados",
   "backlinks.title": "Backlinks",
   "backlinks.empty": "Ningún archivo enlaza aquí",
   "rightPanel.backlinks": "Backlinks",

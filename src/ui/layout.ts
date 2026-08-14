@@ -277,10 +277,23 @@ export function mountLayout(root: HTMLElement): void {
     },
     resolveEmbedSrc,
     renderEmbedNote,
+    foldInfoAt(pos) {
+      return editor.foldInfoAt(pos);
+    },
+    onToggleFold(pos) {
+      // The editor state is the single source of truth for folds, so
+      // both modes stay in sync and fileFolds keeps working.
+      editor.toggleFoldAt(pos);
+      const scroll = readingView.element.scrollTop;
+      readingView.render(editor.getDoc());
+      readingView.element.scrollTop = scroll;
+    },
   });
   workspaceBody.append(readingView.element);
 
   const fileModes = new Map<string, EditorModeSetting>();
+  // Fold state per file, in memory only (never written to the folder).
+  const fileFolds = new Map<string, { from: number; to: number }[]>();
   let currentMode: EditorModeSetting = "edit";
 
   function applyMode(mode: EditorModeSetting): void {
@@ -717,6 +730,9 @@ export function mountLayout(root: HTMLElement): void {
     if (openedPath !== null && samePath(path, openedPath)) {
       return;
     }
+    if (openedPath !== null) {
+      fileFolds.set(normalizePath(openedPath), editor.getFolds());
+    }
     if (openedPath !== null && autosave.isDirty()) {
       await saveNow();
     }
@@ -741,6 +757,10 @@ export function mountLayout(root: HTMLElement): void {
     await refreshFolder(dirname(path));
     try {
       editor.setDoc(contents);
+      const folds = fileFolds.get(normalizePath(path));
+      if (folds !== undefined) {
+        editor.setFolds(folds);
+      }
       setCounts(contents);
       const mode =
         fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode;
@@ -770,6 +790,9 @@ export function mountLayout(root: HTMLElement): void {
 
   /** Opens a folder without a file: welcome view over its file list. */
   async function openFolder(path: string): Promise<void> {
+    if (openedPath !== null) {
+      fileFolds.set(normalizePath(openedPath), editor.getFolds());
+    }
     if (openedPath !== null && autosave.isDirty()) {
       await saveNow();
     }
@@ -864,6 +887,22 @@ export function mountLayout(root: HTMLElement): void {
       id: "toggle-backlinks",
       nameKey: "command.toggleBacklinks",
       run: toggleRightPanel,
+    },
+    {
+      id: "fold-all",
+      nameKey: "command.foldAll",
+      run: () => {
+        editor.foldAllSections();
+        editor.focus();
+      },
+    },
+    {
+      id: "unfold-all",
+      nameKey: "command.unfoldAll",
+      run: () => {
+        editor.unfoldAllSections();
+        editor.focus();
+      },
     },
     {
       id: "global-search",

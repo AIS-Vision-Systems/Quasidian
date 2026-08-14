@@ -17,10 +17,14 @@ import {
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import {
+  foldedRanges,
+  foldEffect,
   HighlightStyle,
   indentUnit,
   syntaxHighlighting,
   syntaxTree,
+  unfoldAll,
+  unfoldEffect,
 } from "@codemirror/language";
 import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
@@ -34,6 +38,13 @@ import {
   markerBackspace,
   wrapSelection,
 } from "./autoPair";
+import {
+  allHeadingFolds,
+  foldedRangeStartingAt,
+  foldRangeForLine,
+  sectionFolding,
+  type FoldRange,
+} from "./folding";
 import {
   emptyListItemExitCommand,
   inListItem,
@@ -181,6 +192,16 @@ export interface EditorHandle {
   focus(): void;
   /** Hot-applies configurable options without recreating the editor. */
   applyConfig(config: EditorConfig): void;
+  /** Currently folded ranges, for remembering them per file. */
+  getFolds(): FoldRange[];
+  /** Re-applies remembered folds (ranges outside the doc are dropped). */
+  setFolds(ranges: FoldRange[]): void;
+  foldAllSections(): void;
+  unfoldAllSections(): void;
+  /** Foldability and state of the line holding `pos` (reading mode). */
+  foldInfoAt(pos: number): { folded: boolean } | null;
+  /** Folds/unfolds the section of the line holding `pos`. */
+  toggleFoldAt(pos: number): void;
 }
 
 export function createEditor(
@@ -303,6 +324,7 @@ export function createEditor(
           codeLanguages: languages,
         }),
         syntaxHighlighting(markdownHighlighting),
+        sectionFolding(),
         livePreview({
           resolveEmbedSrc: hooks.resolveEmbedSrc,
           renderEmbedNote: hooks.renderEmbedNote,
@@ -388,6 +410,57 @@ export function createEditor(
           spellcheckCompartment.reconfigure(spellcheckExtension(next)),
           autoPairCompartment.reconfigure(autoPairExtension(next)),
         ],
+      });
+    },
+    getFolds(): FoldRange[] {
+      const ranges: FoldRange[] = [];
+      foldedRanges(view.state).between(0, view.state.doc.length, (from, to) => {
+        ranges.push({ from, to });
+      });
+      return ranges;
+    },
+    setFolds(ranges: FoldRange[]): void {
+      const length = view.state.doc.length;
+      const effects = ranges
+        .filter((range) => range.from >= 0 && range.to <= length && range.from < range.to)
+        .map((range) => foldEffect.of(range));
+      if (effects.length > 0) {
+        view.dispatch({ effects });
+      }
+    },
+    foldAllSections(): void {
+      const effects = allHeadingFolds(view.state).map((range) =>
+        foldEffect.of(range),
+      );
+      if (effects.length > 0) {
+        view.dispatch({ effects });
+      }
+    },
+    unfoldAllSections(): void {
+      unfoldAll(view);
+    },
+    foldInfoAt(pos: number): { folded: boolean } | null {
+      const clamped = Math.min(Math.max(pos, 0), view.state.doc.length);
+      const line = view.state.doc.lineAt(clamped);
+      const range = foldRangeForLine(view.state, line.from);
+      if (range === null) {
+        return null;
+      }
+      return {
+        folded: foldedRangeStartingAt(view.state, range.from) !== null,
+      };
+    },
+    toggleFoldAt(pos: number): void {
+      const clamped = Math.min(Math.max(pos, 0), view.state.doc.length);
+      const line = view.state.doc.lineAt(clamped);
+      const range = foldRangeForLine(view.state, line.from);
+      if (range === null) {
+        return;
+      }
+      const folded = foldedRangeStartingAt(view.state, range.from);
+      view.dispatch({
+        effects:
+          folded === null ? foldEffect.of(range) : unfoldEffect.of(folded),
       });
     },
   };
