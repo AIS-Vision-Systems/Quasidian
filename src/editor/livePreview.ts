@@ -1741,6 +1741,10 @@ export interface CalloutRange {
   /** End of the title (the first line). */
   titleTo: number;
   type: string;
+  /** Fold marker: "-" starts collapsed, "+" expanded, null not foldable. */
+  fold: "+" | "-" | null;
+  /** Document position of the fold sign character. */
+  signPos: number;
 }
 
 /** Callout info for a blockquote node, or null when it is a plain one. */
@@ -1764,7 +1768,48 @@ export function calloutForQuote(
     markerTo: paragraph.from + header.markerLength,
     titleTo: newline === -1 ? paragraph.to : paragraph.from + newline,
     type: header.type,
+    fold: header.fold,
+    signPos: paragraph.from + header.signOffset,
   };
+}
+
+/**
+ * Fold chevron after a foldable callout's title. Toggling flips the
+ * `+`/`-` sign in the source, so the fold state is shared by both
+ * modes and persists in the file.
+ */
+class CalloutFoldWidget extends WidgetType {
+  constructor(
+    readonly folded: boolean,
+    readonly signPos: number,
+  ) {
+    super();
+  }
+
+  override eq(other: CalloutFoldWidget): boolean {
+    return other.folded === this.folded && other.signPos === this.signPos;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-callout-fold";
+    span.append(createIcon(this.folded ? "chevron-right" : "chevron-down"));
+    span.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({
+        changes: {
+          from: this.signPos,
+          to: this.signPos + 1,
+          insert: this.folded ? "+" : "-",
+        },
+      });
+    });
+    return span;
+  }
+
+  override ignoreEvent(): boolean {
+    return true;
+  }
 }
 
 class CalloutIconWidget extends WidgetType {
@@ -1879,6 +1924,10 @@ function buildDecorations(
           }
           // Rounded-box look: the first and last lines carry the
           // corner classes so both modes show the same callout box.
+          // A collapsed callout shows only its title line.
+          const collapsed =
+            callout.fold === "-" &&
+            !selectionTouches(state, node.from, node.to);
           const firstLine = state.doc.lineAt(node.from).number;
           const lastLine = state.doc.lineAt(node.to).number;
           for (let lineNo = firstLine; lineNo <= lastLine; lineNo++) {
@@ -1887,7 +1936,7 @@ function buildDecorations(
             if (lineNo === firstLine) {
               cls += " cm-callout-first";
             }
-            if (lineNo === lastLine) {
+            if (lineNo === lastLine || (collapsed && lineNo === firstLine)) {
               cls += " cm-callout-last";
             }
             ranges.push(
@@ -1898,6 +1947,20 @@ function buildDecorations(
                 },
               }).range(line.from),
             );
+          }
+          if (callout.fold !== null) {
+            ranges.push(
+              Decoration.widget({
+                widget: new CalloutFoldWidget(
+                  callout.fold === "-",
+                  callout.signPos,
+                ),
+                side: -1,
+              }).range(callout.titleTo),
+            );
+          }
+          if (collapsed && node.to > callout.titleTo) {
+            ranges.push(Decoration.replace({}).range(callout.titleTo, node.to));
           }
           // The [!type] marker renders as the callout's icon when the
           // line is not being edited; the title reads bold.

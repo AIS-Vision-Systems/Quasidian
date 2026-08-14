@@ -40,6 +40,8 @@ export interface ReadingViewHooks {
   foldInfoAt(pos: number): { folded: boolean } | null;
   /** Toggles the fold of the section at a doc position. */
   onToggleFold(pos: number): void;
+  /** Flips a callout's fold sign (`+`/`-`) at a doc position. */
+  onCalloutToggle(pos: number, fold: boolean): void;
   /** Whether reading mode shows the properties box (settings). */
   showProperties(): boolean;
 }
@@ -160,6 +162,22 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
   element.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) {
+      return;
+    }
+    const fold = target.closest(".callout-fold");
+    if (fold !== null) {
+      const box = fold.closest(".callout");
+      if (box !== null) {
+        const pos = Number(box.getAttribute("data-fold-pos"));
+        if (target.closest(".embed-note") === null && Number.isFinite(pos)) {
+          // The note's own callouts persist the fold in the source.
+          hooks.onCalloutToggle(pos, !box.classList.contains("is-collapsed"));
+        } else {
+          // Callouts inside embeds toggle locally: their positions
+          // belong to another document.
+          box.classList.toggle("is-collapsed");
+        }
+      }
       return;
     }
     const link = target.closest("a");

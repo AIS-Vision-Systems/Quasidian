@@ -575,6 +575,9 @@ body.is-readable-line-length .cm-editor .cm-content {
 .cm-editor .cm-blockquote-line {
   border-left: 2px solid var(--interactive-accent);
   padding-left: 12px;
+  /* Quote text is muted via the line (not the highlight tag) so callout
+     lines can restore the normal color without inner spans winning. */
+  color: var(--text-muted);
 }
 
 .cm-editor .cm-codeblock-line {
@@ -1387,8 +1390,8 @@ body.is-readable-line-length .reading-view-content {
 
 /* The wrap's padding provides the block spacing; without this the
    table's own bottom margin pushes the add-row button too far down.
-   (div-qualified so it outranks `.markdown-rendered table`.) */
-div.table-wrap > table {
+   (span-qualified so it outranks `.markdown-rendered table`.) */
+span.table-wrap > table {
   margin: 0;
 }
 
@@ -1798,6 +1801,29 @@ div.table-wrap > table {
   margin-bottom: 0;
 }
 
+/* Foldable callouts: chevron in the title, content hidden when
+   collapsed. */
+.callout-fold {
+  display: inline-flex;
+  margin-left: 6px;
+  cursor: pointer;
+  color: rgb(var(--callout-color));
+}
+
+.callout-fold .app-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.1s ease;
+}
+
+.callout.is-collapsed .callout-fold .app-icon {
+  transform: rotate(-90deg);
+}
+
+.callout.is-collapsed .callout-content {
+  display: none;
+}
+
 /* Editing mode: the same rounded box as reading mode, drawn with line
    decorations (corner classes on the first and last lines). */
 .cm-editor .cm-callout-line {
@@ -1805,6 +1831,7 @@ div.table-wrap > table {
   border-left: none;
   padding-left: 16px;
   padding-right: 16px;
+  color: var(--text-normal);
 }
 
 .cm-editor .cm-callout-first {
@@ -1832,6 +1859,19 @@ div.table-wrap > table {
 .cm-editor .cm-callout-title {
   color: rgb(var(--callout-color));
   font-weight: 600;
+}
+
+.cm-editor .cm-callout-fold {
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: -3px;
+  cursor: pointer;
+  color: rgb(var(--callout-color));
+}
+
+.cm-editor .cm-callout-fold .app-icon {
+  width: 15px;
+  height: 15px;
 }
 
 /* --- Footnotes --- */

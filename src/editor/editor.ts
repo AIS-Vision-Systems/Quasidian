@@ -99,7 +99,9 @@ const markdownHighlighting = HighlightStyle.define([
     borderRadius: "4px",
     padding: "1px 4px",
   },
-  { tag: tags.quote, color: "var(--text-muted)" },
+  // Blockquote text color lives on .cm-blockquote-line instead of the
+  // quote tag: highlight spans would otherwise override the callout
+  // title/content colors from inside.
   { tag: tags.processingInstruction, color: "var(--text-faint)" },
   { tag: tags.link, class: "cm-link" },
   {

@@ -8,6 +8,10 @@ export interface CalloutHeader {
   title: string;
   /** Length of the `[!type]` marker plus one following space. */
   markerLength: number;
+  /** Fold marker: "-" starts collapsed, "+" expanded, null not foldable. */
+  fold: "+" | "-" | null;
+  /** Offset of the fold sign within the first line (right after `]`). */
+  signOffset: number;
 }
 
 // The type catalogue follows Obsidian's callout help page (aliases
@@ -46,15 +50,17 @@ const DEFAULT_STYLE = { color: "68,138,255", icon: "pencil" as IconName };
 
 /** Parses `[!type] Títol` at the start of a blockquote's first line. */
 export function parseCalloutHeader(firstLine: string): CalloutHeader | null {
-  const match = /^\[!([A-Za-z]+)\](?:[+-])?( ?)(.*)$/.exec(firstLine);
+  const match = /^\[!([A-Za-z]+)\]([+-])?( ?)(.*)$/.exec(firstLine);
   if (match === null) {
     return null;
   }
-  const headerLength = firstLine.length - match[3].length;
+  const headerLength = firstLine.length - match[4].length;
   return {
     type: match[1].toLowerCase(),
-    title: match[3].trim(),
+    title: match[4].trim(),
     markerLength: headerLength,
+    fold: match[2] === "+" || match[2] === "-" ? match[2] : null,
+    signOffset: 2 + match[1].length + 1,
   };
 }
 

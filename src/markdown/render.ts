@@ -342,8 +342,19 @@ function renderCallout(node: SyntaxNode, doc: string, out: string[]): boolean {
   }
   const firstLineEnd =
     newline === -1 ? paragraph.to : paragraph.from + newline;
+  let cls = "callout";
+  if (header.fold !== null) {
+    cls += " callout-foldable";
+    if (header.fold === "-") {
+      cls += " is-collapsed";
+    }
+  }
+  const foldAttr =
+    header.fold === null
+      ? ""
+      : ` data-fold-pos="${paragraph.from + header.signOffset}"`;
   out.push(
-    `<div class="callout" data-callout="${escapeHtml(header.type)}" style="--callout-color:${calloutColor(header.type)}">`,
+    `<div class="${cls}" data-callout="${escapeHtml(header.type)}"${foldAttr} style="--callout-color:${calloutColor(header.type)}">`,
   );
   out.push(
     `<div class="callout-title">${iconMarkup(calloutIcon(header.type))}<span class="callout-title-text">`,
@@ -363,7 +374,11 @@ function renderCallout(node: SyntaxNode, doc: string, out: string[]): boolean {
       ),
     );
   }
-  out.push("</span></div>");
+  out.push("</span>");
+  if (header.fold !== null) {
+    out.push(`<span class="callout-fold">${iconMarkup("chevron-down")}</span>`);
+  }
+  out.push("</div>");
   out.push('<div class="callout-content">');
   if (firstLineEnd < paragraph.to) {
     out.push("<p>");

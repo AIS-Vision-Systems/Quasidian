@@ -57,6 +57,20 @@ describe("renderToHtml — blocks", () => {
     expect(html).toContain("--callout-color:68,207,110");
   });
 
+  it("renders foldable callouts with their fold state and sign position", () => {
+    const collapsed = renderToHtml("> [!note]- Plegat\n> contingut");
+    expect(collapsed).toContain("callout-foldable");
+    expect(collapsed).toContain("is-collapsed");
+    expect(collapsed).toContain('class="callout-fold"');
+    expect(collapsed).toContain('data-fold-pos="9"');
+    const open = renderToHtml("> [!note]+ Obert\n> contingut");
+    expect(open).toContain("callout-foldable");
+    expect(open).not.toContain("is-collapsed");
+    const plain = renderToHtml("> [!note] Fix\n> contingut");
+    expect(plain).not.toContain("callout-foldable");
+    expect(plain).not.toContain("callout-fold");
+  });
+
   it("renders blockquotes", () => {
     expect(renderToHtml("> cita")).toBe(
       "<blockquote><p>cita</p></blockquote>",
