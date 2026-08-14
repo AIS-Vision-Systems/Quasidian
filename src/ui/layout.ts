@@ -17,7 +17,10 @@ import {
   writeFile,
 } from "../ipc/fs";
 import { createEditor } from "../editor/editor";
-import { setKnownPropertyKeys } from "../editor/livePreview";
+import {
+  bumpEmbedGeneration,
+  setKnownPropertyKeys,
+} from "../editor/livePreview";
 import { createAutosaveScheduler } from "../editor/autosave";
 import { createBacklinkIndex } from "../lib/backlinkIndex";
 import { createSearchIndex, type SearchMatch } from "../lib/searchIndex";
@@ -1314,6 +1317,9 @@ export function mountLayout(root: HTMLElement): void {
   subscribeSettings((settings) => {
     autosaveOptions.enabled = settings.editor.autosave;
     autosaveOptions.intervalMs = settings.editor.autosaveIntervalMs;
+    // Before applyConfig: its dispatch rebuilds embed widgets, which
+    // must pick up the new generation (e.g. showProperties changes).
+    bumpEmbedGeneration();
     editor.applyConfig(editorConfigFrom(settings));
     refreshTexts();
     // Hot-apply the properties visibility to an open reading view.

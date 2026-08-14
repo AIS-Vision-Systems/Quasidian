@@ -621,7 +621,17 @@ class ImageWidget extends WidgetType {
   }
 }
 
+// Bumped when settings that affect embed rendering change, so cached
+// note-embed widgets rebuild instead of showing stale content.
+let embedGeneration = 0;
+
+export function bumpEmbedGeneration(): void {
+  embedGeneration++;
+}
+
 class NoteEmbedWidget extends WidgetType {
+  readonly generation = embedGeneration;
+
   constructor(
     readonly target: string,
     readonly alias: string | null,
@@ -631,7 +641,11 @@ class NoteEmbedWidget extends WidgetType {
   }
 
   override eq(other: NoteEmbedWidget): boolean {
-    return other.target === this.target && other.alias === this.alias;
+    return (
+      other.target === this.target &&
+      other.alias === this.alias &&
+      other.generation === this.generation
+    );
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -1432,7 +1446,15 @@ export function livePreview(hooks: LivePreviewHooks) {
         }
 
         update(update: ViewUpdate) {
-          if (update.docChanged || update.selectionSet || update.viewportChanged) {
+          const hasEffects = update.transactions.some(
+            (tr) => tr.effects.length > 0,
+          );
+          if (
+            update.docChanged ||
+            update.selectionSet ||
+            update.viewportChanged ||
+            hasEffects
+          ) {
             this.decorations = buildDecorations(update.view, hooks);
           }
         }
