@@ -420,14 +420,132 @@ body {
   overflow: hidden;
 }
 
+/* Obsidian-style tab strip: gray bar, dark active tab that merges with
+   the content below (no bottom border). */
 .view-header {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 0;
+  background-color: var(--background-secondary);
+}
+
+.view-header > .view-header-button {
+  margin-bottom: 6px;
+}
+
+/* Tab bar: fills the central header between the collapse buttons. */
+.tab-bar {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  align-items: stretch;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.workspace-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  padding: 5px 8px 5px 12px;
+  border-radius: 6px 6px 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Thin separators between tabs, hidden around the active one. */
+.workspace-tab + .workspace-tab {
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.workspace-tab.is-active,
+.workspace-tab.is-active + .workspace-tab {
+  border-left-color: transparent;
+}
+
+.workspace-tab:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.workspace-tab.is-active {
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.workspace-tab.is-pinned {
+  padding-right: 12px;
+}
+
+.workspace-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-tab-pin .app-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.workspace-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-faint);
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.workspace-tab-close .app-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.workspace-tab:hover .workspace-tab-close,
+.workspace-tab.is-active .workspace-tab-close {
+  visibility: visible;
+}
+
+.workspace-tab-close:hover {
+  background-color: var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+.workspace-tab.is-dragging {
+  opacity: 0.6;
+}
+
+.workspace-tab.drop-before {
+  box-shadow: -2px 0 0 0 var(--interactive-accent);
+}
+
+.workspace-tab.drop-after {
+  box-shadow: 2px 0 0 0 var(--interactive-accent);
+}
+
+/* File bar: note name centered, mode toggle and file menu on the right. */
+.file-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 12px;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 4px 16px;
+}
+
+.file-bar.is-hidden {
+  display: none;
 }
 
 /* Centered on the bar itself, independent of the side buttons. */

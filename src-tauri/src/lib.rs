@@ -120,6 +120,18 @@ fn list_folder(path: String) -> Result<Vec<FileEntry>, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be the first plugin: a second launch forwards its args to
+        // this instance and exits. The frontend opens the file in a tab.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            let _ = app.emit("single-instance", args);
+        }))
+        // Remembers window position, size, screen and maximized state.
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(WatcherState::default())

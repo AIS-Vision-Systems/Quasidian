@@ -41,6 +41,11 @@ export interface FilesSettings {
   confirmDelete: boolean;
   /** Extension used when creating notes from wikilinks. */
   defaultExtension: string;
+  /**
+   * Restore the last session (open tabs, active tab, modes) at startup.
+   * Ignored when the app is launched with a file argument.
+   */
+  restoreSession: boolean;
 }
 
 export interface Settings {
@@ -75,6 +80,7 @@ export const DEFAULT_SETTINGS: Settings = {
   files: {
     confirmDelete: true,
     defaultExtension: ".md",
+    restoreSession: true,
   },
 };
 
@@ -190,6 +196,10 @@ export function mergeSettings(raw: unknown): Settings {
       defaultExtension: pickString(
         files.defaultExtension,
         d.files.defaultExtension,
+      ),
+      restoreSession: pickBoolean(
+        files.restoreSession,
+        d.files.restoreSession,
       ),
     },
   };

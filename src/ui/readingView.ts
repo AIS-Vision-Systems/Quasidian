@@ -25,7 +25,8 @@ import {
 } from "./renderedContent";
 
 export interface ReadingViewHooks {
-  onInternalLink(target: string): void;
+  /** `newTab` is set on Ctrl+click / middle-click. */
+  onInternalLink(target: string, newTab?: boolean): void;
   /** `pos` is the document offset of the "[ ]"/"[x]" task marker. */
   onTaskToggle(pos: number, checked: boolean): void;
   /** Resolves an embed target to a loadable URL, or null if unknown. */
@@ -185,7 +186,7 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
       event.preventDefault();
       const internal = link.getAttribute("data-target");
       if (internal !== null) {
-        hooks.onInternalLink(internal);
+        hooks.onInternalLink(internal, event.ctrlKey || event.metaKey);
         return;
       }
       const href = link.getAttribute("href");
@@ -208,6 +209,23 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
       const pos = Number(target.dataset.pos);
       if (Number.isFinite(pos)) {
         hooks.onTaskToggle(pos, target.checked);
+      }
+    }
+  });
+
+  // Middle-click on an internal link opens it in a new tab.
+  element.addEventListener("auxclick", (event) => {
+    if (event.button !== 1) {
+      return;
+    }
+    const target = event.target;
+    const link =
+      target instanceof Element ? target.closest("a[data-target]") : null;
+    if (link !== null) {
+      event.preventDefault();
+      const internal = link.getAttribute("data-target");
+      if (internal !== null) {
+        hooks.onInternalLink(internal, true);
       }
     }
   });

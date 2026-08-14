@@ -42,6 +42,21 @@ import {
   splitAnchor,
   type FolderFile,
 } from "../lib/wikilinks";
+import {
+  activeTabPath,
+  closeAllTabs,
+  closeOtherTabs,
+  closeTab,
+  emptyWorkspace,
+  findTab,
+  moveTab,
+  openPath as openTabPath,
+  renameTabPath,
+  serializeSession,
+  setPinned,
+  type WorkspaceState,
+} from "../lib/workspace";
+import { loadSession, saveSession } from "../ipc/sessionStore";
 import { renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import { getSettings, subscribeSettings } from "../ipc/settingsStore";
@@ -112,34 +127,51 @@ export function mountLayout(root: HTMLElement): void {
   const workspace = document.createElement("main");
   workspace.className = "workspace";
 
-  // Center top bar: collapse left, centered file name, mode, collapse right.
+  // Center top bar: collapse left, the tab bar, collapse right.
   const viewHeader = document.createElement("div");
   viewHeader.className = "view-header";
   const collapseLeftButton = document.createElement("button");
   collapseLeftButton.className = "view-header-button";
   collapseLeftButton.append(createIcon("panel-left"));
   collapseLeftButton.addEventListener("click", () => toggleSidebar());
+  const tabBar = document.createElement("div");
+  tabBar.className = "tab-bar";
+  const collapseRightButton = document.createElement("button");
+  collapseRightButton.className = "view-header-button";
+  collapseRightButton.append(createIcon("panel-right"));
+  collapseRightButton.addEventListener("click", () => toggleRightPanel());
+  viewHeader.append(collapseLeftButton, tabBar, collapseRightButton);
+
+  // File bar: note name centered, mode toggle and the file menu (three
+  // dots) on the right.
+  const fileBar = document.createElement("div");
+  fileBar.className = "file-bar is-hidden";
   const viewTitle = document.createElement("span");
   viewTitle.className = "view-title";
-  const headerActions = document.createElement("div");
-  headerActions.className = "view-header-actions";
+  const fileActions = document.createElement("div");
+  fileActions.className = "view-header-actions";
   const modeHeaderButton = document.createElement("button");
   modeHeaderButton.className = "view-header-button";
   modeHeaderButton.append(createIcon("book-open"));
   modeHeaderButton.title = t("command.toggleReadingMode");
   modeHeaderButton.addEventListener("click", () => void toggleMode());
-  const collapseRightButton = document.createElement("button");
-  collapseRightButton.className = "view-header-button";
-  collapseRightButton.append(createIcon("panel-right"));
-  collapseRightButton.addEventListener("click", () => toggleRightPanel());
-  headerActions.append(modeHeaderButton, collapseRightButton);
+  const moreButton = document.createElement("button");
+  moreButton.className = "view-header-button";
+  moreButton.append(createIcon("more-vertical"));
+  moreButton.addEventListener("click", () => {
+    if (openedPath !== null) {
+      const rect = moreButton.getBoundingClientRect();
+      openFileMenu(rect.left, rect.bottom + 4, openedPath);
+    }
+  });
+  fileActions.append(modeHeaderButton, moreButton);
   viewTitle.addEventListener("contextmenu", (event) => {
     if (openedPath !== null) {
       event.preventDefault();
       openFileMenu(event.clientX, event.clientY, openedPath);
     }
   });
-  viewHeader.append(collapseLeftButton, viewTitle, headerActions);
+  fileBar.append(viewTitle, fileActions);
 
   const workspaceBody = document.createElement("div");
   workspaceBody.className = "workspace-body";
@@ -152,7 +184,7 @@ export function mountLayout(root: HTMLElement): void {
   editorHost.className = "editor-host is-hidden";
 
   workspaceBody.append(welcome, editorHost);
-  workspace.append(viewHeader, workspaceBody);
+  workspace.append(viewHeader, fileBar, workspaceBody);
 
   // Right panel: one list, three views (backlinks, outgoing, outline).
   type RightView = "backlinks" | "outgoing" | "outline";
@@ -229,6 +261,7 @@ export function mountLayout(root: HTMLElement): void {
   root.append(sidebar, workspace, backlinksPanel, statusBar);
 
   let openedPath: string | null = null;
+  let tabsState: WorkspaceState = emptyWorkspace();
   let currentFolder: string | null = null;
   let folderFiles: FolderFile[] = [];
   let folderImages: FolderFile[] = [];
@@ -386,8 +419,8 @@ export function mountLayout(root: HTMLElement): void {
     onToggleModeRequested() {
       void toggleMode();
     },
-    onWikilinkClick(target) {
-      void openWikilink(target);
+    onWikilinkClick(target, newTab) {
+      void openWikilink(target, newTab === true);
     },
     getWikilinkCompletions() {
       return [
@@ -426,8 +459,8 @@ export function mountLayout(root: HTMLElement): void {
   }, editorConfigFrom(getSettings()));
 
   const readingView = createReadingView({
-    onInternalLink(target) {
-      void openWikilink(target);
+    onInternalLink(target, newTab) {
+      void openWikilink(target, newTab === true);
     },
     onTaskToggle(pos, checked) {
       editor.replaceRange(pos, pos + 3, checked ? "[x]" : "[ ]");
@@ -465,6 +498,8 @@ export function mountLayout(root: HTMLElement): void {
   const fileModes = new Map<string, EditorModeSetting>();
   // Fold state per file, in memory only (never written to the folder).
   const fileFolds = new Map<string, { from: number; to: number }[]>();
+  // Scroll fraction per file, for the mode it was left in.
+  const fileScroll = new Map<string, number>();
   let currentMode: EditorModeSetting = "edit";
 
   function applyMode(mode: EditorModeSetting): void {
@@ -481,6 +516,221 @@ export function mountLayout(root: HTMLElement): void {
     modeHeaderButton.replaceChildren(
       createIcon(editing ? "book-open" : "pencil"),
     );
+    scheduleSessionSave();
+  }
+
+  // --- Tabs ---
+
+  /** Session snapshot of the current tabs and their modes. */
+  function snapshotSession() {
+    return serializeSession(tabsState, (path) =>
+      fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode,
+    );
+  }
+
+  let sessionSaveDebounce: ReturnType<typeof setTimeout> | null = null;
+  function scheduleSessionSave(): void {
+    if (sessionSaveDebounce !== null) {
+      clearTimeout(sessionSaveDebounce);
+    }
+    sessionSaveDebounce = setTimeout(() => {
+      sessionSaveDebounce = null;
+      void saveSession(snapshotSession());
+    }, 300);
+  }
+
+  /** Saves the active tab's transient state (folds, scroll, buffer). */
+  async function stashCurrentTabState(): Promise<void> {
+    if (openedPath === null) {
+      return;
+    }
+    const key = normalizePath(openedPath);
+    fileFolds.set(key, editor.getFolds());
+    fileScroll.set(
+      key,
+      scrollFraction(
+        currentMode === "edit"
+          ? editorHost.querySelector(".cm-scroller")
+          : readingView.element,
+      ),
+    );
+    if (autosave.isDirty()) {
+      await saveNow();
+    }
+  }
+
+  function renderTabs(): void {
+    tabBar.replaceChildren(
+      ...tabsState.tabs.map((tab, index) => {
+        const el = document.createElement("div");
+        el.className = "workspace-tab";
+        el.classList.toggle("is-active", index === tabsState.active);
+        el.classList.toggle("is-pinned", tab.pinned);
+        el.title = tab.path;
+        if (tab.pinned) {
+          const pin = document.createElement("span");
+          pin.className = "workspace-tab-pin";
+          pin.append(createIcon("pin"));
+          el.append(pin);
+        }
+        const name = document.createElement("span");
+        name.className = "workspace-tab-name";
+        name.textContent = basename(tab.path).replace(/\.md$/i, "");
+        el.append(name);
+        if (!tab.pinned) {
+          const close = document.createElement("button");
+          close.className = "workspace-tab-close";
+          close.append(createIcon("x"));
+          close.title = t("tabs.close");
+          close.addEventListener("click", (event) => {
+            event.stopPropagation();
+            void closeTabAt(index);
+          });
+          el.append(close);
+        }
+        el.addEventListener("mousedown", (event) => {
+          const onClose =
+            event.target instanceof Element &&
+            event.target.closest(".workspace-tab-close") !== null;
+          if (event.button === 0 && !onClose) {
+            startTabDrag(el, index, event);
+          }
+        });
+        el.addEventListener("auxclick", (event) => {
+          if (event.button === 1) {
+            event.preventDefault();
+            void closeTabAt(index);
+          }
+        });
+        el.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          openTabMenu(event.clientX, event.clientY, index);
+        });
+        return el;
+      }),
+    );
+  }
+
+  /**
+   * Applies a new tab state: when the active path changes, the current
+   * tab is stashed and the new one loads; otherwise just re-render.
+   */
+  async function applyTabsChange(next: WorkspaceState): Promise<void> {
+    const prevPath = openedPath;
+    const nextPath = activeTabPath(next);
+    if (nextPath === null) {
+      await stashCurrentTabState();
+      tabsState = next;
+      clearWorkspaceView();
+      renderTabs();
+      scheduleSessionSave();
+      return;
+    }
+    if (prevPath === null || !samePath(prevPath, nextPath)) {
+      await stashCurrentTabState();
+      tabsState = next;
+      await loadFile(nextPath);
+      return;
+    }
+    tabsState = next;
+    renderTabs();
+    scheduleSessionSave();
+  }
+
+  async function closeTabAt(index: number): Promise<void> {
+    await applyTabsChange(closeTab(tabsState, index));
+  }
+
+  async function activateTab(index: number): Promise<void> {
+    const tab = tabsState.tabs[index];
+    if (tab === undefined || index === tabsState.active) {
+      return;
+    }
+    await openFile(tab.path);
+  }
+
+  function cycleTab(delta: number): void {
+    const count = tabsState.tabs.length;
+    if (count < 2) {
+      return;
+    }
+    void activateTab((tabsState.active + delta + count) % count);
+  }
+
+  /** Click activates; dragging past a threshold reorders the tab. */
+  function startTabDrag(
+    el: HTMLElement,
+    index: number,
+    start: MouseEvent,
+  ): void {
+    let dragging = false;
+    let target = index;
+    const clearMarkers = (): void => {
+      for (const tabEl of tabBar.children) {
+        tabEl.classList.remove("drop-before", "drop-after");
+      }
+    };
+    const onMove = (event: MouseEvent): void => {
+      if (!dragging && Math.abs(event.clientX - start.clientX) < 5) {
+        return;
+      }
+      dragging = true;
+      el.classList.add("is-dragging");
+      clearMarkers();
+      const tabs = [...tabBar.children] as HTMLElement[];
+      for (let i = 0; i < tabs.length; i++) {
+        const rect = tabs[i].getBoundingClientRect();
+        if (event.clientX < rect.left + rect.width / 2) {
+          target = i > index ? i - 1 : i;
+          tabs[i].classList.add("drop-before");
+          return;
+        }
+      }
+      target = tabs.length - 1;
+      tabs[tabs.length - 1]?.classList.add("drop-after");
+    };
+    const onUp = (): void => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      el.classList.remove("is-dragging");
+      clearMarkers();
+      if (dragging) {
+        void applyTabsChange(moveTab(tabsState, index, target));
+      } else {
+        void activateTab(index);
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function openTabMenu(x: number, y: number, index: number): void {
+    const tab = tabsState.tabs[index];
+    if (tab === undefined) {
+      return;
+    }
+    openContextMenu(x, y, [
+      {
+        label: t("tabs.close"),
+        icon: "x",
+        onClick: () => void closeTabAt(index),
+      },
+      {
+        label: t("tabs.closeOthers"),
+        onClick: () => void applyTabsChange(closeOtherTabs(tabsState, index)),
+      },
+      {
+        label: t("tabs.closeAll"),
+        onClick: () => void applyTabsChange(closeAllTabs(tabsState)),
+      },
+      "separator",
+      {
+        label: t(tab.pinned ? "tabs.unpin" : "tabs.pin"),
+        icon: "pin",
+        onClick: () =>
+          void applyTabsChange(setPinned(tabsState, index, !tab.pinned)),
+      },
+    ]);
   }
 
   function scrollFraction(el: Element | null): number {
@@ -596,7 +846,9 @@ export function mountLayout(root: HTMLElement): void {
         const item = document.createElement("li");
         item.className = "file-item";
         item.textContent = basename(path).replace(/\.md$/i, "");
-        item.addEventListener("click", () => void openFile(path));
+        item.addEventListener("click", (event) =>
+          void openFile(path, { newTab: event.ctrlKey || event.metaKey }),
+        );
         return item;
       }),
     );
@@ -632,7 +884,9 @@ export function mountLayout(root: HTMLElement): void {
           resolution === null || !resolution.exists,
         );
         item.textContent = target;
-        item.addEventListener("click", () => void openWikilink(target));
+        item.addEventListener("click", (event) =>
+          void openWikilink(target, event.ctrlKey || event.metaKey),
+        );
         return item;
       }),
     );
@@ -743,7 +997,10 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
-  function matchSnippet(match: SearchMatch, onClick: () => void): HTMLElement {
+  function matchSnippet(
+    match: SearchMatch,
+    onClick: (event: MouseEvent) => void,
+  ): HTMLElement {
     const item = document.createElement("li");
     item.className = "search-match-line";
     let prefix = match.lineText.slice(0, match.colFrom);
@@ -785,12 +1042,22 @@ export function mountLayout(root: HTMLElement): void {
         const fileName = document.createElement("div");
         fileName.className = "search-file-name";
         fileName.textContent = basename(result.path).replace(/\.md$/i, "");
-        fileName.addEventListener("click", () => void openFile(result.path));
+        fileName.addEventListener("click", (event) =>
+          void openFile(result.path, {
+            newTab: event.ctrlKey || event.metaKey,
+          }),
+        );
         const matches = document.createElement("ul");
         matches.className = "search-matches";
         matches.append(
           ...result.matches.map((match) =>
-            matchSnippet(match, () => void openFileAt(result.path, match)),
+            matchSnippet(match, (event) =>
+              void openFileAt(
+                result.path,
+                match,
+                event.ctrlKey || event.metaKey,
+              ),
+            ),
           ),
         );
         fileItem.append(fileName, matches);
@@ -799,8 +1066,12 @@ export function mountLayout(root: HTMLElement): void {
     );
   }
 
-  async function openFileAt(path: string, match: SearchMatch): Promise<void> {
-    await openFile(path);
+  async function openFileAt(
+    path: string,
+    match: SearchMatch,
+    newTab = false,
+  ): Promise<void> {
+    await openFile(path, { newTab });
     if (currentMode === "edit") {
       editor.revealRange(match.from, match.to);
     }
@@ -867,7 +1138,17 @@ export function mountLayout(root: HTMLElement): void {
           openedPath !== null && samePath(entry.path, openedPath),
         );
         item.textContent = entry.name.replace(/\.md$/i, "");
-        item.addEventListener("click", () => void openFile(entry.path));
+        item.addEventListener("click", (event) =>
+          void openFile(entry.path, {
+            newTab: event.ctrlKey || event.metaKey,
+          }),
+        );
+        item.addEventListener("auxclick", (event) => {
+          if (event.button === 1) {
+            event.preventDefault();
+            void openFile(entry.path, { newTab: true });
+          }
+        });
         item.addEventListener("contextmenu", (event) => {
           event.preventDefault();
           openFileMenu(event.clientX, event.clientY, entry.path);
@@ -877,7 +1158,7 @@ export function mountLayout(root: HTMLElement): void {
     );
   }
 
-  async function openWikilink(target: string): Promise<void> {
+  async function openWikilink(target: string, newTab = false): Promise<void> {
     const { note, anchor } = splitAnchor(target);
     // Same-file anchor: just scroll to the heading.
     if (note === "") {
@@ -912,33 +1193,43 @@ export function mountLayout(root: HTMLElement): void {
         }
       }
     }
-    await openFile(resolution.path);
+    await openFile(resolution.path, { newTab });
     if (anchor !== null) {
       revealAnchor(anchor);
     }
   }
 
-  async function openFile(path: string): Promise<void> {
+  /** Navigation entry: routes `path` through the tab state, then loads. */
+  async function openFile(
+    path: string,
+    opts?: { newTab?: boolean },
+  ): Promise<void> {
     hideHoverPreview();
     if (openedPath !== null && samePath(path, openedPath)) {
       return;
     }
-    if (openedPath !== null) {
-      fileFolds.set(normalizePath(openedPath), editor.getFolds());
+    const before = tabsState;
+    tabsState = openTabPath(tabsState, path, opts?.newTab === true);
+    await stashCurrentTabState();
+    if (!(await loadFile(path))) {
+      tabsState = before;
+      renderTabs();
     }
-    if (openedPath !== null && autosave.isDirty()) {
-      await saveNow();
-    }
+  }
+
+  /** Loads `path` into the workspace view; false when reading fails. */
+  async function loadFile(path: string): Promise<boolean> {
     let contents;
     try {
       contents = await readFile(path);
     } catch (error) {
       setStatusError(t("error.readFile", { error: String(error) }));
-      return;
+      return false;
     }
     openedPath = path;
     setStatusError(null);
     welcome.remove();
+    fileBar.classList.remove("is-hidden");
     const noteName = basename(path).replace(/\.md$/i, "");
     viewTitle.textContent = noteName;
     // Window title "folder - note"; cosmetic, so failures are ignored.
@@ -967,6 +1258,15 @@ export function mountLayout(root: HTMLElement): void {
         readingView.render(contents);
       }
       applyMode(mode);
+      const savedScroll = fileScroll.get(normalizePath(path));
+      if (savedScroll !== undefined) {
+        setScrollFraction(
+          mode === "edit"
+            ? editorHost.querySelector(".cm-scroller")
+            : readingView.element,
+          savedScroll,
+        );
+      }
       if (mode === "edit") {
         editor.focus();
       }
@@ -974,7 +1274,10 @@ export function mountLayout(root: HTMLElement): void {
       // A rendering failure must never leave the view half-open.
       setStatusError(t("error.openFile", { error: String(error) }));
     }
+    renderTabs();
     renderBacklinks();
+    scheduleSessionSave();
+    return true;
   }
 
   async function openFileFromDialog(): Promise<void> {
@@ -987,8 +1290,8 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
-  /** Clears the workspace to the welcome view (delete, folder open). */
-  function closeCurrentFile(): void {
+  /** Clears the workspace to the welcome view (no tab left to show). */
+  function clearWorkspaceView(): void {
     autosave.cancel();
     openedPath = null;
     editor.setDoc("");
@@ -998,10 +1301,16 @@ export function mountLayout(root: HTMLElement): void {
       workspaceBody.prepend(welcome);
     }
     viewTitle.textContent = "";
+    fileBar.classList.add("is-hidden");
     setCounts("");
+    if (currentFolder !== null) {
+      void getCurrentWindow()
+        .setTitle(basename(currentFolder))
+        .catch(() => undefined);
+    }
   }
 
-  /** Moves per-file in-memory state (mode, folds) to a renamed path. */
+  /** Moves per-file in-memory state (mode, folds, scroll) to a new path. */
   function moveFileState(from: string, to: string): void {
     const oldKey = normalizePath(from);
     const newKey = normalizePath(to);
@@ -1014,6 +1323,11 @@ export function mountLayout(root: HTMLElement): void {
     if (folds !== undefined) {
       fileFolds.delete(oldKey);
       fileFolds.set(newKey, folds);
+    }
+    const scroll = fileScroll.get(oldKey);
+    if (scroll !== undefined) {
+      fileScroll.delete(oldKey);
+      fileScroll.set(newKey, scroll);
     }
   }
 
@@ -1051,6 +1365,7 @@ export function mountLayout(root: HTMLElement): void {
       return;
     }
     moveFileState(path, target);
+    tabsState = renameTabPath(tabsState, path, target);
     // Repoint the wikilinks of every linker to the new name.
     for (const linker of linkers) {
       try {
@@ -1092,6 +1407,8 @@ export function mountLayout(root: HTMLElement): void {
         .setTitle(`${basename(dirname(target))} - ${noteName}`)
         .catch(() => undefined);
     }
+    renderTabs();
+    scheduleSessionSave();
     if (currentFolder !== null) {
       await refreshFolder(currentFolder);
       await rebuildIndex();
@@ -1116,8 +1433,15 @@ export function mountLayout(root: HTMLElement): void {
     }
     fileModes.delete(normalizePath(path));
     fileFolds.delete(normalizePath(path));
-    if (openedPath !== null && samePath(path, openedPath)) {
-      closeCurrentFile();
+    fileScroll.delete(normalizePath(path));
+    const tabIndex = findTab(tabsState, path);
+    if (tabIndex !== -1) {
+      if (openedPath !== null && samePath(path, openedPath)) {
+        // The buffer belongs to a deleted file: never save it back.
+        autosave.cancel();
+        openedPath = null;
+      }
+      await applyTabsChange(closeTab(tabsState, tabIndex));
     }
     if (currentFolder !== null) {
       await refreshFolder(currentFolder);
@@ -1186,13 +1510,11 @@ export function mountLayout(root: HTMLElement): void {
 
   /** Opens a folder without a file: welcome view over its file list. */
   async function openFolder(path: string): Promise<void> {
-    if (openedPath !== null) {
-      fileFolds.set(normalizePath(openedPath), editor.getFolds());
-    }
-    if (openedPath !== null && autosave.isDirty()) {
-      await saveNow();
-    }
-    closeCurrentFile();
+    await stashCurrentTabState();
+    tabsState = emptyWorkspace();
+    clearWorkspaceView();
+    renderTabs();
+    scheduleSessionSave();
     setStatusError(null);
     await refreshFolder(path);
     renderBacklinks();
@@ -1311,6 +1633,28 @@ export function mountLayout(root: HTMLElement): void {
       hotkey: "Ctrl+Shift+F",
       run: openSearch,
     },
+    {
+      id: "close-tab",
+      nameKey: "command.closeTab",
+      hotkey: "Ctrl+W",
+      run: () => {
+        if (tabsState.active !== -1) {
+          void closeTabAt(tabsState.active);
+        }
+      },
+    },
+    {
+      id: "next-tab",
+      nameKey: "command.nextTab",
+      hotkey: "Ctrl+Tab",
+      run: () => cycleTab(1),
+    },
+    {
+      id: "prev-tab",
+      nameKey: "command.prevTab",
+      hotkey: "Ctrl+Shift+Tab",
+      run: () => cycleTab(-1),
+    },
   ];
 
   function toggleSidebar(): void {
@@ -1409,6 +1753,24 @@ export function mountLayout(root: HTMLElement): void {
       toggleSearch();
       return;
     }
+    if ((event.ctrlKey || event.metaKey) && event.key === "Tab") {
+      event.preventDefault();
+      cycleTab(event.shiftKey ? -1 : 1);
+      return;
+    }
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      event.key.toLowerCase() === "w"
+    ) {
+      // The WebView would close the window otherwise.
+      event.preventDefault();
+      if (tabsState.active !== -1) {
+        void closeTabAt(tabsState.active);
+      }
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
       return;
     }
@@ -1469,6 +1831,9 @@ export function mountLayout(root: HTMLElement): void {
     });
     welcome.textContent = t("workspace.welcome");
     modeHeaderButton.title = t("command.toggleReadingMode");
+    moreButton.title = t("workspace.moreOptions");
+    moreButton.setAttribute("aria-label", t("workspace.moreOptions"));
+    renderTabs();
     searchTitle.textContent = t("search.title");
     searchInput.placeholder = t("search.placeholder");
     searchClose.title = t("search.close");
@@ -1532,6 +1897,7 @@ export function mountLayout(root: HTMLElement): void {
   // Best-effort save of pending changes when the window closes.
   window.addEventListener("beforeunload", () => {
     autosave.flush();
+    void saveSession(snapshotSession());
   });
 
   setListMessage(t("sidebar.noFolder"));
@@ -1539,11 +1905,50 @@ export function mountLayout(root: HTMLElement): void {
   refreshTexts();
   renderBacklinks();
 
-  // Double-clicking an associated .md passes its path on the command line.
+  // A second app instance forwards its command line here (single
+  // instance): open the file in a new tab of this window.
+  void listen<string[]>("single-instance", (event) => {
+    const file = event.payload.find((arg) =>
+      arg.toLowerCase().endsWith(".md"),
+    );
+    if (file !== undefined) {
+      void openFile(file, { newTab: true });
+    }
+  });
+
+  // Double-clicking an associated .md passes its path on the command
+  // line and takes precedence; otherwise the last session is restored
+  // (when the setting allows it).
   void (async () => {
     const file = await startupFile();
     if (file !== null) {
       await openFile(file);
+      return;
     }
+    if (!getSettings().files.restoreSession) {
+      return;
+    }
+    const session = await loadSession();
+    if (session === null) {
+      return;
+    }
+    const tabs: { path: string; pinned: boolean }[] = [];
+    for (const tab of session.tabs) {
+      try {
+        await readFile(tab.path);
+      } catch {
+        continue; // gone since last session
+      }
+      tabs.push({ path: tab.path, pinned: tab.pinned });
+      fileModes.set(normalizePath(tab.path), tab.mode);
+    }
+    if (tabs.length === 0) {
+      return;
+    }
+    tabsState = {
+      tabs,
+      active: Math.min(session.active, tabs.length - 1),
+    };
+    await loadFile(activeTabPath(tabsState) ?? tabs[0].path);
   })();
 }
