@@ -30,6 +30,7 @@ import {
 import type { EditorModeSetting } from "../lib/settings";
 import { extractLinkTargets } from "../lib/backlinkIndex";
 import { computeOutline } from "../lib/outline";
+import { applyRewrites, renameLinkTargets } from "../lib/renameLinks";
 import { countCharacters, countWords } from "../lib/text";
 import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
 import { renderToHtml } from "../markdown/render";
@@ -869,6 +870,16 @@ export function mountLayout(root: HTMLElement): void {
       dirname(path),
       name.toLowerCase().endsWith(".md") ? name : `${name}.md`,
     );
+    // Files linking here, resolved with the pre-rename index and listing.
+    const linkers =
+      currentFolder === null
+        ? []
+        : backlinkIndex.backlinksOf(
+            path,
+            currentFolder,
+            folderFiles,
+            getSettings().files.defaultExtension,
+          );
     try {
       if (openedPath !== null && samePath(path, openedPath) && autosave.isDirty()) {
         await saveNow();
@@ -879,6 +890,39 @@ export function mountLayout(root: HTMLElement): void {
       return;
     }
     moveFileState(path, target);
+    // Repoint the wikilinks of every linker to the new name.
+    for (const linker of linkers) {
+      try {
+        const isOpen = openedPath !== null && samePath(linker, openedPath);
+        const contents = isOpen ? editor.getDoc() : await readFile(linker);
+        const rewrites = renameLinkTargets(
+          contents,
+          currentFolder ?? dirname(linker),
+          folderFiles,
+          path,
+          target,
+          getSettings().files.defaultExtension,
+        );
+        if (rewrites.length === 0) {
+          continue;
+        }
+        const updated = applyRewrites(contents, rewrites);
+        await writeFile(linker, updated);
+        backlinkIndex.setFile(linker, updated);
+        searchIndex.setFile(linker, updated);
+        if (isOpen) {
+          reloadingFromDisk = true;
+          editor.reloadDoc(updated);
+          reloadingFromDisk = false;
+          setCounts(updated);
+          if (currentMode === "read") {
+            readingView.render(updated);
+          }
+        }
+      } catch (error) {
+        setStatusError(t("error.writeFile", { error: String(error) }));
+      }
+    }
     if (openedPath !== null && samePath(path, openedPath)) {
       openedPath = target;
       const noteName = basename(target).replace(/\.md$/i, "");
