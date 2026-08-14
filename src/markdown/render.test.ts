@@ -87,6 +87,12 @@ describe("renderToHtml — blocks", () => {
     expect(renderToHtml("---\n---\ntext")).toBe("<p>text</p>");
   });
 
+  it("omits the properties box when disabled", () => {
+    expect(
+      renderToHtml("---\ntags: [a]\n---\ntext", { properties: false }),
+    ).toBe("<p>text</p>");
+  });
+
   it("renders tables with header and body", () => {
     const html = renderToHtml("| a | b |\n| --- | --- |\n| c | d |");
     expect(html).toContain("<table><thead><tr><th>a</th><th>b</th></tr></thead>");

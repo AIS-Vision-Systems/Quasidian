@@ -119,6 +119,8 @@
   "settings.autoPairBrackets.desc": "Automatically close brackets and quotes while typing",
   "settings.autoPairMarkdown.name": "Auto-pair Markdown syntax",
   "settings.autoPairMarkdown.desc": "Automatically close **, ==, $$ and similar markers",
+  "settings.showProperties.name": "Properties in reading mode",
+  "settings.showProperties.desc": "Show the properties box in reading mode and embedded notes",
   "settings.confirmDelete.name": "Confirm before deleting",
   "settings.confirmDelete.desc": "Ask for confirmation before deleting files",
   "settings.defaultExtension.name": "Default extension",

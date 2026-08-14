@@ -34,6 +34,7 @@ import {
   createCodePill,
   highlightCodeBlocks,
   renderMathElements,
+  wirePropertiesCollapse,
 } from "../ui/renderedContent";
 
 export interface HiddenRange {
@@ -655,6 +656,7 @@ class NoteEmbedWidget extends WidgetType {
         highlightCodeBlocks(body);
         addCodePills(body);
         renderMathElements(body);
+        wirePropertiesCollapse(body);
         for (const image of body.querySelectorAll("img")) {
           image.addEventListener("load", () => view.requestMeasure());
         }

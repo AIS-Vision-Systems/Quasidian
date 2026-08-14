@@ -299,7 +299,9 @@ export function mountLayout(root: HTMLElement): void {
       return null;
     }
     try {
-      return renderToHtml(await readFile(resolution.path));
+      return renderToHtml(await readFile(resolution.path), {
+        properties: getSettings().editor.showProperties,
+      });
     } catch {
       return null;
     }
@@ -353,6 +355,9 @@ export function mountLayout(root: HTMLElement): void {
       const scroll = readingView.element.scrollTop;
       readingView.render(editor.getDoc());
       readingView.element.scrollTop = scroll;
+    },
+    showProperties() {
+      return getSettings().editor.showProperties;
     },
   });
   workspaceBody.append(readingView.element);
@@ -1311,6 +1316,12 @@ export function mountLayout(root: HTMLElement): void {
     autosaveOptions.intervalMs = settings.editor.autosaveIntervalMs;
     editor.applyConfig(editorConfigFrom(settings));
     refreshTexts();
+    // Hot-apply the properties visibility to an open reading view.
+    if (openedPath !== null && currentMode === "read") {
+      const scroll = readingView.element.scrollTop;
+      readingView.render(editor.getDoc());
+      readingView.element.scrollTop = scroll;
+    }
   });
 
   function refreshTexts(): void {

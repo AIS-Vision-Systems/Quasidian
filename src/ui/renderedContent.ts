@@ -155,6 +155,19 @@ export function addCodePills(root: HTMLElement): void {
   }
 }
 
+/** Local collapse toggling for properties boxes (embedded notes). */
+export function wirePropertiesCollapse(root: HTMLElement): void {
+  for (const props of root.querySelectorAll<HTMLElement>(
+    ".frontmatter-props",
+  )) {
+    props
+      .querySelector<HTMLElement>(".props-header")
+      ?.addEventListener("click", () => {
+        props.classList.toggle("is-collapsed");
+      });
+  }
+}
+
 /** Replaces math placeholders with KaTeX output; errors render as text. */
 export function renderMathElements(root: HTMLElement): void {
   for (const el of root.querySelectorAll<HTMLElement>(

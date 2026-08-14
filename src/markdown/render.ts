@@ -287,7 +287,9 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
 
   switch (name) {
     case "Frontmatter": {
-      out.push(renderPropertiesHtml(parseFrontmatter(doc), false));
+      if (renderProperties) {
+        out.push(renderPropertiesHtml(parseFrontmatter(doc), false));
+      }
       return;
     }
     case "ListItem": {
@@ -489,7 +491,16 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
   }
 }
 
-export function renderToHtml(doc: string): string {
+// Whether the current render emits the properties box; single-threaded
+// rendering keeps this a module flag instead of threading a parameter
+// through every renderer.
+let renderProperties = true;
+
+export function renderToHtml(
+  doc: string,
+  options?: { properties?: boolean },
+): string {
+  renderProperties = options?.properties ?? true;
   const tree = markdownParser.parse(doc);
   const out: string[] = [];
   for (

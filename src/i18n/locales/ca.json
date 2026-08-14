@@ -119,6 +119,8 @@
   "settings.autoPairBrackets.desc": "Tanca automàticament parèntesis, claudàtors i cometes en escriure",
   "settings.autoPairMarkdown.name": "Aparella la sintaxi Markdown",
   "settings.autoPairMarkdown.desc": "Tanca automàticament **, ==, $$ i marques similars",
+  "settings.showProperties.name": "Propietats en mode lectura",
+  "settings.showProperties.desc": "Mostra el quadre de propietats en mode lectura i a les notes incrustades",
   "settings.confirmDelete.name": "Confirma abans d'esborrar",
   "settings.confirmDelete.desc": "Demana confirmació abans d'esborrar fitxers",
   "settings.defaultExtension.name": "Extensió per defecte",

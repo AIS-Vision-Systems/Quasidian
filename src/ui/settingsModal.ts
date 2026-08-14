@@ -347,6 +347,13 @@ export function openSettingsModal(): void {
           patch({ autoPairMarkdown }),
         ),
       ),
+      row(
+        "settings.showProperties.name",
+        "settings.showProperties.desc",
+        toggle(e.showProperties, (showProperties) =>
+          patch({ showProperties }),
+        ),
+      ),
     ];
   }
 
