@@ -22,10 +22,19 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import katex from "katex";
+import { t } from "../i18n/i18n";
 import {
   parseFrontmatter,
   serializeFrontmatter,
 } from "../lib/frontmatter";
+import { openContextMenu, type MenuEntry } from "../ui/contextMenu";
+import {
+  applyTableOp,
+  parseTableSource,
+  serializeTable,
+  type TableData,
+  type TableOp,
+} from "./tableCommands";
 import { renderPropertiesHtml, renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import {
@@ -108,7 +117,8 @@ export function computeHiddenRanges(
     from,
     to,
     enter(node) {
-      if (node.name === "Table" && !selectionTouches(state, node.from, node.to)) {
+      if (node.name === "Table") {
+        // Tables are always widget-replaced; nothing inside is decorated.
         return false;
       }
       if (node.name === "Embed") {
@@ -190,7 +200,8 @@ function computeEmbeds(
     from,
     to,
     enter(node) {
-      if (node.name === "Table" && !selectionTouches(state, node.from, node.to)) {
+      if (node.name === "Table") {
+        // Tables are always widget-replaced; nothing inside is decorated.
         return false;
       }
       if (node.name !== "Embed") {
@@ -881,6 +892,46 @@ class MathWidget extends WidgetType {
   }
 }
 
+// Cell to focus after a table rebuild, keyed by the table's start.
+let pendingTableFocus: {
+  from: number;
+  row: number;
+  column: number;
+} | null = null;
+
+/** Asks the table widget at `from` to focus a cell when it (re)builds. */
+export function focusTableCell(
+  from: number,
+  row: number,
+  column: number,
+): void {
+  pendingTableFocus = { from, row, column };
+}
+
+/** Escapes pipes and newlines so a cell edit can't break the table. */
+function sanitizeCell(text: string): string {
+  return text.replace(/\r?\n/g, " ").replace(/\\?\|/g, "\\|").trim();
+}
+
+function placeCaretEnd(cell: HTMLElement): void {
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+/** Caret offset inside a plaintext cell (0 when unknown). */
+function caretOffset(cell: HTMLElement): number {
+  const selection = window.getSelection();
+  if (selection === null || selection.rangeCount === 0) {
+    return 0;
+  }
+  const range = selection.getRangeAt(0);
+  return cell.contains(range.startContainer) ? range.startOffset : 0;
+}
+
 class TableWidget extends WidgetType {
   constructor(
     readonly source: string,
@@ -895,15 +946,532 @@ class TableWidget extends WidgetType {
 
   toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("div");
-    container.className = "cm-table-widget markdown-rendered";
-    container.innerHTML = renderToHtml(this.source);
-    // Clicking the table reveals its raw markdown with the cursor inside.
-    container.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-      view.dispatch({ selection: { anchor: this.pos } });
-      view.focus();
+    container.className = "cm-table-widget markdown-rendered table-editor";
+    const data = parseTableSource(this.source);
+    if (data === null) {
+      container.innerHTML = renderToHtml(this.source);
+      return container;
+    }
+
+    const dispatchTable = (
+      next: TableData,
+      focus: { row: number; column: number } | null,
+    ): void => {
+      const to = this.pos + this.source.length;
+      let insert = serializeTable(next);
+      // Always keep a blank line after the table so following text
+      // never gets absorbed into it.
+      const nextChar = view.state.doc.sliceString(to, to + 1);
+      const charAfter = view.state.doc.sliceString(to + 1, to + 2);
+      if (nextChar !== "" && (nextChar !== "\n" || (charAfter !== "" && charAfter !== "\n"))) {
+        insert += "\n";
+      }
+      if (focus !== null) {
+        pendingTableFocus = { from: this.pos, ...focus };
+      }
+      view.dispatch({ changes: { from: this.pos, to, insert } });
+    };
+
+    const apply = (
+      op: TableOp,
+      focus: { row: number; column: number } | null,
+    ): void => {
+      const next = applyTableOp(data, op);
+      if (next !== null) {
+        dispatchTable(next, focus);
+      }
+    };
+
+    const rowMenuItems = (row: number): MenuEntry[] => [
+      {
+        label: t("menu.tableAddRowAbove"),
+        onClick: () => apply({ kind: "addRow", row, side: "above" }, null),
+      },
+      {
+        label: t("menu.tableAddRow"),
+        onClick: () => apply({ kind: "addRow", row, side: "below" }, null),
+      },
+      {
+        label: t("menu.tableDuplicateRow"),
+        onClick: () => apply({ kind: "duplicateRow", row }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableMoveRowUp"),
+        disabled: row < 3,
+        onClick: () => apply({ kind: "moveRow", row, delta: -1 }, null),
+      },
+      {
+        label: t("menu.tableMoveRowDown"),
+        disabled: row < 2,
+        onClick: () => apply({ kind: "moveRow", row, delta: 1 }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableDeleteRow"),
+        danger: true,
+        disabled: row < 2,
+        onClick: () => apply({ kind: "deleteRow", row }, null),
+      },
+    ];
+
+    const columnMenuItems = (column: number): MenuEntry[] => [
+      {
+        label: t("menu.tableSortAsc"),
+        onClick: () => apply({ kind: "sort", column, ascending: true }, null),
+      },
+      {
+        label: t("menu.tableSortDesc"),
+        onClick: () => apply({ kind: "sort", column, ascending: false }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableAddColumnLeft"),
+        onClick: () => apply({ kind: "addColumn", column, side: "left" }, null),
+      },
+      {
+        label: t("menu.tableAddColumnRight"),
+        onClick: () =>
+          apply({ kind: "addColumn", column, side: "right" }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableMoveColumnLeft"),
+        onClick: () => apply({ kind: "moveColumn", column, delta: -1 }, null),
+      },
+      {
+        label: t("menu.tableMoveColumnRight"),
+        onClick: () => apply({ kind: "moveColumn", column, delta: 1 }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableAlignLeft"),
+        onClick: () =>
+          apply({ kind: "setAlignment", column, alignment: "left" }, null),
+      },
+      {
+        label: t("menu.tableAlignCenter"),
+        onClick: () =>
+          apply({ kind: "setAlignment", column, alignment: "center" }, null),
+      },
+      {
+        label: t("menu.tableAlignRight"),
+        onClick: () =>
+          apply({ kind: "setAlignment", column, alignment: "right" }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableDuplicateColumn"),
+        onClick: () => apply({ kind: "duplicateColumn", column }, null),
+      },
+      {
+        label: t("menu.tableDeleteColumn"),
+        danger: true,
+        onClick: () => apply({ kind: "deleteColumn", column }, null),
+      },
+    ];
+
+    /** The table data with the cell's current text applied. */
+    const dataWithCellEdit = (cell: HTMLElement): TableData => {
+      const row = Number(cell.dataset.row);
+      const column = Number(cell.dataset.column);
+      const text = sanitizeCell(cell.textContent ?? "");
+      if (text === data.rows[row][column]) {
+        return data;
+      }
+      return {
+        rows: data.rows.map((cells, r) =>
+          r === row
+            ? cells.map((value, c) => (c === column ? text : value))
+            : cells,
+        ),
+        alignments: data.alignments,
+      };
+    };
+
+    const commitCell = (cell: HTMLElement): void => {
+      const next = dataWithCellEdit(cell);
+      if (next !== data) {
+        dispatchTable(next, null);
+      }
+    };
+
+    const focusCell = (row: number, column: number): void => {
+      const target = container.querySelector<HTMLElement>(
+        `[data-row="${row}"][data-column="${column}"]`,
+      );
+      if (target !== null) {
+        target.focus();
+        placeCaretEnd(target);
+      }
+    };
+
+    /** Commits the cell (if changed) and moves focus to another cell. */
+    const commitAndFocus = (
+      cell: HTMLElement,
+      row: number,
+      column: number,
+    ): void => {
+      const next = dataWithCellEdit(cell);
+      if (next !== data) {
+        dispatchTable(next, { row, column });
+      } else {
+        focusCell(row, column);
+      }
+    };
+
+    /** Commits the cell and grows the table by a row, focusing it. */
+    const commitAndGrow = (cell: HTMLElement, column: number): void => {
+      const grown = applyTableOp(dataWithCellEdit(cell), {
+        kind: "addRow",
+        row: data.rows.length - 1,
+        side: "below",
+      });
+      if (grown !== null) {
+        dispatchTable(grown, { row: data.rows.length, column });
+      }
+    };
+
+    /** Display row below/above a model row (1 is the delimiter). */
+    const rowBelow = (row: number): number | null => {
+      if (row === 0) {
+        return data.rows.length > 2 ? 2 : null;
+      }
+      return row + 1 < data.rows.length ? row + 1 : null;
+    };
+    const rowAbove = (row: number): number | null => {
+      if (row === 2) {
+        return 0;
+      }
+      return row > 2 ? row - 1 : null;
+    };
+
+    const makeCell = (
+      tag: "th" | "td",
+      row: number,
+      column: number,
+    ): HTMLElement => {
+      const cell = document.createElement(tag);
+      cell.textContent = data.rows[row][column];
+      cell.dataset.row = String(row);
+      cell.dataset.column = String(column);
+      cell.contentEditable = "plaintext-only";
+      cell.spellcheck = false;
+      const alignment = data.alignments[column];
+      if (alignment !== null) {
+        cell.style.textAlign = alignment;
+      }
+      cell.addEventListener("blur", () => commitCell(cell));
+      cell.addEventListener("keydown", (event) => {
+        const cellRow = Number(cell.dataset.row);
+        const cellColumn = Number(cell.dataset.column);
+        if (event.key === "Enter") {
+          // Down a cell; on the last row, grow the table.
+          event.preventDefault();
+          const below = rowBelow(cellRow);
+          if (below !== null) {
+            commitAndFocus(cell, below, cellColumn);
+          } else {
+            commitAndGrow(cell, cellColumn);
+          }
+          return;
+        }
+        if (event.key === "Tab") {
+          event.preventDefault();
+          const editables = [
+            ...container.querySelectorAll<HTMLElement>("[data-row]"),
+          ];
+          const index = editables.indexOf(cell);
+          const target = index + (event.shiftKey ? -1 : 1);
+          if (target >= 0 && target < editables.length) {
+            const targetCell = editables[target];
+            commitAndFocus(
+              cell,
+              Number(targetCell.dataset.row),
+              Number(targetCell.dataset.column),
+            );
+          } else if (target >= editables.length) {
+            commitAndGrow(cell, 0);
+          }
+          return;
+        }
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          const target =
+            event.key === "ArrowDown" ? rowBelow(cellRow) : rowAbove(cellRow);
+          if (target !== null) {
+            event.preventDefault();
+            commitAndFocus(cell, target, cellColumn);
+          }
+          return;
+        }
+        if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+          // Only when the caret sits at the cell's edge.
+          const forward = event.key === "ArrowRight";
+          const text = cell.textContent ?? "";
+          const offset = caretOffset(cell);
+          if (forward ? offset < text.length : offset > 0) {
+            return;
+          }
+          const editables = [
+            ...container.querySelectorAll<HTMLElement>("[data-row]"),
+          ];
+          const index = editables.indexOf(cell);
+          const target = index + (forward ? 1 : -1);
+          if (target >= 0 && target < editables.length) {
+            event.preventDefault();
+            const targetCell = editables[target];
+            commitAndFocus(
+              cell,
+              Number(targetCell.dataset.row),
+              Number(targetCell.dataset.column),
+            );
+          }
+        }
+      });
+      cell.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openContextMenu(event.clientX, event.clientY, [
+          { label: t("menu.tableRow"), submenu: rowMenuItems(row).filter(
+            (entry): entry is Exclude<MenuEntry, "separator"> =>
+              entry !== "separator",
+          ) },
+          {
+            label: t("menu.tableColumn"),
+            submenu: columnMenuItems(column).filter(
+              (entry): entry is Exclude<MenuEntry, "separator"> =>
+                entry !== "separator",
+            ),
+          },
+          "separator",
+          {
+            label: t("menu.tableSortAsc"),
+            onClick: () =>
+              apply({ kind: "sort", column, ascending: true }, null),
+          },
+          {
+            label: t("menu.tableSortDesc"),
+            onClick: () =>
+              apply({ kind: "sort", column, ascending: false }, null),
+          },
+        ]);
+      });
+      return cell;
+    };
+
+    const table = document.createElement("table");
+    const columns = data.alignments.length;
+
+    // Pointer-based handle dragging: native HTML5 drag & drop is
+    // unreliable inside a contenteditable CodeMirror widget. While
+    // dragging, the source row/column is tinted, an accent bar marks
+    // the insertion point and a ghost of the handle follows the mouse.
+    const startHandleDrag = (
+      kind: "col" | "row",
+      index: number,
+      startEvent: MouseEvent,
+    ): void => {
+      startEvent.preventDefault();
+      const handleEl = startEvent.currentTarget;
+      const selector =
+        kind === "col"
+          ? "[data-handle-column], [data-column]"
+          : "[data-handle-row], [data-row]";
+      const targetOf = (element: HTMLElement): number =>
+        Number(
+          kind === "col"
+            ? (element.dataset.handleColumn ?? element.dataset.column)
+            : (element.dataset.handleRow ?? element.dataset.row),
+        );
+      const sourceCells = container.querySelectorAll<HTMLElement>(
+        kind === "col"
+          ? `[data-column="${index}"], [data-handle-column="${index}"]`
+          : `[data-row="${index}"], [data-handle-row="${index}"]`,
+      );
+      for (const cell of sourceCells) {
+        cell.classList.add("drag-source");
+      }
+      const indicator = document.createElement("div");
+      indicator.className = "table-drop-indicator";
+      indicator.style.display = "none";
+      wrap.append(indicator);
+      let ghost: HTMLElement | null = null;
+      if (handleEl instanceof HTMLElement) {
+        ghost = handleEl.cloneNode(true) as HTMLElement;
+        ghost.classList.add("table-drag-ghost");
+        ghost.style.width = `${handleEl.offsetWidth}px`;
+        ghost.style.height = `${handleEl.offsetHeight}px`;
+        document.body.append(ghost);
+      }
+      document.body.style.cursor = "grabbing";
+      let target: number | null = null;
+      const onMove = (event: MouseEvent): void => {
+        if (ghost !== null) {
+          ghost.style.left = `${event.clientX - ghost.offsetWidth / 2}px`;
+          ghost.style.top = `${event.clientY - ghost.offsetHeight / 2}px`;
+        }
+        const under = document.elementFromPoint(event.clientX, event.clientY);
+        const cellEl =
+          under instanceof Element
+            ? under.closest<HTMLElement>(selector)
+            : null;
+        target = null;
+        indicator.style.display = "none";
+        if (cellEl !== null && container.contains(cellEl)) {
+          const candidate = targetOf(cellEl);
+          if (Number.isFinite(candidate) && candidate !== index) {
+            target = candidate;
+            const cellRect = cellEl.getBoundingClientRect();
+            const tableRect = table.getBoundingClientRect();
+            const wrapRect = wrap.getBoundingClientRect();
+            indicator.style.display = "block";
+            if (kind === "col") {
+              const x =
+                (candidate > index ? cellRect.right : cellRect.left) -
+                wrapRect.left;
+              indicator.style.left = `${x - 1.5}px`;
+              indicator.style.top = `${tableRect.top - wrapRect.top}px`;
+              indicator.style.width = "3px";
+              indicator.style.height = `${tableRect.height}px`;
+            } else {
+              const y =
+                (candidate > index ? cellRect.bottom : cellRect.top) -
+                wrapRect.top;
+              indicator.style.top = `${y - 1.5}px`;
+              indicator.style.left = `${tableRect.left - wrapRect.left}px`;
+              indicator.style.height = "3px";
+              indicator.style.width = `${tableRect.width}px`;
+            }
+          }
+        }
+      };
+      const onUp = (): void => {
+        window.removeEventListener("mousemove", onMove, true);
+        window.removeEventListener("mouseup", onUp, true);
+        for (const cell of sourceCells) {
+          cell.classList.remove("drag-source");
+        }
+        indicator.remove();
+        ghost?.remove();
+        document.body.style.cursor = "";
+        if (target !== null) {
+          apply(
+            kind === "col"
+              ? { kind: "moveColumnTo", column: index, to: target }
+              : { kind: "moveRowTo", row: index, to: target },
+            null,
+          );
+        }
+      };
+      window.addEventListener("mousemove", onMove, true);
+      window.addEventListener("mouseup", onUp, true);
+    };
+
+    // Column handles above the header.
+    const handleRow = document.createElement("tr");
+    handleRow.className = "table-handle-row";
+    const corner = document.createElement("th");
+    corner.className = "table-corner";
+    handleRow.append(corner);
+    for (let column = 0; column < columns; column++) {
+      const cell = document.createElement("th");
+      cell.className = "table-col-handle-cell";
+      cell.dataset.handleColumn = String(column);
+      const handle = document.createElement("button");
+      handle.className = "table-col-handle";
+      handle.addEventListener("mousedown", (event) => {
+        if (event.button === 0) {
+          startHandleDrag("col", column, event);
+        }
+      });
+      handle.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openContextMenu(event.clientX, event.clientY, columnMenuItems(column));
+      });
+      cell.append(handle);
+      handleRow.append(cell);
+    }
+    table.append(handleRow);
+
+    data.rows.forEach((cells, row) => {
+      if (row === 1) {
+        return;
+      }
+      const tr = document.createElement("tr");
+      const handleCell = document.createElement("td");
+      handleCell.className = "table-row-handle-cell";
+      handleCell.dataset.handleRow = String(row);
+      const handle = document.createElement("button");
+      handle.className = "table-row-handle";
+      handle.addEventListener("mousedown", (event) => {
+        if (event.button === 0) {
+          startHandleDrag("row", row, event);
+        }
+      });
+      handle.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openContextMenu(event.clientX, event.clientY, rowMenuItems(row));
+      });
+      handleCell.append(handle);
+      tr.append(handleCell);
+      cells.forEach((_, column) => {
+        tr.append(makeCell(row === 0 ? "th" : "td", row, column));
+      });
+      table.append(tr);
     });
+
+    // Hovering the table's right/bottom edge offers quick add buttons.
+    const wrap = document.createElement("span");
+    wrap.className = "table-wrap";
+    wrap.append(table);
+    const addColumnButton = document.createElement("button");
+    addColumnButton.className = "table-edge-add table-edge-add-col";
+    addColumnButton.textContent = "+";
+    addColumnButton.title = t("menu.tableAddColumnRight");
+    addColumnButton.addEventListener("click", () =>
+      apply(
+        { kind: "addColumn", column: data.alignments.length - 1, side: "right" },
+        null,
+      ),
+    );
+    const addRowButton = document.createElement("button");
+    addRowButton.className = "table-edge-add table-edge-add-row";
+    addRowButton.textContent = "+";
+    addRowButton.title = t("menu.tableAddRow");
+    addRowButton.addEventListener("click", () =>
+      apply(
+        { kind: "addRow", row: data.rows.length - 1, side: "below" },
+        null,
+      ),
+    );
+    wrap.append(addColumnButton, addRowButton);
+    container.append(wrap);
+
+    if (pendingTableFocus !== null && pendingTableFocus.from === this.pos) {
+      const { row, column } = pendingTableFocus;
+      pendingTableFocus = null;
+      setTimeout(() => {
+        const cell = container.querySelector<HTMLElement>(
+          `[data-row="${row}"][data-column="${column}"]`,
+        );
+        if (cell !== null) {
+          cell.focus();
+          const range = document.createRange();
+          range.selectNodeContents(cell);
+          range.collapse(false);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
+      }, 0);
+    }
     return container;
+  }
+
+  override ignoreEvent(): boolean {
+    return true;
   }
 }
 
@@ -1409,9 +1977,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
         return false;
       }
       if (node.name === "Table") {
-        if (selectionTouches(state, node.from, node.to)) {
-          return false;
-        }
+        // Always a widget: tables are never edited as raw text.
         const from = state.doc.lineAt(node.from).from;
         const to = state.doc.lineAt(node.to).to;
         ranges.push(
@@ -1460,13 +2026,23 @@ const blockDecorations = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-/** The frontmatter block is atomic: the cursor can never sit inside. */
+/** Frontmatter and tables are atomic: the cursor never sits inside. */
 const frontmatterAtomic = EditorView.atomicRanges.of((view) => {
-  const first = syntaxTree(view.state).topNode.firstChild;
-  if (first === null || first.name !== "Frontmatter") {
-    return Decoration.none;
-  }
-  return Decoration.set(hideMark.range(first.from, first.to));
+  const ranges: Range<Decoration>[] = [];
+  syntaxTree(view.state).iterate({
+    enter(node) {
+      if (node.name === "Frontmatter" && node.from === 0) {
+        ranges.push(hideMark.range(node.from, node.to));
+        return false;
+      }
+      if (node.name === "Table") {
+        ranges.push(hideMark.range(node.from, node.to));
+        return false;
+      }
+      return;
+    },
+  });
+  return Decoration.set(ranges, true);
 });
 
 /**
@@ -1506,11 +2082,22 @@ function moveIntoBlock(view: EditorView, forward: boolean): boolean {
   if (blockFrom < 0) {
     return false;
   }
-  // Never step into the frontmatter: its widget is the only editor.
-  if (
-    blockFrom === 0 &&
-    state.doc.sliceString(0, 3) === "---"
-  ) {
+  // Never step into the frontmatter or a table: their widgets are the
+  // only editors (math blocks remain enterable).
+  if (blockFrom === 0 && state.doc.sliceString(0, 3) === "---") {
+    return false;
+  }
+  let insideTable = false;
+  syntaxTree(state).iterate({
+    from: blockFrom,
+    to: blockFrom,
+    enter(node) {
+      if (node.name === "Table") {
+        insideTable = true;
+      }
+    },
+  });
+  if (insideTable) {
     return false;
   }
   const entry = forward ? blockFrom : state.doc.lineAt(blockTo).from;

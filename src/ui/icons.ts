@@ -30,7 +30,8 @@ export type IconName =
   | "tag"
   | "corner-up-right"
   | "text"
-  | "plus";
+  | "plus"
+  | "table";
 
 const ICON_PATHS: Record<IconName, string> = {
   "book-open":
@@ -108,6 +109,9 @@ const ICON_PATHS: Record<IconName, string> = {
     '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5V20"/>',
   text: '<path d="M15 18H3"/><path d="M17 6H3"/><path d="M21 12H3"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  table:
+    '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/>' +
+    '<path d="M3 9h18"/><path d="M3 15h18"/>',
 };
 
 /** The same icon as a plain SVG markup string (for HTML renderers). */

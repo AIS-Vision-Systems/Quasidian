@@ -240,18 +240,50 @@ function renderHeading(
   out.push(`</h${level}>`);
 }
 
+/** Column alignments from the GFM delimiter row (:---, :---:, ---:). */
+export function tableAlignments(
+  delimiter: string,
+): ("left" | "center" | "right" | null)[] {
+  return delimiter
+    .split("|")
+    .map((cell) => cell.trim())
+    .filter((cell) => cell !== "")
+    .map((cell) => {
+      const left = cell.startsWith(":");
+      const right = cell.endsWith(":");
+      if (left && right) {
+        return "center";
+      }
+      if (right) {
+        return "right";
+      }
+      if (left) {
+        return "left";
+      }
+      return null;
+    });
+}
+
 function renderTableRow(
   row: SyntaxNode,
   cellTag: "th" | "td",
   doc: string,
   out: string[],
+  alignments: ("left" | "center" | "right" | null)[],
 ): void {
   out.push("<tr>");
+  let column = 0;
   for (let cell = row.firstChild; cell !== null; cell = cell.nextSibling) {
     if (cell.name === "TableCell") {
-      out.push(`<${cellTag}>`);
+      const alignment = alignments[column] ?? null;
+      out.push(
+        alignment === null
+          ? `<${cellTag}>`
+          : `<${cellTag} style="text-align:${alignment}">`,
+      );
       renderInline(cell, cell.from, cell.to, doc, out);
       out.push(`</${cellTag}>`);
+      column++;
     }
   }
   out.push("</tr>");
@@ -452,17 +484,22 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
     }
     case "Table": {
       out.push("<table>");
+      const delimiter = node.getChild("TableDelimiter");
+      const alignments =
+        delimiter === null
+          ? []
+          : tableAlignments(doc.slice(delimiter.from, delimiter.to));
       const header = node.getChild("TableHeader");
       if (header !== null) {
         out.push("<thead>");
-        renderTableRow(header, "th", doc, out);
+        renderTableRow(header, "th", doc, out, alignments);
         out.push("</thead>");
       }
       const rows = node.getChildren("TableRow");
       if (rows.length > 0) {
         out.push("<tbody>");
         for (const row of rows) {
-          renderTableRow(row, "td", doc, out);
+          renderTableRow(row, "td", doc, out, alignments);
         }
         out.push("</tbody>");
       }

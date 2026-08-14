@@ -93,6 +93,14 @@ describe("renderToHtml — blocks", () => {
     ).toBe("<p>text</p>");
   });
 
+  it("renders column alignments from the delimiter row", () => {
+    const html = renderToHtml("| a | b |\n| :---: | ---: |\n| c | d |");
+    expect(html).toContain('<th style="text-align:center">');
+    expect(html).toContain('<th style="text-align:right">');
+    expect(html).toContain('<td style="text-align:center">');
+    expect(html).toContain('<td style="text-align:right">');
+  });
+
   it("renders tables with header and body", () => {
     const html = renderToHtml("| a | b |\n| --- | --- |\n| c | d |");
     expect(html).toContain("<table><thead><tr><th>a</th><th>b</th></tr></thead>");

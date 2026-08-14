@@ -65,7 +65,12 @@ import {
   listIndentCommand,
   listOutdentCommand,
 } from "./listCommands";
-import { livePreview, requestAddProperty } from "./livePreview";
+import { emptyTable } from "./tableCommands";
+import {
+  focusTableCell,
+  livePreview,
+  requestAddProperty,
+} from "./livePreview";
 
 // Renders markdown formatting (sizes, weights, code font) while Live Preview
 // hides the marks themselves. Colors always go through CSS variables.
@@ -186,6 +191,21 @@ async function pasteClipboard(view: EditorView): Promise<void> {
   view.focus();
 }
 
+/** Inserts an empty 2x2 table on its own block and focuses it. */
+function insertTableCommand(view: EditorView): void {
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  const prefix = line.text.trim() === "" ? "" : "\n\n";
+  const skeleton = emptyTable();
+  const from = line.to;
+  const tableFrom = from + prefix.length;
+  focusTableCell(tableFrom, 0, 0);
+  view.dispatch({
+    changes: { from, insert: `${prefix}${skeleton}\n` },
+    selection: { anchor: tableFrom + skeleton.length + 1 },
+  });
+}
+
 function openEditorMenu(view: EditorView, x: number, y: number): void {
   const hasSelection = !view.state.selection.main.empty;
   openContextMenu(x, y, [
@@ -218,6 +238,11 @@ function openEditorMenu(view: EditorView, x: number, y: number): void {
       label: t("menu.addLink"),
       icon: "link",
       onClick: () => insertLink(view),
+    },
+    {
+      label: t("menu.insertTable"),
+      icon: "table",
+      onClick: () => insertTableCommand(view),
     },
     {
       label: t("menu.format"),
@@ -352,6 +377,8 @@ export interface EditorHandle {
   toggleFoldAt(pos: number): void;
   /** Opens the properties editor's add-property row. */
   addProperty(): void;
+  /** Inserts an empty table at the cursor (palette command). */
+  insertTable(): void;
 }
 
 export function createEditor(
@@ -633,6 +660,9 @@ export function createEditor(
     },
     addProperty(): void {
       requestAddProperty(view);
+    },
+    insertTable(): void {
+      insertTableCommand(view);
     },
     toggleFoldAt(pos: number): void {
       const clamped = Math.min(Math.max(pos, 0), view.state.doc.length);

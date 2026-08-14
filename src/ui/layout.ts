@@ -1294,6 +1294,11 @@ export function mountLayout(root: HTMLElement): void {
       },
     },
     {
+      id: "insert-table",
+      nameKey: "menu.insertTable",
+      run: () => editor.insertTable(),
+    },
+    {
       id: "global-search",
       nameKey: "command.globalSearch",
       hotkey: "Ctrl+Shift+F",
