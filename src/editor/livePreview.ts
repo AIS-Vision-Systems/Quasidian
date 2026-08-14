@@ -1263,13 +1263,16 @@ class TableWidget extends WidgetType {
     const columns = data.alignments.length;
 
     // Pointer-based handle dragging: native HTML5 drag & drop is
-    // unreliable inside a contenteditable CodeMirror widget.
+    // unreliable inside a contenteditable CodeMirror widget. While
+    // dragging, the source row/column is tinted, an accent bar marks
+    // the insertion point and a ghost of the handle follows the mouse.
     const startHandleDrag = (
       kind: "col" | "row",
       index: number,
       startEvent: MouseEvent,
     ): void => {
       startEvent.preventDefault();
+      const handleEl = startEvent.currentTarget;
       const selector =
         kind === "col"
           ? "[data-handle-column], [data-column]"
@@ -1280,30 +1283,77 @@ class TableWidget extends WidgetType {
             ? (element.dataset.handleColumn ?? element.dataset.column)
             : (element.dataset.handleRow ?? element.dataset.row),
         );
+      const sourceCells = container.querySelectorAll<HTMLElement>(
+        kind === "col"
+          ? `[data-column="${index}"], [data-handle-column="${index}"]`
+          : `[data-row="${index}"], [data-handle-row="${index}"]`,
+      );
+      for (const cell of sourceCells) {
+        cell.classList.add("drag-source");
+      }
+      const indicator = document.createElement("div");
+      indicator.className = "table-drop-indicator";
+      indicator.style.display = "none";
+      wrap.append(indicator);
+      let ghost: HTMLElement | null = null;
+      if (handleEl instanceof HTMLElement) {
+        ghost = handleEl.cloneNode(true) as HTMLElement;
+        ghost.classList.add("table-drag-ghost");
+        ghost.style.width = `${handleEl.offsetWidth}px`;
+        ghost.style.height = `${handleEl.offsetHeight}px`;
+        document.body.append(ghost);
+      }
+      document.body.style.cursor = "grabbing";
       let target: number | null = null;
-      let marked: HTMLElement | null = null;
       const onMove = (event: MouseEvent): void => {
+        if (ghost !== null) {
+          ghost.style.left = `${event.clientX - ghost.offsetWidth / 2}px`;
+          ghost.style.top = `${event.clientY - ghost.offsetHeight / 2}px`;
+        }
         const under = document.elementFromPoint(event.clientX, event.clientY);
         const cellEl =
           under instanceof Element
             ? under.closest<HTMLElement>(selector)
             : null;
-        marked?.classList.remove("drag-target");
-        marked = null;
         target = null;
+        indicator.style.display = "none";
         if (cellEl !== null && container.contains(cellEl)) {
           const candidate = targetOf(cellEl);
           if (Number.isFinite(candidate) && candidate !== index) {
             target = candidate;
-            marked = cellEl;
-            cellEl.classList.add("drag-target");
+            const cellRect = cellEl.getBoundingClientRect();
+            const tableRect = table.getBoundingClientRect();
+            const wrapRect = wrap.getBoundingClientRect();
+            indicator.style.display = "block";
+            if (kind === "col") {
+              const x =
+                (candidate > index ? cellRect.right : cellRect.left) -
+                wrapRect.left;
+              indicator.style.left = `${x - 1.5}px`;
+              indicator.style.top = `${tableRect.top - wrapRect.top}px`;
+              indicator.style.width = "3px";
+              indicator.style.height = `${tableRect.height}px`;
+            } else {
+              const y =
+                (candidate > index ? cellRect.bottom : cellRect.top) -
+                wrapRect.top;
+              indicator.style.top = `${y - 1.5}px`;
+              indicator.style.left = `${tableRect.left - wrapRect.left}px`;
+              indicator.style.height = "3px";
+              indicator.style.width = `${tableRect.width}px`;
+            }
           }
         }
       };
       const onUp = (): void => {
         window.removeEventListener("mousemove", onMove, true);
         window.removeEventListener("mouseup", onUp, true);
-        marked?.classList.remove("drag-target");
+        for (const cell of sourceCells) {
+          cell.classList.remove("drag-source");
+        }
+        indicator.remove();
+        ghost?.remove();
+        document.body.style.cursor = "";
         if (target !== null) {
           apply(
             kind === "col"
