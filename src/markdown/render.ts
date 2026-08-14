@@ -11,6 +11,7 @@ import {
   type FrontmatterData,
 } from "../lib/frontmatter";
 import { iconMarkup } from "../ui/icons";
+import { calloutColor, calloutIcon, parseCalloutHeader } from "./callouts";
 import { markdownParser } from "./parser";
 import { isImageTarget } from "./wikilinks";
 
@@ -289,9 +290,66 @@ function renderTableRow(
   out.push("</tr>");
 }
 
+/** Renders `> [!type] Títol` blockquotes as callout boxes. */
+function renderCallout(node: SyntaxNode, doc: string, out: string[]): boolean {
+  const paragraph = node.getChild("Paragraph");
+  if (paragraph === null) {
+    return false;
+  }
+  const text = doc.slice(paragraph.from, paragraph.to);
+  const newline = text.indexOf("\n");
+  const firstLine = newline === -1 ? text : text.slice(0, newline);
+  const header = parseCalloutHeader(firstLine);
+  if (header === null) {
+    return false;
+  }
+  const firstLineEnd =
+    newline === -1 ? paragraph.to : paragraph.from + newline;
+  out.push(
+    `<div class="callout" data-callout="${escapeHtml(header.type)}" style="--callout-color:${calloutColor(header.type)}">`,
+  );
+  out.push(
+    `<div class="callout-title">${iconMarkup(calloutIcon(header.type))}<span class="callout-title-text">`,
+  );
+  if (header.title !== "") {
+    renderInline(
+      paragraph,
+      paragraph.from + header.markerLength,
+      firstLineEnd,
+      doc,
+      out,
+    );
+  } else {
+    out.push(
+      escapeHtml(
+        header.type.charAt(0).toUpperCase() + header.type.slice(1),
+      ),
+    );
+  }
+  out.push("</span></div>");
+  out.push('<div class="callout-content">');
+  if (firstLineEnd < paragraph.to) {
+    out.push("<p>");
+    renderInline(paragraph, firstLineEnd + 1, paragraph.to, doc, out);
+    out.push("</p>");
+  }
+  for (
+    let child = paragraph.nextSibling;
+    child !== null;
+    child = child.nextSibling
+  ) {
+    renderNode(child, doc, out);
+  }
+  out.push("</div></div>");
+  return true;
+}
+
 function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
   const name = node.name;
   if (SKIP.has(name)) {
+    return;
+  }
+  if (name === "Blockquote" && renderCallout(node, doc, out)) {
     return;
   }
 
@@ -318,6 +376,33 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
   }
 
   switch (name) {
+    case "FootnoteRef": {
+      const label = node.getChild("FootnoteLabel");
+      const id =
+        label === null ? "" : escapeHtml(doc.slice(label.from, label.to));
+      out.push(
+        `<sup class="footnote-ref"><a class="footnote-link" id="fnref-${id}" href="#fn-${id}">${id}</a></sup>`,
+      );
+      return;
+    }
+    case "FootnoteDef": {
+      const label = node.getChild("FootnoteLabel");
+      const id =
+        label === null ? "" : escapeHtml(doc.slice(label.from, label.to));
+      const marks = node.getChildren("FootnoteMark");
+      let contentFrom = marks[1]?.to ?? node.from;
+      if (doc[contentFrom] === " " || doc[contentFrom] === "\t") {
+        contentFrom++;
+      }
+      out.push(
+        `<div class="footnote-def" id="fn-${id}"><sup class="footnote-def-label">${id}</sup> `,
+      );
+      renderInline(node, Math.min(contentFrom, node.to), node.to, doc, out);
+      out.push(
+        ` <a class="footnote-back" href="#fnref-${id}">↩</a></div>`,
+      );
+      return;
+    }
     case "Frontmatter": {
       if (renderProperties) {
         out.push(renderPropertiesHtml(parseFrontmatter(doc), false));

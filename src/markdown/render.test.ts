@@ -15,6 +15,31 @@ describe("renderToHtml — blocks", () => {
     expect(renderToHtml("`codi`")).toBe("<p><code>codi</code></p>");
   });
 
+  it("renders footnote references and definitions", () => {
+    const html = renderToHtml("text[^1]\n\n[^1]: la nota");
+    expect(html).toContain(
+      '<sup class="footnote-ref"><a class="footnote-link" id="fnref-1" href="#fn-1">1</a></sup>',
+    );
+    expect(html).toContain('<div class="footnote-def" id="fn-1">');
+    expect(html).toContain("la nota");
+    expect(html).toContain('href="#fnref-1"');
+  });
+
+  it("renders callouts with type, icon, title and content", () => {
+    const html = renderToHtml("> [!warning] Compte\n> Cos del callout");
+    expect(html).toContain('data-callout="warning"');
+    expect(html).toContain("--callout-color:233,151,63");
+    expect(html).toContain("Compte");
+    expect(html).toContain('class="callout-content"');
+    expect(html).toContain("Cos del callout");
+    expect(html).not.toContain("[!warning]");
+  });
+
+  it("uses the type as title when the callout has none", () => {
+    const html = renderToHtml("> [!tip]\n> Cos");
+    expect(html).toContain(">Tip</");
+  });
+
   it("renders blockquotes", () => {
     expect(renderToHtml("> cita")).toBe(
       "<blockquote><p>cita</p></blockquote>",

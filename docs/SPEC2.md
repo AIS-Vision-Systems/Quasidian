@@ -19,6 +19,7 @@ Llegeix `SPEC.md` abans de començar: tot el que hi diu segueix vigent excepte o
 - **Vistes dividides i docking**: particions del panell central, arrossegar pestanyes entre particions.
 - **Múltiples instàncies d'un mateix fitxer** (obert en més d'una pestanya alhora) i **finestres noves**.
 - **Modes multicarpeta (CLAUDE/GPT)**: vault recursiu activat automàticament quan la carpeta conté `CLAUDE.md` o `.claude` (o penja d'una que en té), comportament de vault d'Obsidian, títol «vault - fitxer». És un canvi de l'invariant «no recursiu» i es farà en una fase dedicada.
+- **Exportar a PDF** des del menú contextual del fitxer (fase 3).
 - Segueix fora d'abast permanent: graph view, plugins, sync, publish, WYSIWYG de model de document, vim mode (només el forat a settings).
 
 ## Milestones (implementa'ls en ordre, un PR per milestone)
@@ -76,6 +77,7 @@ Llegeix `SPEC.md` abans de començar: tot el que hi diu segueix vigent excepte o
     - **Instància única**: obrir un `.md` des del sistema (doble clic, línia de comandes) quan l'app ja corre l'obre en una pestanya nova de la finestra existent, no en una finestra nova (plugin single-instance de Tauri; el reenviament de l'argument és l'única lògica al costat Rust).
     - **Persistència de finestra**: en engegar, l'app recorda l'última posició, mida, pantalla i estat maximitzat.
     - **Persistència de sessió**: es restauren els fitxers oberts, la pestanya activa i el mode de cadascun, **excepte** quan l'app s'obre amb un fitxer per paràmetre (doble clic a un `.md`). Controlat per un setting nou (per defecte activat), amb schema + modal + i18n com sempre.
+    - **Reordenació de la barra del fitxer**: el botó de col·lapsar el panell dret es mou al costat de les pestanyes; la barra del fitxer conserva el commutador de mode i incorpora una icona de **tres punts** que desplega el menú contextual del fitxer.
 
 ## Convencions
 

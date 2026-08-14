@@ -86,6 +86,15 @@ describe("computeHiddenRanges — italic, inline code, strikethrough", () => {
     expect(hiddenRanges("~~s~~ x", 3)).toEqual([]);
   });
 
+  it("hides footnote marks when outside, reveals inside the ref", () => {
+    const doc = "a [^1] b";
+    expect(hiddenRanges(doc, doc.length)).toEqual([
+      { from: 2, to: 4 },
+      { from: 5, to: 6 },
+    ]);
+    expect(hiddenRanges(doc, 3)).toEqual([]);
+  });
+
   it("hides == marks of highlights when outside", () => {
     expect(hiddenRanges("==h== x", 7)).toEqual([
       { from: 0, to: 2 },

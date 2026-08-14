@@ -37,6 +37,7 @@ import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import { t } from "../i18n/i18n";
+import { footnoteTag } from "../markdown/footnotes";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag } from "../markdown/wikilinks";
@@ -103,6 +104,13 @@ const markdownHighlighting = HighlightStyle.define([
   },
   // Raw TeX source, shown when the selection reveals a formula.
   { tag: mathTag, fontFamily: "var(--font-monospace)", fontSize: "0.9em" },
+  // Footnote references read as superscript accent text.
+  {
+    tag: footnoteTag,
+    color: "var(--text-accent)",
+    fontSize: "0.8em",
+    verticalAlign: "super",
+  },
   // Code-block tokens, mapped onto the theme palette.
   { tag: tags.keyword, color: "var(--color-6)" },
   { tag: [tags.string, tags.special(tags.string)], color: "var(--color-4)" },

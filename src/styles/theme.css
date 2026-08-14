@@ -117,11 +117,4 @@
   background-color: var(--scrollbar-active-thumb-bg);
 }
 
-/* Kept from the starting snippet for when callouts land. */
-.callout {
-  /* border-right: 4px solid rgb(var(--callout-color), 0.7); */
-  /* border-left: 4px solid rgb(var(--callout-color), 0.7); */
-  /* box-shadow: 0 0 1.3em rgb(var(--callout-color)); */
-  /* border-radius: 10px 10px 10px 10px; */
-  background-color: rgba(var(--callout-color), 0.4);
-}
+/* Callout styling lives in app.css; --callout-color is set per box. */

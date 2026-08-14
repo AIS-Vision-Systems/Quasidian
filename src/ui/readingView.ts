@@ -149,6 +149,13 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
         return;
       }
       const href = link.getAttribute("href");
+      if (href !== null && href.startsWith("#")) {
+        // Footnote jumps (reference <-> definition).
+        content
+          .querySelector(`[id="${href.slice(1)}"]`)
+          ?.scrollIntoView({ block: "center" });
+        return;
+      }
       if (href !== null && /^https?:\/\//i.test(href)) {
         void openUrl(href);
       }

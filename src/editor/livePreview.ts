@@ -29,6 +29,11 @@ import {
 } from "../lib/frontmatter";
 import { openContextMenu, type MenuEntry } from "../ui/contextMenu";
 import {
+  calloutColor,
+  calloutIcon,
+  parseCalloutHeader,
+} from "../markdown/callouts";
+import {
   applyTableOp,
   parseTableSource,
   serializeTable,
@@ -37,6 +42,7 @@ import {
 } from "./tableCommands";
 import { renderPropertiesHtml, renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
+import { createIcon } from "../ui/icons";
 import {
   scheduleHoverHide,
   scheduleHoverShow,
@@ -78,6 +84,7 @@ const INLINE_MARKS: Record<string, string[]> = {
   CodeMark: ["InlineCode"],
   StrikethroughMark: ["Strikethrough"],
   HighlightMark: ["Highlight"],
+  FootnoteMark: ["FootnoteRef"],
 };
 
 function selectionTouches(
@@ -1727,6 +1734,56 @@ const taskDoneLine = Decoration.line({ class: "cm-task-done" });
 const bulletDecoration = Decoration.replace({ widget: new BulletWidget() });
 const hrDecoration = Decoration.replace({ widget: new HrWidget() });
 
+export interface CalloutRange {
+  /** The `[!type]` marker (plus one following space). */
+  markerFrom: number;
+  markerTo: number;
+  /** End of the title (the first line). */
+  titleTo: number;
+  type: string;
+}
+
+/** Callout info for a blockquote node, or null when it is a plain one. */
+export function calloutForQuote(
+  state: EditorState,
+  quote: SyntaxNode,
+): CalloutRange | null {
+  const paragraph = quote.getChild("Paragraph");
+  if (paragraph === null) {
+    return null;
+  }
+  const text = state.doc.sliceString(paragraph.from, paragraph.to);
+  const newline = text.indexOf("\n");
+  const firstLine = newline === -1 ? text : text.slice(0, newline);
+  const header = parseCalloutHeader(firstLine);
+  if (header === null) {
+    return null;
+  }
+  return {
+    markerFrom: paragraph.from,
+    markerTo: paragraph.from + header.markerLength,
+    titleTo: newline === -1 ? paragraph.to : paragraph.from + newline,
+    type: header.type,
+  };
+}
+
+class CalloutIconWidget extends WidgetType {
+  constructor(readonly type: string) {
+    super();
+  }
+
+  override eq(other: CalloutIconWidget): boolean {
+    return other.type === this.type;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-callout-icon";
+    span.append(createIcon(calloutIcon(this.type)));
+    return span;
+  }
+}
+
 function hasBlockquoteAncestor(node: SyntaxNode): boolean {
   for (let cur = node.parent; cur !== null; cur = cur.parent) {
     if (cur.name === "Blockquote") {
@@ -1815,7 +1872,37 @@ function buildDecorations(
       to,
       enter(node) {
         if (node.name === "Blockquote" && !hasBlockquoteAncestor(node.node)) {
-          decorateLines(node.node, blockquoteLine);
+          const callout = calloutForQuote(state, node.node);
+          if (callout === null) {
+            decorateLines(node.node, blockquoteLine);
+            return;
+          }
+          decorateLines(
+            node.node,
+            Decoration.line({
+              class: "cm-blockquote-line cm-callout-line",
+              attributes: {
+                style: `--callout-color: ${calloutColor(callout.type)}`,
+              },
+            }),
+          );
+          // The [!type] marker renders as the callout's icon when the
+          // line is not being edited; the title reads bold.
+          if (!selectionTouchesLine(state, callout.markerFrom)) {
+            ranges.push(
+              Decoration.replace({
+                widget: new CalloutIconWidget(callout.type),
+              }).range(callout.markerFrom, callout.markerTo),
+            );
+          }
+          if (callout.titleTo > callout.markerTo) {
+            ranges.push(
+              Decoration.mark({ class: "cm-callout-title" }).range(
+                callout.markerTo,
+                callout.titleTo,
+              ),
+            );
+          }
           return;
         }
         if (node.name === "FencedCode") {
