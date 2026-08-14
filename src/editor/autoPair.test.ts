@@ -7,6 +7,7 @@ import {
 import {
   markdownMarkerPair,
   markerBackspace,
+  surroundSelection,
   wrapSelection,
 } from "./autoPair";
 
@@ -118,6 +119,22 @@ describe("markdownMarkerPair", () => {
     expect(markdownMarkerPair(stateFor("a(", 2), "(")).toBeNull();
     const selected = stateFor("a*b", 0, 3);
     expect(markdownMarkerPair(selected, "*")).toBeNull();
+  });
+});
+
+describe("surroundSelection", () => {
+  it("surrounds the selection and keeps it selected", () => {
+    const state = stateFor("fort", 0, 4);
+    const result = apply(state, surroundSelection(state, "**", "**"));
+    expect(result.doc).toBe("**fort**");
+    expect([result.from, result.to]).toEqual([2, 6]);
+  });
+
+  it("inserts the pair around the cursor when nothing is selected", () => {
+    const state = stateFor("ab", 1);
+    const result = apply(state, surroundSelection(state, "==", "=="));
+    expect(result.doc).toBe("a====b");
+    expect(result.from).toBe(3);
   });
 });
 

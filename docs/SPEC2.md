@@ -52,6 +52,7 @@ Llegeix `SPEC.md` abans de començar: tot el que hi diu segueix vigent excepte o
     - Sobre un fitxer (llista lateral i capçalera): canviar nom, eliminar (amb la confirmació configurada), copiar camí (relatiu/absolut), obrir amb l'aplicació per defecte, mostrar a l'explorador del sistema. Nova comanda Rust `rename_file`.
     - Sobre el text de l'editor: tallar/copiar/enganxar, enganxar sense format, seleccionar-ho tot, afegir enllaç, submenú de format (negreta, cursiva, highlight, codi).
     - Els ítems que depenen de pestanyes o splits (tancar altres, split right…) s'afegiran quan existeixin.
+    - Barra inferior: botons amb icona per a la paleta de comandes i el quick switcher, i el botó de settings s'hi trasllada des de la barra lateral.
 19. **Propietats YAML**:
     - Frontmatter `---` a l'inici del document com a extensió Lezer pròpia (i que el `---` de tancament no creï mai setext/HR falsos).
     - Parsing del subconjunt YAML necessari (tags, aliases, escalars) en un mòdul pur amb tests. No és un parser de markdown.

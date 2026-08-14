@@ -58,6 +58,36 @@ export function wrapSelection(
 }
 
 /**
+ * Surrounds every selection range with `open`/`close` (format menu:
+ * **bold**, ==highlight==, `code`…). Empty ranges get the pair with the
+ * cursor inside; non-empty ranges keep the text selected.
+ */
+export function surroundSelection(
+  state: EditorState,
+  open: string,
+  close: string,
+): ReturnType<EditorState["changeByRange"]> {
+  return state.changeByRange((range) => {
+    if (range.empty) {
+      return {
+        changes: { from: range.from, insert: open + close },
+        range: EditorSelection.cursor(range.from + open.length),
+      };
+    }
+    return {
+      changes: [
+        { from: range.from, insert: open },
+        { from: range.to, insert: close },
+      ],
+      range: EditorSelection.range(
+        range.from + open.length,
+        range.to + open.length,
+      ),
+    };
+  });
+}
+
+/**
  * Backspace between the two sides of an empty marker pair deletes both
  * (`*|*` collapses to nothing, `***|***` to `**|**`), mirroring what
  * closeBrackets does for brackets and quotes. Null when the cursor is

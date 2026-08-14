@@ -13,6 +13,7 @@ import {
   historyKeymap,
   indentLess,
   indentMore,
+  selectAll,
 } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
@@ -26,16 +27,25 @@ import {
   unfoldAll,
   unfoldEffect,
 } from "@codemirror/language";
-import { Compartment, EditorState, Prec } from "@codemirror/state";
+import {
+  Compartment,
+  EditorSelection,
+  EditorState,
+  Prec,
+} from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
+import { t } from "../i18n/i18n";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag } from "../markdown/wikilinks";
+import { openContextMenu } from "../ui/contextMenu";
+import { copyText } from "../ui/renderedContent";
 import {
   markdownMarkerPair,
   markerBackspace,
+  surroundSelection,
   wrapSelection,
 } from "./autoPair";
 import {
@@ -121,6 +131,117 @@ function tabIndent(view: EditorView): boolean {
 
 function shiftTabIndent(view: EditorView): boolean {
   return listOutdentCommand(view) || indentLess(view);
+}
+
+function applyFormat(view: EditorView, open: string, close: string): void {
+  view.dispatch({
+    ...surroundSelection(view.state, open, close),
+    userEvent: "input.type",
+    scrollIntoView: true,
+  });
+  view.focus();
+}
+
+/** `[text](|)` around the selection, cursor between the parens. */
+function insertLink(view: EditorView): void {
+  view.dispatch(
+    view.state.changeByRange((range) => ({
+      changes: [
+        { from: range.from, insert: "[" },
+        { from: range.to, insert: "]()" },
+      ],
+      range: EditorSelection.cursor(range.to + 3),
+    })),
+  );
+  view.focus();
+}
+
+async function cutOrCopySelection(view: EditorView, cut: boolean): Promise<void> {
+  const { state } = view;
+  const text = state.sliceDoc(state.selection.main.from, state.selection.main.to);
+  if (text === "") {
+    return;
+  }
+  const copied = await copyText(text);
+  if (copied && cut) {
+    view.dispatch(state.replaceSelection(""), { userEvent: "delete.cut" });
+  }
+  view.focus();
+}
+
+async function pasteClipboard(view: EditorView): Promise<void> {
+  try {
+    const text = await navigator.clipboard.readText();
+    view.dispatch(view.state.replaceSelection(text), {
+      userEvent: "input.paste",
+      scrollIntoView: true,
+    });
+  } catch {
+    // Clipboard read unavailable: Ctrl+V still works natively.
+  }
+  view.focus();
+}
+
+function openEditorMenu(view: EditorView, x: number, y: number): void {
+  const hasSelection = !view.state.selection.main.empty;
+  openContextMenu(x, y, [
+    {
+      label: t("menu.cut"),
+      icon: "scissors",
+      disabled: !hasSelection,
+      onClick: () => void cutOrCopySelection(view, true),
+    },
+    {
+      label: t("menu.copy"),
+      icon: "copy",
+      disabled: !hasSelection,
+      onClick: () => void cutOrCopySelection(view, false),
+    },
+    {
+      label: t("menu.paste"),
+      icon: "clipboard",
+      onClick: () => void pasteClipboard(view),
+    },
+    {
+      label: t("menu.selectAll"),
+      onClick: () => {
+        selectAll(view);
+        view.focus();
+      },
+    },
+    "separator",
+    {
+      label: t("menu.addLink"),
+      icon: "link",
+      onClick: () => insertLink(view),
+    },
+    {
+      label: t("menu.format"),
+      icon: "pencil",
+      submenu: [
+        {
+          label: t("menu.formatBold"),
+          icon: "bold",
+          onClick: () => applyFormat(view, "**", "**"),
+        },
+        {
+          label: t("menu.formatItalic"),
+          icon: "italic",
+          onClick: () => applyFormat(view, "*", "*"),
+        },
+        {
+          label: t("menu.formatHighlight"),
+          icon: "highlighter",
+          onClick: () => applyFormat(view, "==", "=="),
+        },
+        {
+          label: t("menu.formatCode"),
+          icon: "code",
+          onClick: () => applyFormat(view, "`", "`"),
+        },
+      ],
+    },
+  ]);
 }
 
 /** Wikilink target at `pos`, or null when the position is not inside one. */
@@ -338,6 +459,11 @@ export function createEditor(
           icons: false,
         }),
         EditorView.domEventHandlers({
+          contextmenu(event, view) {
+            event.preventDefault();
+            openEditorMenu(view, event.clientX, event.clientY);
+            return true;
+          },
           mousedown(event, view) {
             if (!(event.ctrlKey || event.metaKey) || event.button !== 0) {
               return false;
