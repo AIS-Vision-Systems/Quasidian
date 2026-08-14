@@ -1294,6 +1294,26 @@ export function mountLayout(root: HTMLElement): void {
       },
     },
     {
+      id: "table-add-row",
+      nameKey: "menu.tableAddRow",
+      run: () => editor.tableEdit({ kind: "addRow" }),
+    },
+    {
+      id: "table-delete-row",
+      nameKey: "menu.tableDeleteRow",
+      run: () => editor.tableEdit({ kind: "deleteRow" }),
+    },
+    {
+      id: "table-add-column",
+      nameKey: "menu.tableAddColumn",
+      run: () => editor.tableEdit({ kind: "addColumn" }),
+    },
+    {
+      id: "table-delete-column",
+      nameKey: "menu.tableDeleteColumn",
+      run: () => editor.tableEdit({ kind: "deleteColumn" }),
+    },
+    {
       id: "global-search",
       nameKey: "command.globalSearch",
       hotkey: "Ctrl+Shift+F",

@@ -74,6 +74,8 @@ Llegeix `SPEC.md` abans de començar: tot el que hi diu segueix vigent excepte o
     - Barra de pestanyes a la barra central del milestone 16: tancar, tancar altres, tancar totes, fixar (pin), reordenar arrossegant, menú contextual de pestanya.
     - Obertura estil Obsidian: navegar (wikilink, switcher, llista de fitxers) reutilitza la pestanya activa; Ctrl+clic obre pestanya nova.
     - **Instància única**: obrir un `.md` des del sistema (doble clic, línia de comandes) quan l'app ja corre l'obre en una pestanya nova de la finestra existent, no en una finestra nova (plugin single-instance de Tauri; el reenviament de l'argument és l'única lògica al costat Rust).
+    - **Persistència de finestra**: en engegar, l'app recorda l'última posició, mida, pantalla i estat maximitzat.
+    - **Persistència de sessió**: es restauren els fitxers oberts, la pestanya activa i el mode de cadascun, **excepte** quan l'app s'obre amb un fitxer per paràmetre (doble clic a un `.md`). Controlat per un setting nou (per defecte activat), amb schema + modal + i18n com sempre.
 
 ## Convencions
 
