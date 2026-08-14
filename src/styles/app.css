@@ -1422,7 +1422,7 @@ body.is-readable-line-length .reading-view-content {
   margin-bottom: 8px;
 }
 
-.cm-frontmatter-widget .props-header {
+.frontmatter-props .props-header {
   cursor: pointer;
 }
 

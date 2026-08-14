@@ -17,6 +17,7 @@ import {
   writeFile,
 } from "../ipc/fs";
 import { createEditor } from "../editor/editor";
+import { setKnownPropertyKeys } from "../editor/livePreview";
 import { createAutosaveScheduler } from "../editor/autosave";
 import { createBacklinkIndex } from "../lib/backlinkIndex";
 import { createSearchIndex, type SearchMatch } from "../lib/searchIndex";
@@ -233,13 +234,25 @@ export function mountLayout(root: HTMLElement): void {
   const backlinkIndex = createBacklinkIndex();
   const searchIndex = createSearchIndex();
   // Frontmatter metadata (aliases, tags) per file, kept with the indexes.
-  const fileMeta = new Map<string, { aliases: string[]; tags: string[] }>();
+  const fileMeta = new Map<
+    string,
+    { aliases: string[]; tags: string[]; keys: string[] }
+  >();
 
   /** Copies indexed aliases onto the folder listing used by resolution. */
   function attachAliases(): void {
     for (const file of folderFiles) {
       file.aliases = fileMeta.get(normalizePath(file.path))?.aliases;
     }
+    const keys: string[] = [];
+    for (const meta of fileMeta.values()) {
+      for (const key of meta.keys) {
+        if (!keys.includes(key)) {
+          keys.push(key);
+        }
+      }
+    }
+    setKnownPropertyKeys(keys);
   }
 
   function setFileMeta(path: string, contents: string): void {
@@ -247,6 +260,7 @@ export function mountLayout(root: HTMLElement): void {
     fileMeta.set(normalizePath(path), {
       aliases: data.aliases,
       tags: data.tags,
+      keys: data.properties.map((property) => property.key),
     });
   }
 
@@ -821,6 +835,12 @@ export function mountLayout(root: HTMLElement): void {
       const folds = fileFolds.get(normalizePath(path));
       if (folds !== undefined) {
         editor.setFolds(folds);
+      }
+      // Never leave the cursor inside an atomic frontmatter block.
+      const frontmatterData = parseFrontmatter(contents);
+      if (frontmatterData.exists) {
+        const pos = Math.min(frontmatterData.end + 1, contents.length);
+        editor.revealRange(pos, pos);
       }
       setCounts(contents);
       const mode =

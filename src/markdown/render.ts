@@ -64,17 +64,14 @@ function propertyIcon(key: string): string {
 export function renderPropertiesHtml(
   data: FrontmatterData,
   interactive: boolean,
+  knownKeys: readonly string[] = [],
 ): string {
   if (data.properties.length === 0 && !interactive) {
     return "";
   }
   const out: string[] = ['<div class="frontmatter-props">'];
   out.push('<div class="props-header">');
-  if (interactive) {
-    out.push(
-      `<span class="props-chevron">${iconMarkup("chevron-down")}</span>`,
-    );
-  }
+  out.push(`<span class="props-chevron">${iconMarkup("chevron-down")}</span>`);
   out.push(
     `<span class="props-title">${escapeHtml(t("properties.title"))}</span>`,
   );
@@ -111,9 +108,30 @@ export function renderPropertiesHtml(
     out.push("</span></div>");
   });
   if (interactive) {
+    // Known keys (tags/aliases first) as a datalist; free text still works.
+    const ordered = [
+      "tags",
+      "aliases",
+      ...knownKeys.filter(
+        (key) => !["tags", "aliases"].includes(key.toLowerCase()),
+      ),
+    ];
+    const seen = new Set<string>();
+    const options = ordered
+      .filter((key) => {
+        const lower = key.toLowerCase();
+        if (seen.has(lower)) {
+          return false;
+        }
+        seen.add(lower);
+        return true;
+      })
+      .map((key) => `<option value="${escapeHtml(key)}"></option>`)
+      .join("");
     out.push(
       '<div class="props-add-row is-hidden">' +
-        `<input class="props-new-key" placeholder="${escapeHtml(t("properties.name"))}" spellcheck="false">` +
+        `<input class="props-new-key" list="qs-prop-keys" placeholder="${escapeHtml(t("properties.name"))}" spellcheck="false">` +
+        `<datalist id="qs-prop-keys">${options}</datalist>` +
         `<input class="props-new-first" placeholder="${escapeHtml(t("properties.value"))}" spellcheck="false">` +
         "</div>",
     );

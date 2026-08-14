@@ -3,6 +3,10 @@
 // resolution logic as the editor; external links open in the system
 // browser.
 import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  arePropertiesCollapsed,
+  setPropertiesCollapsed,
+} from "../editor/livePreview";
 import { renderToHtml } from "../markdown/render";
 import { createIcon } from "./icons";
 import {
@@ -156,6 +160,18 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
       addCodePills(content);
       renderMathElements(content);
       setupSectionFolds(content, hooks);
+      // The properties box collapses here too, sharing the editor state.
+      const props = content.querySelector<HTMLElement>(".frontmatter-props");
+      if (props !== null) {
+        props.classList.toggle("is-collapsed", arePropertiesCollapsed());
+        props
+          .querySelector<HTMLElement>(".props-header")
+          ?.addEventListener("click", () => {
+            const collapsed = !arePropertiesCollapsed();
+            setPropertiesCollapsed(collapsed);
+            props.classList.toggle("is-collapsed", collapsed);
+          });
+      }
     },
   };
 }
