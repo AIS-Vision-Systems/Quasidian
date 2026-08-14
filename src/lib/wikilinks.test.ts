@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveWikilink, type FolderFile } from "./wikilinks";
+import { resolveWikilink, splitAnchor, type FolderFile } from "./wikilinks";
 
 const folder = "C:\\notes";
 const files: FolderFile[] = [
@@ -34,6 +34,25 @@ describe("resolveWikilink — bare names", () => {
       path: "C:/notes/nova.md",
       exists: false,
     });
+  });
+
+  it("ignores heading anchors when resolving", () => {
+    expect(resolveWikilink("Nota#Secció", folder, files)).toEqual({
+      path: "C:\\notes\\Nota.md",
+      exists: true,
+    });
+    // Same-file anchors have no note part: nothing to resolve here.
+    expect(resolveWikilink("#Secció", folder, files)).toBeNull();
+  });
+
+  it("splits targets into note and anchor", () => {
+    expect(splitAnchor("nota#La secció")).toEqual({
+      note: "nota",
+      anchor: "La secció",
+    });
+    expect(splitAnchor("#secció")).toEqual({ note: "", anchor: "secció" });
+    expect(splitAnchor("nota")).toEqual({ note: "nota", anchor: null });
+    expect(splitAnchor("nota#")).toEqual({ note: "nota", anchor: null });
   });
 
   it("resolves frontmatter aliases, after real names", () => {

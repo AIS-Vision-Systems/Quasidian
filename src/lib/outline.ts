@@ -12,6 +12,41 @@ export interface OutlineItem {
   to: number;
 }
 
+/** The heading matching `anchor` (case-insensitive), or null. */
+export function findHeading(doc: string, anchor: string): OutlineItem | null {
+  const wanted = anchor.trim().toLowerCase();
+  return (
+    computeOutline(doc).find(
+      (item) => item.text.trim().toLowerCase() === wanted,
+    ) ?? null
+  );
+}
+
+/**
+ * The markdown slice of the section titled `anchor` (heading included,
+ * up to the next heading of the same or a higher level), or null when
+ * the heading does not exist.
+ */
+export function sectionSlice(doc: string, anchor: string): string | null {
+  const items = computeOutline(doc);
+  const wanted = anchor.trim().toLowerCase();
+  const index = items.findIndex(
+    (item) => item.text.trim().toLowerCase() === wanted,
+  );
+  if (index === -1) {
+    return null;
+  }
+  const heading = items[index];
+  let end = doc.length;
+  for (let i = index + 1; i < items.length; i++) {
+    if (items[i].level <= heading.level) {
+      end = items[i].from;
+      break;
+    }
+  }
+  return doc.slice(heading.from, end);
+}
+
 export function computeOutline(doc: string): OutlineItem[] {
   const items: OutlineItem[] = [];
   markdownParser.parse(doc).iterate({

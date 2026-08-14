@@ -28,13 +28,31 @@ export interface WikilinkResolution {
   exists: boolean;
 }
 
+/** Splits a wikilink target into its note part and heading anchor. */
+export function splitAnchor(target: string): {
+  note: string;
+  anchor: string | null;
+} {
+  const hash = target.indexOf("#");
+  if (hash === -1) {
+    return { note: target.trim(), anchor: null };
+  }
+  const anchor = target.slice(hash + 1).trim();
+  return {
+    note: target.slice(0, hash).trim(),
+    anchor: anchor === "" ? null : anchor,
+  };
+}
+
 export function resolveWikilink(
   target: string,
   folder: string,
   folderFiles: FolderFile[],
   defaultExtension: string = MARKDOWN_EXTENSION,
 ): WikilinkResolution | null {
-  const trimmed = target.trim();
+  // Heading anchors never take part in file resolution; a bare "#secció"
+  // (same-file anchor) resolves to nothing here — callers handle it.
+  const trimmed = splitAnchor(target).note;
   if (trimmed === "") {
     return null;
   }

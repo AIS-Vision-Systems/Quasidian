@@ -10,11 +10,17 @@ import {
 import { renderToHtml } from "../markdown/render";
 import { createIcon } from "./icons";
 import {
+  scheduleHoverHide,
+  scheduleHoverShow,
+} from "./hoverPreview";
+import {
   addCodePills,
   fillEmbedImages,
+  fillEmbedNotes,
   highlightCodeBlocks,
+  markUnresolvedLinks,
   renderMathElements,
-  wirePropertiesCollapse,
+  type EmbedNoteResult,
 } from "./renderedContent";
 
 export interface ReadingViewHooks {
@@ -23,8 +29,12 @@ export interface ReadingViewHooks {
   onTaskToggle(pos: number, checked: boolean): void;
   /** Resolves an embed target to a loadable URL, or null if unknown. */
   resolveEmbedSrc(target: string): string | null;
-  /** Renders a note embed target to HTML, or null if unknown. */
-  renderEmbedNote(target: string): Promise<string | null>;
+  /** Renders a note embed target (and resolved path), or null. */
+  renderEmbedNote(target: string): Promise<EmbedNoteResult | null>;
+  /** Whether a wikilink target points to an existing note. */
+  isResolved(target: string): boolean;
+  /** Path of the open file, for transclusion cycle detection. */
+  currentFilePath(): string | null;
   /** Foldability and fold state of the section at a doc position. */
   foldInfoAt(pos: number): { folded: boolean } | null;
   /** Toggles the fold of the section at a doc position. */
@@ -101,6 +111,30 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
   content.className = "reading-view-content markdown-rendered";
   element.append(content);
 
+  // Hovering an internal link previews the note (or section).
+  element.addEventListener("mouseover", (event) => {
+    const target = event.target;
+    const link =
+      target instanceof Element ? target.closest("a.internal-link") : null;
+    if (link instanceof HTMLElement && link.dataset.target !== undefined) {
+      scheduleHoverShow(event.clientX, event.clientY, link.dataset.target, {
+        resolveEmbedSrc: hooks.resolveEmbedSrc,
+        renderEmbedNote: hooks.renderEmbedNote,
+        isResolved: hooks.isResolved,
+        onNavigate: hooks.onInternalLink,
+      });
+    }
+  });
+  element.addEventListener("mouseout", (event) => {
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest("a.internal-link") !== null
+    ) {
+      scheduleHoverHide();
+    }
+  });
+
   element.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) {
@@ -138,30 +172,17 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
         properties: hooks.showProperties(),
       });
       fillEmbedImages(content, hooks.resolveEmbedSrc);
-      for (const embed of content.querySelectorAll<HTMLElement>(
-        "span.embed-note",
-      )) {
-        const target = embed.dataset.target ?? "";
-        void hooks.renderEmbedNote(target).then((html) => {
-          if (html === null || !embed.isConnected) {
-            return;
-          }
-          embed.replaceChildren();
-          const title = document.createElement("a");
-          title.className = "internal-link embed-note-title";
-          title.dataset.target = target;
-          title.textContent = target;
-          const body = document.createElement("div");
-          body.className = "embed-note-body markdown-rendered";
-          body.innerHTML = html;
-          fillEmbedImages(body, hooks.resolveEmbedSrc);
-          highlightCodeBlocks(body);
-          addCodePills(body);
-          renderMathElements(body);
-          wirePropertiesCollapse(body);
-          embed.append(title, body);
-        });
-      }
+      const currentPath = hooks.currentFilePath();
+      fillEmbedNotes(
+        content,
+        {
+          resolveEmbedSrc: hooks.resolveEmbedSrc,
+          renderEmbedNote: hooks.renderEmbedNote,
+          isResolved: hooks.isResolved,
+        },
+        new Set(currentPath === null ? [] : [currentPath.toLowerCase()]),
+      );
+      markUnresolvedLinks(content, hooks.isResolved);
       highlightCodeBlocks(content);
       addCodePills(content);
       renderMathElements(content);
