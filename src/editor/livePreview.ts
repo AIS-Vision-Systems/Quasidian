@@ -1877,15 +1877,28 @@ function buildDecorations(
             decorateLines(node.node, blockquoteLine);
             return;
           }
-          decorateLines(
-            node.node,
-            Decoration.line({
-              class: "cm-blockquote-line cm-callout-line",
-              attributes: {
-                style: `--callout-color: ${calloutColor(callout.type)}`,
-              },
-            }),
-          );
+          // Rounded-box look: the first and last lines carry the
+          // corner classes so both modes show the same callout box.
+          const firstLine = state.doc.lineAt(node.from).number;
+          const lastLine = state.doc.lineAt(node.to).number;
+          for (let lineNo = firstLine; lineNo <= lastLine; lineNo++) {
+            const line = state.doc.line(lineNo);
+            let cls = "cm-blockquote-line cm-callout-line";
+            if (lineNo === firstLine) {
+              cls += " cm-callout-first";
+            }
+            if (lineNo === lastLine) {
+              cls += " cm-callout-last";
+            }
+            ranges.push(
+              Decoration.line({
+                class: cls,
+                attributes: {
+                  style: `--callout-color: ${calloutColor(callout.type)}`,
+                },
+              }).range(line.from),
+            );
+          }
           // The [!type] marker renders as the callout's icon when the
           // line is not being edited; the title reads bold.
           if (!selectionTouchesLine(state, callout.markerFrom)) {
@@ -2153,46 +2166,13 @@ export const tableBlankGuard = EditorState.transactionFilter.of((tr) => {
   if (guards.length === 0) {
     return tr;
   }
-  const insideTable = (pos: number): boolean => {
-    let node: SyntaxNode | null = syntaxTree(state).resolveInner(
-      Math.min(pos, state.doc.length),
-      1,
-    );
-    while (node !== null) {
-      if (node.name === "Table") {
-        return true;
-      }
-      node = node.parent;
-    }
-    return false;
-  };
-  let blocked = false;
-  const retyped: { pos: number; text: string }[] = [];
-  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+  // Pure insertion on a guard line: push the text to a fresh line below
+  // so the guard stays blank.
+  const retyped: { pos: number; text: string; fromB: number; toB: number }[] =
+    [];
+  tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
     const text = inserted.toString();
     for (const guard of guards) {
-      // Removing the newline right after the table (unless the whole
-      // table is deleted with it, or a newline is put back).
-      if (
-        fromA <= guard.newline &&
-        toA > guard.newline &&
-        fromA > guard.tableFrom &&
-        !text.includes("\n")
-      ) {
-        blocked = true;
-      }
-      // Removing the guard's own newline when a table follows would
-      // merge the two tables (deleting the whole table above is fine).
-      if (
-        fromA <= guard.lineTo &&
-        toA > guard.lineTo &&
-        fromA > guard.tableFrom &&
-        !text.includes("\n") &&
-        insideTable(guard.lineTo + 1)
-      ) {
-        blocked = true;
-      }
-      // Plain typing on the blank guard line.
       if (
         fromA === toA &&
         fromA >= guard.lineFrom &&
@@ -2200,22 +2180,46 @@ export const tableBlankGuard = EditorState.transactionFilter.of((tr) => {
         text !== "" &&
         !text.startsWith("\n")
       ) {
-        retyped.push({ pos: fromA, text });
+        retyped.push({ pos: fromA, text, fromB, toB });
       }
     }
   });
-  if (blocked) {
-    return [];
-  }
   const typed = retyped[0];
   if (typed !== undefined) {
+    // Keep the transaction's intended cursor when it sits inside the
+    // inserted text (menu snippets place it there), shifted past the
+    // extra newline; otherwise put it after the insertion.
+    const intended = tr.newSelection.main.anchor;
+    const anchor =
+      intended >= typed.fromB && intended <= typed.toB
+        ? intended + 1
+        : typed.pos + 1 + typed.text.length;
     return [
       {
         changes: { from: typed.pos, to: typed.pos, insert: `\n${typed.text}` },
-        selection: { anchor: typed.pos + 1 + typed.text.length },
+        selection: { anchor },
         scrollIntoView: true,
       },
     ];
+  }
+  // Anything else: check the invariant on the resulting document — the
+  // line after every surviving table must still be blank. This blocks
+  // deleting the blank line (merging whatever follows, table or not)
+  // while still allowing a table to be deleted whole.
+  for (const guard of guards) {
+    const tableStart = tr.changes.mapPos(guard.tableFrom, 1);
+    const tableEnd = tr.changes.mapPos(guard.newline, -1);
+    if (tableEnd <= tableStart) {
+      continue;
+    }
+    const endLine = tr.newDoc.lineAt(Math.min(tableEnd, tr.newDoc.length));
+    if (endLine.to >= tr.newDoc.length) {
+      continue;
+    }
+    const after = tr.newDoc.lineAt(endLine.to + 1);
+    if (after.text.trim() !== "") {
+      return [];
+    }
   }
   return tr;
 });

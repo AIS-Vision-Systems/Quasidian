@@ -272,21 +272,58 @@ function renderTableRow(
   out: string[],
   alignments: ("left" | "center" | "right" | null)[],
 ): void {
-  out.push("<tr>");
-  let column = 0;
-  for (let cell = row.firstChild; cell !== null; cell = cell.nextSibling) {
-    if (cell.name === "TableCell") {
-      const alignment = alignments[column] ?? null;
-      out.push(
-        alignment === null
-          ? `<${cellTag}>`
-          : `<${cellTag} style="text-align:${alignment}">`,
-      );
-      renderInline(cell, cell.from, cell.to, doc, out);
-      out.push(`</${cellTag}>`);
-      column++;
+  // Empty cells produce no TableCell node, so the pipes in the source
+  // drive the row's shape and each span is matched to its node (if any).
+  const text = doc.slice(row.from, row.to);
+  const pipes: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "|" && (i === 0 || text[i - 1] !== "\\")) {
+      pipes.push(i);
     }
   }
+  const spans: { from: number; to: number }[] = [];
+  let start = 0;
+  for (const pipe of pipes) {
+    spans.push({ from: start, to: pipe });
+    start = pipe + 1;
+  }
+  spans.push({ from: start, to: text.length });
+  // A leading/trailing pipe delimits the row: the whitespace outside it
+  // is not a cell.
+  if (
+    spans.length > 1 &&
+    pipes.length > 0 &&
+    text.slice(0, pipes[0]).trim() === ""
+  ) {
+    spans.shift();
+  }
+  if (spans.length > 0 && text.slice(spans[spans.length - 1].from).trim() === "") {
+    spans.pop();
+  }
+  const cells: SyntaxNode[] = [];
+  for (let cell = row.firstChild; cell !== null; cell = cell.nextSibling) {
+    if (cell.name === "TableCell") {
+      cells.push(cell);
+    }
+  }
+  out.push("<tr>");
+  spans.forEach((span, column) => {
+    const alignment = alignments[column] ?? null;
+    out.push(
+      alignment === null
+        ? `<${cellTag}>`
+        : `<${cellTag} style="text-align:${alignment}">`,
+    );
+    const cell = cells.find(
+      (candidate) =>
+        candidate.from >= row.from + span.from &&
+        candidate.to <= row.from + span.to,
+    );
+    if (cell !== undefined) {
+      renderInline(cell, cell.from, cell.to, doc, out);
+    }
+    out.push(`</${cellTag}>`);
+  });
   out.push("</tr>");
 }
 

@@ -314,7 +314,7 @@ function openEditorMenu(view: EditorView, x: number, y: number): void {
         {
           label: t("menu.insertCallout"),
           icon: "quote",
-          onClick: () => insertBlockSnippet(view, "> [!note] \n> ", 10),
+          onClick: () => insertBlockSnippet(view, "> [!note] \n> \n", 10),
         },
         {
           label: t("menu.insertHr"),

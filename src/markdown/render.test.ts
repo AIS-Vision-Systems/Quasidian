@@ -148,6 +148,14 @@ describe("renderToHtml — blocks", () => {
     expect(html).toContain("<table><thead><tr><th>a</th><th>b</th></tr></thead>");
     expect(html).toContain("<tbody><tr><td>c</td><td>d</td></tr></tbody>");
   });
+
+  it("keeps empty cells so columns stay aligned", () => {
+    const html = renderToHtml(
+      "| a | b | c |\n| --- | --- | --- |\n|   |   | x |\n|   | y |   |",
+    );
+    expect(html).toContain("<tr><td></td><td></td><td>x</td></tr>");
+    expect(html).toContain("<tr><td></td><td>y</td><td></td></tr>");
+  });
 });
 
 describe("renderToHtml — task lists", () => {

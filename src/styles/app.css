@@ -1386,8 +1386,9 @@ body.is-readable-line-length .reading-view-content {
 }
 
 /* The wrap's padding provides the block spacing; without this the
-   table's own bottom margin pushes the add-row button too far down. */
-.table-wrap > table {
+   table's own bottom margin pushes the add-row button too far down.
+   (div-qualified so it outranks `.markdown-rendered table`.) */
+div.table-wrap > table {
   margin: 0;
 }
 
@@ -1797,10 +1798,23 @@ body.is-readable-line-length .reading-view-content {
   margin-bottom: 0;
 }
 
-/* Editing mode: tinted lines, icon and bold title. */
+/* Editing mode: the same rounded box as reading mode, drawn with line
+   decorations (corner classes on the first and last lines). */
 .cm-editor .cm-callout-line {
   background-color: rgba(var(--callout-color), 0.18);
-  border-left-color: rgb(var(--callout-color));
+  border-left: none;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.cm-editor .cm-callout-first {
+  border-radius: 10px 10px 0 0;
+  padding-top: 10px;
+}
+
+.cm-editor .cm-callout-last {
+  border-radius: 0 0 10px 10px;
+  padding-bottom: 10px;
 }
 
 .cm-editor .cm-callout-icon {
