@@ -157,7 +157,7 @@ export function mountLayout(root: HTMLElement): void {
   modeHeaderButton.addEventListener("click", () => void toggleMode());
   const moreButton = document.createElement("button");
   moreButton.className = "view-header-button";
-  moreButton.append(createIcon("more-horizontal"));
+  moreButton.append(createIcon("more-vertical"));
   moreButton.addEventListener("click", () => {
     if (openedPath !== null) {
       const rect = moreButton.getBoundingClientRect();

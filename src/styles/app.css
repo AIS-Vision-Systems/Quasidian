@@ -420,14 +420,19 @@ body {
   overflow: hidden;
 }
 
+/* Obsidian-style tab strip: gray bar, dark active tab that merges with
+   the content below (no bottom border). */
 .view-header {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--background-modifier-border);
+  gap: 8px;
+  padding: 6px 8px 0;
+  background-color: var(--background-secondary);
+}
+
+.view-header > .view-header-button {
+  margin-bottom: 6px;
 }
 
 /* Tab bar: fills the central header between the collapse buttons. */
@@ -435,8 +440,8 @@ body {
   display: flex;
   flex: 1;
   min-width: 0;
-  align-items: center;
-  gap: 4px;
+  align-self: stretch;
+  align-items: stretch;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -446,8 +451,8 @@ body {
   align-items: center;
   gap: 6px;
   max-width: 180px;
-  padding: 3px 8px 3px 12px;
-  border-radius: 6px;
+  padding: 5px 8px 5px 12px;
+  border-radius: 6px 6px 0 0;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   cursor: pointer;
@@ -456,12 +461,22 @@ body {
   flex-shrink: 0;
 }
 
+/* Thin separators between tabs, hidden around the active one. */
+.workspace-tab + .workspace-tab {
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.workspace-tab.is-active,
+.workspace-tab.is-active + .workspace-tab {
+  border-left-color: transparent;
+}
+
 .workspace-tab:hover {
   background-color: var(--background-modifier-hover);
 }
 
 .workspace-tab.is-active {
-  background-color: var(--background-modifier-hover);
+  background-color: var(--background-primary);
   color: var(--text-normal);
 }
 
