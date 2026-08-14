@@ -913,6 +913,25 @@ function sanitizeCell(text: string): string {
   return text.replace(/\r?\n/g, " ").replace(/\\?\|/g, "\\|").trim();
 }
 
+function placeCaretEnd(cell: HTMLElement): void {
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+/** Caret offset inside a plaintext cell (0 when unknown). */
+function caretOffset(cell: HTMLElement): number {
+  const selection = window.getSelection();
+  if (selection === null || selection.rangeCount === 0) {
+    return 0;
+  }
+  const range = selection.getRangeAt(0);
+  return cell.contains(range.startContainer) ? range.startOffset : 0;
+}
+
 class TableWidget extends WidgetType {
   constructor(
     readonly source: string,
@@ -1052,17 +1071,15 @@ class TableWidget extends WidgetType {
       },
     ];
 
-    const commitCell = (
-      cell: HTMLElement,
-      wantFocus: { row: number; column: number } | null,
-    ): void => {
+    /** The table data with the cell's current text applied. */
+    const dataWithCellEdit = (cell: HTMLElement): TableData => {
       const row = Number(cell.dataset.row);
       const column = Number(cell.dataset.column);
       const text = sanitizeCell(cell.textContent ?? "");
       if (text === data.rows[row][column]) {
-        return;
+        return data;
       }
-      const next: TableData = {
+      return {
         rows: data.rows.map((cells, r) =>
           r === row
             ? cells.map((value, c) => (c === column ? text : value))
@@ -1070,7 +1087,63 @@ class TableWidget extends WidgetType {
         ),
         alignments: data.alignments,
       };
-      dispatchTable(next, wantFocus);
+    };
+
+    const commitCell = (cell: HTMLElement): void => {
+      const next = dataWithCellEdit(cell);
+      if (next !== data) {
+        dispatchTable(next, null);
+      }
+    };
+
+    const focusCell = (row: number, column: number): void => {
+      const target = container.querySelector<HTMLElement>(
+        `[data-row="${row}"][data-column="${column}"]`,
+      );
+      if (target !== null) {
+        target.focus();
+        placeCaretEnd(target);
+      }
+    };
+
+    /** Commits the cell (if changed) and moves focus to another cell. */
+    const commitAndFocus = (
+      cell: HTMLElement,
+      row: number,
+      column: number,
+    ): void => {
+      const next = dataWithCellEdit(cell);
+      if (next !== data) {
+        dispatchTable(next, { row, column });
+      } else {
+        focusCell(row, column);
+      }
+    };
+
+    /** Commits the cell and grows the table by a row, focusing it. */
+    const commitAndGrow = (cell: HTMLElement, column: number): void => {
+      const grown = applyTableOp(dataWithCellEdit(cell), {
+        kind: "addRow",
+        row: data.rows.length - 1,
+        side: "below",
+      });
+      if (grown !== null) {
+        dispatchTable(grown, { row: data.rows.length, column });
+      }
+    };
+
+    /** Display row below/above a model row (1 is the delimiter). */
+    const rowBelow = (row: number): number | null => {
+      if (row === 0) {
+        return data.rows.length > 2 ? 2 : null;
+      }
+      return row + 1 < data.rows.length ? row + 1 : null;
+    };
+    const rowAbove = (row: number): number | null => {
+      if (row === 2) {
+        return 0;
+      }
+      return row > 2 ? row - 1 : null;
     };
 
     const makeCell = (
@@ -1088,13 +1161,22 @@ class TableWidget extends WidgetType {
       if (alignment !== null) {
         cell.style.textAlign = alignment;
       }
-      cell.addEventListener("blur", () => commitCell(cell, null));
+      cell.addEventListener("blur", () => commitCell(cell));
       cell.addEventListener("keydown", (event) => {
+        const cellRow = Number(cell.dataset.row);
+        const cellColumn = Number(cell.dataset.column);
         if (event.key === "Enter") {
+          // Down a cell; on the last row, grow the table.
           event.preventDefault();
-          commitCell(cell, null);
-          cell.blur();
-        } else if (event.key === "Tab") {
+          const below = rowBelow(cellRow);
+          if (below !== null) {
+            commitAndFocus(cell, below, cellColumn);
+          } else {
+            commitAndGrow(cell, cellColumn);
+          }
+          return;
+        }
+        if (event.key === "Tab") {
           event.preventDefault();
           const editables = [
             ...container.querySelectorAll<HTMLElement>("[data-row]"),
@@ -1103,32 +1185,46 @@ class TableWidget extends WidgetType {
           const target = index + (event.shiftKey ? -1 : 1);
           if (target >= 0 && target < editables.length) {
             const targetCell = editables[target];
-            commitCell(cell, {
-              row: Number(targetCell.dataset.row),
-              column: Number(targetCell.dataset.column),
-            });
-            targetCell.focus();
+            commitAndFocus(
+              cell,
+              Number(targetCell.dataset.row),
+              Number(targetCell.dataset.column),
+            );
           } else if (target >= editables.length) {
-            // Tab past the last cell grows the table by a row.
-            const text = sanitizeCell(cell.textContent ?? "");
-            const withEdit: TableData = {
-              rows: data.rows.map((cells, r) =>
-                r === Number(cell.dataset.row)
-                  ? cells.map((value, c) =>
-                      c === Number(cell.dataset.column) ? text : value,
-                    )
-                  : cells,
-              ),
-              alignments: data.alignments,
-            };
-            const grown = applyTableOp(withEdit, {
-              kind: "addRow",
-              row: data.rows.length - 1,
-              side: "below",
-            });
-            if (grown !== null) {
-              dispatchTable(grown, { row: data.rows.length, column: 0 });
-            }
+            commitAndGrow(cell, 0);
+          }
+          return;
+        }
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          const target =
+            event.key === "ArrowDown" ? rowBelow(cellRow) : rowAbove(cellRow);
+          if (target !== null) {
+            event.preventDefault();
+            commitAndFocus(cell, target, cellColumn);
+          }
+          return;
+        }
+        if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+          // Only when the caret sits at the cell's edge.
+          const forward = event.key === "ArrowRight";
+          const text = cell.textContent ?? "";
+          const offset = caretOffset(cell);
+          if (forward ? offset < text.length : offset > 0) {
+            return;
+          }
+          const editables = [
+            ...container.querySelectorAll<HTMLElement>("[data-row]"),
+          ];
+          const index = editables.indexOf(cell);
+          const target = index + (forward ? 1 : -1);
+          if (target >= 0 && target < editables.length) {
+            event.preventDefault();
+            const targetCell = editables[target];
+            commitAndFocus(
+              cell,
+              Number(targetCell.dataset.row),
+              Number(targetCell.dataset.column),
+            );
           }
         }
       });
@@ -1175,15 +1271,21 @@ class TableWidget extends WidgetType {
     for (let column = 0; column < columns; column++) {
       const cell = document.createElement("th");
       cell.className = "table-col-handle-cell";
+      cell.dataset.handleColumn = String(column);
       const handle = document.createElement("button");
       handle.className = "table-col-handle";
-      const open = (event: MouseEvent): void => {
+      handle.draggable = true;
+      handle.addEventListener("dragstart", (event) => {
+        event.dataTransfer?.setData("text/plain", `col:${column}`);
+        if (event.dataTransfer !== null) {
+          event.dataTransfer.effectAllowed = "move";
+        }
+      });
+      handle.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         event.stopPropagation();
         openContextMenu(event.clientX, event.clientY, columnMenuItems(column));
-      };
-      handle.addEventListener("click", open);
-      handle.addEventListener("contextmenu", open);
+      });
       cell.append(handle);
       handleRow.append(cell);
     }
@@ -1196,15 +1298,21 @@ class TableWidget extends WidgetType {
       const tr = document.createElement("tr");
       const handleCell = document.createElement("td");
       handleCell.className = "table-row-handle-cell";
+      handleCell.dataset.handleRow = String(row);
       const handle = document.createElement("button");
       handle.className = "table-row-handle";
-      const open = (event: MouseEvent): void => {
+      handle.draggable = true;
+      handle.addEventListener("dragstart", (event) => {
+        event.dataTransfer?.setData("text/plain", `row:${row}`);
+        if (event.dataTransfer !== null) {
+          event.dataTransfer.effectAllowed = "move";
+        }
+      });
+      handle.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         event.stopPropagation();
         openContextMenu(event.clientX, event.clientY, rowMenuItems(row));
-      };
-      handle.addEventListener("click", open);
-      handle.addEventListener("contextmenu", open);
+      });
       handleCell.append(handle);
       tr.append(handleCell);
       cells.forEach((_, column) => {
@@ -1212,7 +1320,81 @@ class TableWidget extends WidgetType {
       });
       table.append(tr);
     });
-    container.append(table);
+
+    // Dragging a handle onto another one reorders rows/columns.
+    container.addEventListener("dragover", (event) => {
+      const target =
+        event.target instanceof Element
+          ? event.target.closest<HTMLElement>(
+              "[data-handle-column], [data-handle-row]",
+            )
+          : null;
+      if (target !== null) {
+        event.preventDefault();
+      }
+    });
+    container.addEventListener("drop", (event) => {
+      const target =
+        event.target instanceof Element
+          ? event.target.closest<HTMLElement>(
+              "[data-handle-column], [data-handle-row]",
+            )
+          : null;
+      if (target === null) {
+        return;
+      }
+      event.preventDefault();
+      const payload = event.dataTransfer?.getData("text/plain") ?? "";
+      if (payload.startsWith("col:") && target.dataset.handleColumn !== undefined) {
+        apply(
+          {
+            kind: "moveColumnTo",
+            column: Number(payload.slice(4)),
+            to: Number(target.dataset.handleColumn),
+          },
+          null,
+        );
+      } else if (
+        payload.startsWith("row:") &&
+        target.dataset.handleRow !== undefined
+      ) {
+        apply(
+          {
+            kind: "moveRowTo",
+            row: Number(payload.slice(4)),
+            to: Number(target.dataset.handleRow),
+          },
+          null,
+        );
+      }
+    });
+
+    // Hovering the table's right/bottom edge offers quick add buttons.
+    const wrap = document.createElement("span");
+    wrap.className = "table-wrap";
+    wrap.append(table);
+    const addColumnButton = document.createElement("button");
+    addColumnButton.className = "table-edge-add table-edge-add-col";
+    addColumnButton.textContent = "+";
+    addColumnButton.title = t("menu.tableAddColumnRight");
+    addColumnButton.addEventListener("click", () =>
+      apply(
+        { kind: "addColumn", column: data.alignments.length - 1, side: "right" },
+        null,
+      ),
+    );
+    const addRowButton = document.createElement("button");
+    addRowButton.className = "table-edge-add table-edge-add-row";
+    addRowButton.textContent = "+";
+    addRowButton.title = t("menu.tableAddRow");
+    addRowButton.addEventListener("click", () =>
+      apply(
+        { kind: "addRow", row: data.rows.length - 1, side: "below" },
+        null,
+      ),
+    );
+    wrap.append(addColumnButton, addRowButton);
+    container.append(wrap);
 
     if (pendingTableFocus !== null && pendingTableFocus.from === this.pos) {
       const { row, column } = pendingTableFocus;

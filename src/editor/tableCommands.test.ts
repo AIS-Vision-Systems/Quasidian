@@ -63,6 +63,17 @@ describe("applyTableOp", () => {
     );
   });
 
+  it("moves rows and columns to arbitrary positions (drag)", () => {
+    expect(edited({ kind: "moveRowTo", row: 3, to: 2 })).toBe(
+      "| a | b |\n| --- | ---: |\n| e | f |\n| c | d |",
+    );
+    expect(edited({ kind: "moveColumnTo", column: 1, to: 0 })).toBe(
+      "| b | a |\n| ---: | --- |\n| d | c |\n| f | e |",
+    );
+    const data = parseTableSource(SOURCE);
+    expect(applyTableOp(data!, { kind: "moveRowTo", row: 0, to: 2 })).toBeNull();
+  });
+
   it("sets alignments", () => {
     expect(edited({ kind: "setAlignment", column: 0, alignment: "center" })).toBe(
       "| a | b |\n| :---: | ---: |\n| c | d |\n| e | f |",

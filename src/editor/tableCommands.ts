@@ -16,6 +16,8 @@ export type TableOp =
   | { kind: "duplicateRow"; row: number }
   | { kind: "deleteRow"; row: number }
   | { kind: "moveRow"; row: number; delta: -1 | 1 }
+  | { kind: "moveRowTo"; row: number; to: number }
+  | { kind: "moveColumnTo"; column: number; to: number }
   | { kind: "addColumn"; column: number; side: "left" | "right" }
   | { kind: "duplicateColumn"; column: number }
   | { kind: "deleteColumn"; column: number }
@@ -158,6 +160,38 @@ export function applyTableOp(data: TableData, op: TableOp): TableData | null {
       }
       const [moved] = rows.splice(op.row, 1);
       rows.splice(target, 0, moved);
+      return { rows, alignments };
+    }
+    case "moveRowTo": {
+      if (
+        op.row < 2 ||
+        op.to < 2 ||
+        op.row >= rows.length ||
+        op.to >= rows.length ||
+        op.row === op.to
+      ) {
+        return null;
+      }
+      const [moved] = rows.splice(op.row, 1);
+      rows.splice(op.to, 0, moved);
+      return { rows, alignments };
+    }
+    case "moveColumnTo": {
+      if (
+        op.column < 0 ||
+        op.to < 0 ||
+        op.column >= columns ||
+        op.to >= columns ||
+        op.column === op.to
+      ) {
+        return null;
+      }
+      for (const cells of rows) {
+        const [moved] = cells.splice(op.column, 1);
+        cells.splice(op.to, 0, moved);
+      }
+      const [moved] = alignments.splice(op.column, 1);
+      alignments.splice(op.to, 0, moved);
       return { rows, alignments };
     }
     case "addColumn": {
