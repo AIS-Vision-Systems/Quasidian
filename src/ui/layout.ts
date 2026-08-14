@@ -34,16 +34,21 @@ import {
 import type { EditorModeSetting } from "../lib/settings";
 import { extractLinkTargets } from "../lib/backlinkIndex";
 import { parseFrontmatter } from "../lib/frontmatter";
-import { computeOutline } from "../lib/outline";
+import { computeOutline, findHeading, sectionSlice } from "../lib/outline";
 import { applyRewrites, renameLinkTargets } from "../lib/renameLinks";
 import { countCharacters, countWords } from "../lib/text";
-import { resolveWikilink, type FolderFile } from "../lib/wikilinks";
+import {
+  resolveWikilink,
+  splitAnchor,
+  type FolderFile,
+} from "../lib/wikilinks";
 import { renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import { getSettings, subscribeSettings } from "../ipc/settingsStore";
 import { editorConfigFrom } from "./applySettings";
 import { commandPaletteItems, type Command } from "./commands";
 import { openContextMenu, openPromptModal } from "./contextMenu";
+import { hideHoverPreview } from "./hoverPreview";
 import { createIcon } from "./icons";
 import { copyText } from "./renderedContent";
 import { openPalette } from "./palette";
@@ -288,9 +293,58 @@ export function mountLayout(root: HTMLElement): void {
     return resolution === null ? null : convertFileSrc(resolution.path);
   }
 
-  async function renderEmbedNote(target: string): Promise<string | null> {
-    if (currentFolder === null) {
+  async function renderEmbedNote(
+    target: string,
+  ): Promise<{ html: string; path: string } | null> {
+    const { note, anchor } = splitAnchor(target);
+    let path: string;
+    if (note === "") {
+      // Same-file anchor: preview against the open buffer.
+      if (openedPath === null) {
+        return null;
+      }
+      path = openedPath;
+    } else {
+      if (currentFolder === null) {
+        return null;
+      }
+      const resolution = resolveWikilink(
+        target,
+        currentFolder,
+        folderFiles,
+        getSettings().files.defaultExtension,
+      );
+      if (resolution === null) {
+        return null;
+      }
+      path = resolution.path;
+    }
+    try {
+      const isOpen = openedPath !== null && samePath(path, openedPath);
+      let contents = isOpen ? editor.getDoc() : await readFile(path);
+      if (anchor !== null) {
+        contents = sectionSlice(contents, anchor) ?? contents;
+      }
+      return {
+        html: renderToHtml(contents, {
+          properties:
+            anchor === null && getSettings().editor.showProperties,
+        }),
+        path,
+      };
+    } catch {
       return null;
+    }
+  }
+
+  /** Whether a wikilink target points to an existing note. */
+  function isResolvedTarget(target: string): boolean {
+    const { note } = splitAnchor(target);
+    if (note === "") {
+      return openedPath !== null;
+    }
+    if (currentFolder === null) {
+      return false;
     }
     const resolution = resolveWikilink(
       target,
@@ -298,15 +352,23 @@ export function mountLayout(root: HTMLElement): void {
       folderFiles,
       getSettings().files.defaultExtension,
     );
-    if (resolution === null) {
-      return null;
+    return resolution !== null && resolution.exists;
+  }
+
+  /** Scrolls the current view to the heading named by `anchor`. */
+  function revealAnchor(anchor: string): void {
+    const doc = editor.getDoc();
+    const heading = findHeading(doc, anchor);
+    if (heading === null) {
+      return;
     }
-    try {
-      return renderToHtml(await readFile(resolution.path), {
-        properties: getSettings().editor.showProperties,
-      });
-    } catch {
-      return null;
+    if (currentMode === "edit") {
+      editor.revealRange(heading.from, heading.from);
+    } else {
+      setScrollFraction(
+        readingView.element,
+        heading.from / Math.max(1, doc.length),
+      );
     }
   }
 
@@ -333,8 +395,34 @@ export function mountLayout(root: HTMLElement): void {
         ...folderImages.map((file) => file.name),
       ];
     },
+    async getHeadingCompletions(note) {
+      try {
+        if (note === "") {
+          return computeOutline(editor.getDoc()).map((item) => item.text);
+        }
+        if (currentFolder === null) {
+          return [];
+        }
+        const resolution = resolveWikilink(
+          note,
+          currentFolder,
+          folderFiles,
+          getSettings().files.defaultExtension,
+        );
+        if (resolution === null) {
+          return [];
+        }
+        return computeOutline(await readFile(resolution.path)).map(
+          (item) => item.text,
+        );
+      } catch {
+        return [];
+      }
+    },
     resolveEmbedSrc,
     renderEmbedNote,
+    isResolved: isResolvedTarget,
+    currentFilePath: () => openedPath,
   }, editorConfigFrom(getSettings()));
 
   const readingView = createReadingView({
@@ -348,6 +436,8 @@ export function mountLayout(root: HTMLElement): void {
     },
     resolveEmbedSrc,
     renderEmbedNote,
+    isResolved: isResolvedTarget,
+    currentFilePath: () => openedPath,
     foldInfoAt(pos) {
       return editor.foldInfoAt(pos);
     },
@@ -401,6 +491,7 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   async function toggleMode(): Promise<void> {
+    hideHoverPreview();
     if (openedPath === null) {
       return;
     }
@@ -780,6 +871,14 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   async function openWikilink(target: string): Promise<void> {
+    const { note, anchor } = splitAnchor(target);
+    // Same-file anchor: just scroll to the heading.
+    if (note === "") {
+      if (anchor !== null) {
+        revealAnchor(anchor);
+      }
+      return;
+    }
     if (currentFolder === null) {
       return;
     }
@@ -807,9 +906,13 @@ export function mountLayout(root: HTMLElement): void {
       }
     }
     await openFile(resolution.path);
+    if (anchor !== null) {
+      revealAnchor(anchor);
+    }
   }
 
   async function openFile(path: string): Promise<void> {
+    hideHoverPreview();
     if (openedPath !== null && samePath(path, openedPath)) {
       return;
     }

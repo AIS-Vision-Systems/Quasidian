@@ -30,11 +30,14 @@ import { renderPropertiesHtml, renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import {
   fillEmbedImages,
+  fillEmbedNotes,
   addCodePills,
   createCodePill,
   highlightCodeBlocks,
+  markUnresolvedLinks,
   renderMathElements,
   wirePropertiesCollapse,
+  type EmbedNoteResult,
 } from "../ui/renderedContent";
 
 export interface HiddenRange {
@@ -45,10 +48,14 @@ export interface HiddenRange {
 export interface LivePreviewHooks {
   /** Resolves an embed target to a loadable URL, or null if unknown. */
   resolveEmbedSrc(target: string): string | null;
-  /** Renders a note embed target to HTML, or null if unknown. */
-  renderEmbedNote(target: string): Promise<string | null>;
+  /** Renders a note embed target (and resolved path), or null. */
+  renderEmbedNote(target: string): Promise<EmbedNoteResult | null>;
   /** Navigates to a wikilink/embed target. */
   onNavigate(target: string): void;
+  /** Whether a wikilink target points to an existing note. */
+  isResolved(target: string): boolean;
+  /** Path of the open file, for transclusion cycle detection. */
+  currentFilePath(): string | null;
 }
 
 /** Inline mark node name → element node names whose range reveals it. */
@@ -661,19 +668,34 @@ class NoteEmbedWidget extends WidgetType {
     const body = document.createElement("span");
     body.className = "cm-embed-note-body markdown-rendered";
     container.append(title, body);
-    void this.hooks.renderEmbedNote(this.target).then((html) => {
-      if (html === null) {
+    const fillHooks = {
+      resolveEmbedSrc: this.hooks.resolveEmbedSrc,
+      renderEmbedNote: this.hooks.renderEmbedNote,
+      isResolved: this.hooks.isResolved,
+      onRendered: () => view.requestMeasure(),
+    };
+    void this.hooks.renderEmbedNote(this.target).then((result) => {
+      if (result === null) {
         title.classList.add("cm-embed-missing");
       } else {
-        body.innerHTML = html;
+        body.innerHTML = result.html;
         fillEmbedImages(body, this.hooks.resolveEmbedSrc);
         highlightCodeBlocks(body);
         addCodePills(body);
         renderMathElements(body);
         wirePropertiesCollapse(body);
+        markUnresolvedLinks(body, this.hooks.isResolved);
         for (const image of body.querySelectorAll("img")) {
           image.addEventListener("load", () => view.requestMeasure());
         }
+        // Deeper transclusions, with this chain marked as visited.
+        const current = this.hooks.currentFilePath();
+        const visited = new Set(
+          current === null
+            ? [result.path.toLowerCase()]
+            : [current.toLowerCase(), result.path.toLowerCase()],
+        );
+        fillEmbedNotes(body, fillHooks, visited, 1);
       }
       // The fill changed the widget height after CodeMirror measured it.
       view.requestMeasure();
@@ -1215,6 +1237,29 @@ function buildDecorations(
         }).range(embed.from, embed.to),
       );
     }
+    // Unresolved wikilinks render dimmed and underline-free.
+    syntaxTree(state).iterate({
+      from,
+      to,
+      enter(node) {
+        if (node.name !== "Wikilink") {
+          return;
+        }
+        const path = node.node.getChild("WikilinkPath");
+        if (path !== null) {
+          const target = state.doc.sliceString(path.from, path.to);
+          if (!hooks.isResolved(target)) {
+            ranges.push(
+              Decoration.mark({ class: "cm-link-unresolved" }).range(
+                node.from,
+                node.to,
+              ),
+            );
+          }
+        }
+        return false;
+      },
+    });
     for (const marker of computeTaskMarkers(state, from, to)) {
       ranges.push(
         Decoration.replace({

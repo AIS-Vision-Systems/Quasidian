@@ -46,6 +46,10 @@ describe("renameLinkTargets", () => {
   it("ignores links inside code blocks", () => {
     expect(renamed("```\n[[nota]]\n```")).toBe("```\n[[nota]]\n```");
   });
+
+  it("preserves heading anchors", () => {
+    expect(renamed("[[nota#La secció]]")).toBe("[[nova#La secció]]");
+  });
 });
 
 describe("applyRewrites", () => {

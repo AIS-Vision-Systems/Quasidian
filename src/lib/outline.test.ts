@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeOutline } from "./outline";
+import { computeOutline, findHeading, sectionSlice } from "./outline";
 
 describe("computeOutline", () => {
   it("collects ATX headings with level, text and range", () => {
@@ -26,5 +26,21 @@ describe("computeOutline", () => {
 
   it("returns an empty outline without headings", () => {
     expect(computeOutline("només text\n- llista")).toEqual([]);
+  });
+});
+
+describe("findHeading and sectionSlice", () => {
+  const doc = "# U\nintro\n## Sub\ncos sub\n# Dos\nfinal";
+
+  it("finds headings case-insensitively", () => {
+    expect(findHeading(doc, "sub")).toMatchObject({ level: 2, text: "Sub" });
+    expect(findHeading(doc, "inexistent")).toBeNull();
+  });
+
+  it("slices a section up to the next peer heading", () => {
+    expect(sectionSlice(doc, "U")).toBe("# U\nintro\n## Sub\ncos sub\n");
+    expect(sectionSlice(doc, "Sub")).toBe("## Sub\ncos sub\n");
+    expect(sectionSlice(doc, "Dos")).toBe("# Dos\nfinal");
+    expect(sectionSlice(doc, "res")).toBeNull();
   });
 });

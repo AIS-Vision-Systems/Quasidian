@@ -3,7 +3,7 @@
 // shared Lezer tree — never a second parser.
 import { markdownParser } from "../markdown/parser";
 import { basename, samePath } from "./paths";
-import { resolveWikilink, type FolderFile } from "./wikilinks";
+import { resolveWikilink, splitAnchor, type FolderFile } from "./wikilinks";
 
 export interface LinkRewrite {
   from: number;
@@ -47,8 +47,11 @@ export function renameLinkTargets(
       if (resolution === null || !samePath(resolution.path, oldPath)) {
         return false;
       }
-      const insert = /\.md\s*$/i.test(target) ? `${newBase}.md` : newBase;
-      rewrites.push({ from: path.from, to: path.to, insert });
+      // Preserve a heading anchor and the extension style.
+      const { note, anchor } = splitAnchor(target);
+      const suffix = anchor === null ? "" : `#${anchor}`;
+      const base = /\.md\s*$/i.test(note) ? `${newBase}.md` : newBase;
+      rewrites.push({ from: path.from, to: path.to, insert: base + suffix });
       return false;
     },
   });

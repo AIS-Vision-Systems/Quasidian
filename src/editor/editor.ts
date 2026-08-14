@@ -41,7 +41,11 @@ import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag } from "../markdown/wikilinks";
 import { openContextMenu } from "../ui/contextMenu";
-import { copyText } from "../ui/renderedContent";
+import { scheduleHoverHide, scheduleHoverShow } from "../ui/hoverPreview";
+import {
+  copyText,
+  type EmbedNoteResult,
+} from "../ui/renderedContent";
 import {
   markdownMarkerPair,
   markerBackspace,
@@ -264,27 +268,50 @@ export interface EditorHooks {
   onWikilinkClick(target: string): void;
   /** File names offered after `[[`: markdown basenames and image files. */
   getWikilinkCompletions(): string[];
+  /** Heading texts of a note, offered after `#` inside a wikilink. */
+  getHeadingCompletions(note: string): Promise<string[]>;
   /** Resolves an embed target to a loadable URL, or null if unknown. */
   resolveEmbedSrc(target: string): string | null;
-  /** Renders a note embed target to HTML, or null if unknown. */
-  renderEmbedNote(target: string): Promise<string | null>;
+  /** Renders a note embed target (and resolved path), or null. */
+  renderEmbedNote(target: string): Promise<EmbedNoteResult | null>;
+  /** Whether a wikilink target points to an existing note. */
+  isResolved(target: string): boolean;
+  /** Path of the open file, for transclusion cycle detection. */
+  currentFilePath(): string | null;
 }
 
 function wikilinkCompletionSource(hooks: EditorHooks) {
-  return (context: CompletionContext): CompletionResult | null => {
+  return async (
+    context: CompletionContext,
+  ): Promise<CompletionResult | null> => {
+    const alreadyClosed =
+      context.state.sliceDoc(context.pos, context.pos + 2) === "]]";
+    // After a #: offer the note's headings (empty note = current file).
+    const anchorMatch = context.matchBefore(/\[\[[^\][|#]*#[^\][|#]*$/);
+    if (anchorMatch !== null) {
+      const hashIndex = anchorMatch.text.indexOf("#");
+      const note = anchorMatch.text.slice(2, hashIndex).trim();
+      const headings = await hooks.getHeadingCompletions(note);
+      return {
+        from: anchorMatch.from + hashIndex + 1,
+        options: headings.map((heading) => ({
+          label: heading,
+          apply: alreadyClosed ? heading : heading + "]]",
+        })),
+        validFor: /^[^\][|#]*$/,
+      };
+    }
     const match = context.matchBefore(/\[\[[^\][|]*$/);
     if (match === null) {
       return null;
     }
-    const alreadyClosed =
-      context.state.sliceDoc(context.pos, context.pos + 2) === "]]";
     return {
       from: match.from + 2,
       options: hooks.getWikilinkCompletions().map((name) => ({
         label: name,
         apply: alreadyClosed ? name : name + "]]",
       })),
-      validFor: /^[^\][|]*$/,
+      validFor: /^[^\][|#]*$/,
     };
   };
 }
@@ -452,6 +479,8 @@ export function createEditor(
           resolveEmbedSrc: hooks.resolveEmbedSrc,
           renderEmbedNote: hooks.renderEmbedNote,
           onNavigate: hooks.onWikilinkClick,
+          isResolved: hooks.isResolved,
+          currentFilePath: hooks.currentFilePath,
         }),
         lineNumbersCompartment.of(lineNumbersExtension(config)),
         indentCompartment.of(indentExtension(config)),
@@ -465,6 +494,29 @@ export function createEditor(
             event.preventDefault();
             openEditorMenu(view, event.clientX, event.clientY);
             return true;
+          },
+          // Ctrl+hover over a wikilink previews the linked note/section.
+          mousemove(event, view) {
+            if (!(event.ctrlKey || event.metaKey)) {
+              scheduleHoverHide();
+              return false;
+            }
+            const pos = view.posAtCoords({
+              x: event.clientX,
+              y: event.clientY,
+            });
+            const target =
+              pos === null ? null : wikilinkTargetAt(view.state, pos);
+            if (target === null) {
+              scheduleHoverHide();
+              return false;
+            }
+            scheduleHoverShow(event.clientX, event.clientY, target, {
+              resolveEmbedSrc: hooks.resolveEmbedSrc,
+              renderEmbedNote: hooks.renderEmbedNote,
+              isResolved: hooks.isResolved,
+            });
+            return false;
           },
           mousedown(event, view) {
             if (!(event.ctrlKey || event.metaKey) || event.button !== 0) {
