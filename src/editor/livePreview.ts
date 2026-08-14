@@ -1262,6 +1262,61 @@ class TableWidget extends WidgetType {
     const table = document.createElement("table");
     const columns = data.alignments.length;
 
+    // Pointer-based handle dragging: native HTML5 drag & drop is
+    // unreliable inside a contenteditable CodeMirror widget.
+    const startHandleDrag = (
+      kind: "col" | "row",
+      index: number,
+      startEvent: MouseEvent,
+    ): void => {
+      startEvent.preventDefault();
+      const selector =
+        kind === "col"
+          ? "[data-handle-column], [data-column]"
+          : "[data-handle-row], [data-row]";
+      const targetOf = (element: HTMLElement): number =>
+        Number(
+          kind === "col"
+            ? (element.dataset.handleColumn ?? element.dataset.column)
+            : (element.dataset.handleRow ?? element.dataset.row),
+        );
+      let target: number | null = null;
+      let marked: HTMLElement | null = null;
+      const onMove = (event: MouseEvent): void => {
+        const under = document.elementFromPoint(event.clientX, event.clientY);
+        const cellEl =
+          under instanceof Element
+            ? under.closest<HTMLElement>(selector)
+            : null;
+        marked?.classList.remove("drag-target");
+        marked = null;
+        target = null;
+        if (cellEl !== null && container.contains(cellEl)) {
+          const candidate = targetOf(cellEl);
+          if (Number.isFinite(candidate) && candidate !== index) {
+            target = candidate;
+            marked = cellEl;
+            cellEl.classList.add("drag-target");
+          }
+        }
+      };
+      const onUp = (): void => {
+        window.removeEventListener("mousemove", onMove, true);
+        window.removeEventListener("mouseup", onUp, true);
+        marked?.classList.remove("drag-target");
+        if (target !== null) {
+          apply(
+            kind === "col"
+              ? { kind: "moveColumnTo", column: index, to: target }
+              : { kind: "moveRowTo", row: index, to: target },
+            null,
+          );
+        }
+      };
+      window.addEventListener("mousemove", onMove, true);
+      window.addEventListener("mouseup", onUp, true);
+    };
+
     // Column handles above the header.
     const handleRow = document.createElement("tr");
     handleRow.className = "table-handle-row";
@@ -1274,11 +1329,9 @@ class TableWidget extends WidgetType {
       cell.dataset.handleColumn = String(column);
       const handle = document.createElement("button");
       handle.className = "table-col-handle";
-      handle.draggable = true;
-      handle.addEventListener("dragstart", (event) => {
-        event.dataTransfer?.setData("text/plain", `col:${column}`);
-        if (event.dataTransfer !== null) {
-          event.dataTransfer.effectAllowed = "move";
+      handle.addEventListener("mousedown", (event) => {
+        if (event.button === 0) {
+          startHandleDrag("col", column, event);
         }
       });
       handle.addEventListener("contextmenu", (event) => {
@@ -1301,11 +1354,9 @@ class TableWidget extends WidgetType {
       handleCell.dataset.handleRow = String(row);
       const handle = document.createElement("button");
       handle.className = "table-row-handle";
-      handle.draggable = true;
-      handle.addEventListener("dragstart", (event) => {
-        event.dataTransfer?.setData("text/plain", `row:${row}`);
-        if (event.dataTransfer !== null) {
-          event.dataTransfer.effectAllowed = "move";
+      handle.addEventListener("mousedown", (event) => {
+        if (event.button === 0) {
+          startHandleDrag("row", row, event);
         }
       });
       handle.addEventListener("contextmenu", (event) => {
@@ -1319,54 +1370,6 @@ class TableWidget extends WidgetType {
         tr.append(makeCell(row === 0 ? "th" : "td", row, column));
       });
       table.append(tr);
-    });
-
-    // Dragging a handle onto another one reorders rows/columns.
-    container.addEventListener("dragover", (event) => {
-      const target =
-        event.target instanceof Element
-          ? event.target.closest<HTMLElement>(
-              "[data-handle-column], [data-handle-row]",
-            )
-          : null;
-      if (target !== null) {
-        event.preventDefault();
-      }
-    });
-    container.addEventListener("drop", (event) => {
-      const target =
-        event.target instanceof Element
-          ? event.target.closest<HTMLElement>(
-              "[data-handle-column], [data-handle-row]",
-            )
-          : null;
-      if (target === null) {
-        return;
-      }
-      event.preventDefault();
-      const payload = event.dataTransfer?.getData("text/plain") ?? "";
-      if (payload.startsWith("col:") && target.dataset.handleColumn !== undefined) {
-        apply(
-          {
-            kind: "moveColumnTo",
-            column: Number(payload.slice(4)),
-            to: Number(target.dataset.handleColumn),
-          },
-          null,
-        );
-      } else if (
-        payload.startsWith("row:") &&
-        target.dataset.handleRow !== undefined
-      ) {
-        apply(
-          {
-            kind: "moveRowTo",
-            row: Number(payload.slice(4)),
-            to: Number(target.dataset.handleRow),
-          },
-          null,
-        );
-      }
     });
 
     // Hovering the table's right/bottom edge offers quick add buttons.
