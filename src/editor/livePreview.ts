@@ -1959,9 +1959,9 @@ function buildDecorations(
               }).range(callout.titleTo),
             );
           }
-          if (collapsed && node.to > callout.titleTo) {
-            ranges.push(Decoration.replace({}).range(callout.titleTo, node.to));
-          }
+          // The collapsed content itself is hidden by the block
+          // decorations state field: replaced ranges that cross line
+          // breaks may not come from a view plugin.
           // The [!type] marker renders as the callout's icon when the
           // line is not being edited; the title reads bold.
           if (!selectionTouchesLine(state, callout.markerFrom)) {
@@ -2150,6 +2150,22 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
           }).range(from, to),
         );
         return false;
+      }
+      if (node.name === "Blockquote" && !hasBlockquoteAncestor(node.node)) {
+        // Collapsed callout: hide everything after the title line.
+        // The range crosses line breaks, so it must come from this
+        // state field, not the view plugin.
+        const callout = calloutForQuote(state, node.node);
+        if (
+          callout !== null &&
+          callout.fold === "-" &&
+          callout.titleTo < node.to &&
+          !selectionTouches(state, node.from, node.to)
+        ) {
+          ranges.push(Decoration.replace({}).range(callout.titleTo, node.to));
+          return false;
+        }
+        return;
       }
       if (node.name === "MathBlock") {
         const fromLine = state.doc.lineAt(node.from);
