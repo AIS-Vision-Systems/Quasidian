@@ -1844,6 +1844,11 @@ span.table-wrap > table {
   padding-bottom: 10px;
 }
 
+/* A collapsed (or single-line) callout is first and last at once. */
+.cm-editor .cm-callout-first.cm-callout-last {
+  border-radius: 10px;
+}
+
 .cm-editor .cm-callout-icon {
   display: inline-flex;
   margin-right: 6px;

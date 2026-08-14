@@ -1948,7 +1948,14 @@ function buildDecorations(
               }).range(line.from),
             );
           }
-          if (callout.fold !== null) {
+          // Guarded by the visible range: a collapsed callout can
+          // fragment visibleRanges and iterate the node twice, which
+          // would duplicate this point widget.
+          if (
+            callout.fold !== null &&
+            callout.titleTo >= from &&
+            callout.titleTo <= to
+          ) {
             ranges.push(
               Decoration.widget({
                 widget: new CalloutFoldWidget(
