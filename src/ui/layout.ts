@@ -205,9 +205,9 @@ export function mountLayout(root: HTMLElement): void {
   modeButton.textContent = t("statusBar.mode.edit");
   modeButton.addEventListener("click", () => void toggleMode());
   statusBar.append(
+    settingsButton,
     statusPalette,
     statusSwitcher,
-    settingsButton,
     statusError,
     statusBacklinks,
     wordCount,
