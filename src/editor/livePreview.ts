@@ -823,6 +823,26 @@ class TableWidget extends WidgetType {
   }
 }
 
+// Collapse state and the pending "add property" request survive widget
+// rebuilds; one open document at a time keeps this module-level.
+let propertiesCollapsed = false;
+let pendingAddProperty = false;
+
+/**
+ * Opens the properties editor's add-row (creating an empty frontmatter
+ * block first when the note has none). Used by the file menu.
+ */
+export function requestAddProperty(view: EditorView): void {
+  pendingAddProperty = true;
+  propertiesCollapsed = false;
+  if (!view.state.doc.sliceString(0, 4).startsWith("---")) {
+    view.dispatch({ changes: { from: 0, insert: "---\n---\n" } });
+  } else {
+    // Selection-touch transaction so the block decorations rebuild.
+    view.dispatch({ selection: view.state.selection });
+  }
+}
+
 class PropertiesWidget extends WidgetType {
   constructor(
     readonly source: string,
@@ -840,65 +860,150 @@ class PropertiesWidget extends WidgetType {
     container.className = "cm-frontmatter-widget";
     const data = parseFrontmatter(this.source);
     container.innerHTML = renderPropertiesHtml(data, true);
-    container.addEventListener("mousedown", (event) => {
-      const target = event.target;
+    container.classList.toggle("is-collapsed", propertiesCollapsed);
+
+    const replaceBlock = (
+      properties: ReturnType<typeof parseFrontmatter>["properties"],
+    ): void => {
+      const kept = properties.filter(
+        (property) => property.key.trim() !== "",
+      );
+      const replacement =
+        kept.length === 0 ? "" : serializeFrontmatter(kept);
+      let to = this.to;
       if (
-        target instanceof Element &&
-        (target.closest(".props-remove") !== null ||
-          target.closest(".props-add") !== null)
+        replacement === "" &&
+        view.state.doc.sliceString(to, to + 1) === "\n"
       ) {
-        // Handled on click; keep the selection out of the block.
-        event.preventDefault();
-        return;
+        to++;
       }
-      // Clicking the widget reveals the raw YAML with the cursor inside.
-      event.preventDefault();
-      view.dispatch({
-        selection: { anchor: Math.min(3, view.state.doc.length) },
-      });
-      view.focus();
-    });
+      view.dispatch({ changes: { from: 0, to, insert: replacement } });
+    };
+
+    const showAddRow = (): void => {
+      const row = container.querySelector<HTMLElement>(".props-add-row");
+      row?.classList.remove("is-hidden");
+      const key = container.querySelector<HTMLInputElement>(".props-new-key");
+      setTimeout(() => key?.focus(), 0);
+    };
+
     container.addEventListener("click", (event) => {
       const target = event.target;
       if (!(target instanceof Element)) {
+        return;
+      }
+      if (target.closest(".props-header") !== null) {
+        propertiesCollapsed = !propertiesCollapsed;
+        container.classList.toggle("is-collapsed", propertiesCollapsed);
         return;
       }
       const remove = target.closest<HTMLElement>(".props-remove");
       if (remove !== null) {
         const propIndex = Number(remove.dataset.prop);
         const valueIndex = Number(remove.dataset.value);
-        const remaining = data.properties
-          .map((property, index) =>
-            index === propIndex
-              ? {
-                  ...property,
-                  values: property.values.filter((_, vi) => vi !== valueIndex),
-                }
-              : property,
-          )
-          .filter((property) => property.values.length > 0);
-        const replacement =
-          remaining.length === 0 ? "" : serializeFrontmatter(remaining);
-        let to = this.to;
-        if (
-          replacement === "" &&
-          view.state.doc.sliceString(to, to + 1) === "\n"
-        ) {
-          to++;
-        }
-        view.dispatch({ changes: { from: 0, to, insert: replacement } });
+        replaceBlock(
+          data.properties
+            .map((property, index) =>
+              index === propIndex
+                ? {
+                    ...property,
+                    values: property.values.filter(
+                      (_, vi) => vi !== valueIndex,
+                    ),
+                  }
+                : property,
+            )
+            .filter((property) => property.values.length > 0),
+        );
+        return;
+      }
+      const scalar = target.closest<HTMLElement>(".props-value[data-prop]");
+      if (scalar !== null) {
+        // Swap the scalar for an inline input; Enter or blur commits.
+        const propIndex = Number(scalar.dataset.prop);
+        const input = document.createElement("input");
+        input.className = "props-edit-value";
+        input.value = data.properties[propIndex]?.values[0] ?? "";
+        input.spellcheck = false;
+        scalar.replaceWith(input);
+        input.focus();
+        input.select();
+        const commit = (): void => {
+          const value = input.value.trim();
+          replaceBlock(
+            data.properties.map((property, index) =>
+              index === propIndex
+                ? { ...property, values: value === "" ? [] : [value] }
+                : property,
+            ),
+          );
+        };
+        input.addEventListener("keydown", (keyEvent) => {
+          if (keyEvent.key === "Enter") {
+            keyEvent.preventDefault();
+            commit();
+          }
+        });
+        input.addEventListener("blur", commit);
         return;
       }
       if (target.closest(".props-add") !== null) {
-        // Reveal the raw YAML at the end of the last content line.
-        const anchor = Math.min(
-          Math.max(3, this.to - 4),
-          view.state.doc.length,
-        );
-        view.dispatch({ selection: { anchor } });
-        view.focus();
+        showAddRow();
       }
     });
+
+    // Enter on a list's trailing input appends a new pill.
+    container.addEventListener("keydown", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      if (target.classList.contains("props-new-value")) {
+        const propIndex = Number(target.dataset.prop);
+        const value = target.value.trim();
+        if (value === "") {
+          return;
+        }
+        replaceBlock(
+          data.properties.map((property, index) =>
+            index === propIndex
+              ? { ...property, values: [...property.values, value] }
+              : property,
+          ),
+        );
+        return;
+      }
+      if (
+        target.classList.contains("props-new-key") ||
+        target.classList.contains("props-new-first")
+      ) {
+        const key = container
+          .querySelector<HTMLInputElement>(".props-new-key")
+          ?.value.trim();
+        const value = container
+          .querySelector<HTMLInputElement>(".props-new-first")
+          ?.value.trim();
+        if (key === undefined || key === "") {
+          return;
+        }
+        const lower = key.toLowerCase();
+        const isList = ["tags", "tag", "aliases", "alias"].includes(lower);
+        replaceBlock([
+          ...data.properties,
+          {
+            key,
+            values: value === undefined || value === "" ? [] : [value],
+            isList: isList || value === undefined || value === "",
+          },
+        ]);
+      }
+    });
+
+    if (pendingAddProperty) {
+      pendingAddProperty = false;
+      showAddRow();
+    }
     return container;
   }
 

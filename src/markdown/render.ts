@@ -10,6 +10,7 @@ import {
   parseFrontmatter,
   type FrontmatterData,
 } from "../lib/frontmatter";
+import { iconMarkup } from "../ui/icons";
 import { markdownParser } from "./parser";
 import { isImageTarget } from "./wikilinks";
 
@@ -43,9 +44,22 @@ const SKIP = new Set([
   "FrontmatterMark",
 ]);
 
+/** Icon for a property key: tags and aliases get their own glyphs. */
+function propertyIcon(key: string): string {
+  const lower = key.toLowerCase();
+  if (lower === "tags" || lower === "tag") {
+    return iconMarkup("tag");
+  }
+  if (lower === "aliases" || lower === "alias") {
+    return iconMarkup("corner-up-right");
+  }
+  return iconMarkup("text");
+}
+
 /**
  * Properties block HTML shared by reading mode and the editor widget;
- * `interactive` adds the remove/add controls the widget wires up.
+ * `interactive` adds the edit controls (remove, inline value inputs,
+ * add-property row, collapse chevron) the widget wires up.
  */
 export function renderPropertiesHtml(
   data: FrontmatterData,
@@ -55,31 +69,59 @@ export function renderPropertiesHtml(
     return "";
   }
   const out: string[] = ['<div class="frontmatter-props">'];
+  out.push('<div class="props-header">');
+  if (interactive) {
+    out.push(
+      `<span class="props-chevron">${iconMarkup("chevron-down")}</span>`,
+    );
+  }
   out.push(
-    `<div class="props-title">${escapeHtml(t("properties.title"))}</div>`,
+    `<span class="props-title">${escapeHtml(t("properties.title"))}</span>`,
   );
+  out.push("</div>");
+  out.push('<div class="props-body">');
   data.properties.forEach((property, propIndex) => {
     out.push('<div class="props-row">');
-    out.push(`<span class="props-key">${escapeHtml(property.key)}</span>`);
+    out.push(
+      `<span class="props-key"><span class="props-key-icon">${propertyIcon(property.key)}</span>${escapeHtml(property.key)}</span>`,
+    );
     out.push('<span class="props-values">');
     property.values.forEach((value, valueIndex) => {
-      const cls = property.isList ? "props-pill" : "props-value";
-      out.push(`<span class="${cls}">${escapeHtml(value)}`);
-      if (interactive) {
+      if (property.isList) {
+        out.push(`<span class="props-pill">${escapeHtml(value)}`);
+        if (interactive) {
+          out.push(
+            `<button class="props-remove" data-prop="${propIndex}" data-value="${valueIndex}" aria-label="${escapeHtml(t("properties.remove"))}">×</button>`,
+          );
+        }
+        out.push("</span>");
+      } else if (interactive) {
         out.push(
-          `<button class="props-remove" data-prop="${propIndex}" data-value="${valueIndex}" aria-label="${escapeHtml(t("properties.remove"))}">×</button>`,
+          `<span class="props-value" data-prop="${propIndex}" data-value="${valueIndex}" title="${escapeHtml(t("properties.edit"))}">${escapeHtml(value)}</span>`,
         );
+      } else {
+        out.push(`<span class="props-value">${escapeHtml(value)}</span>`);
       }
-      out.push("</span>");
     });
+    if (interactive && property.isList) {
+      out.push(
+        `<input class="props-new-value" data-prop="${propIndex}" placeholder="${escapeHtml(t("properties.value"))}" spellcheck="false">`,
+      );
+    }
     out.push("</span></div>");
   });
   if (interactive) {
     out.push(
+      '<div class="props-add-row is-hidden">' +
+        `<input class="props-new-key" placeholder="${escapeHtml(t("properties.name"))}" spellcheck="false">` +
+        `<input class="props-new-first" placeholder="${escapeHtml(t("properties.value"))}" spellcheck="false">` +
+        "</div>",
+    );
+    out.push(
       `<button class="props-add">+ ${escapeHtml(t("properties.add"))}</button>`,
     );
   }
-  out.push("</div>");
+  out.push("</div></div>");
   return out.join("");
 }
 

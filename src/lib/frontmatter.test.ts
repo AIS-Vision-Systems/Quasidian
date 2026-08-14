@@ -42,6 +42,19 @@ describe("parseFrontmatter", () => {
     expect(data.tags).toEqual(["x"]);
   });
 
+  it("accepts unindented dash lists", () => {
+    const doc =
+      "---\ntags:\n- Test\n- Lectura\nAliases:\n- prova de Quasidian\nExtra: cosa\n---";
+    const data = parseFrontmatter(doc);
+    expect(data.tags).toEqual(["Test", "Lectura"]);
+    expect(data.aliases).toEqual(["prova de Quasidian"]);
+    expect(data.properties[2]).toEqual({
+      key: "Extra",
+      values: ["cosa"],
+      isList: false,
+    });
+  });
+
   it("tolerates CRLF line endings", () => {
     const data = parseFrontmatter("---\r\ntags: [a]\r\n---\r\ntext");
     expect(data.exists).toBe(true);

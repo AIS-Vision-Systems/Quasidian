@@ -989,12 +989,22 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   function openFileMenu(x: number, y: number, path: string): void {
+    const isOpenFile = openedPath !== null && samePath(path, openedPath);
     openContextMenu(x, y, [
       {
         label: t("menu.rename"),
         icon: "pencil",
         onClick: () => void renameFromMenu(path),
       },
+      ...(isOpenFile
+        ? [
+            {
+              label: t("menu.addProperty"),
+              icon: "plus" as const,
+              onClick: () => editor.addProperty(),
+            },
+          ]
+        : []),
       {
         label: t("menu.copyPath"),
         icon: "copy",

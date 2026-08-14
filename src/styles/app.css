@@ -1415,10 +1415,53 @@ body.is-readable-line-length .reading-view-content {
   cursor: pointer;
 }
 
-.props-title {
+.props-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 8px;
-  color: var(--text-muted);
+}
+
+.cm-frontmatter-widget .props-header {
+  cursor: pointer;
+}
+
+.props-chevron {
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.props-chevron .app-icon {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.1s ease;
+}
+
+.frontmatter-props.is-collapsed .props-chevron .app-icon,
+.cm-frontmatter-widget.is-collapsed .props-chevron .app-icon {
+  transform: rotate(-90deg);
+}
+
+.frontmatter-props.is-collapsed .props-body,
+.cm-frontmatter-widget.is-collapsed .props-body {
+  display: none;
+}
+
+.props-title {
+  color: var(--text-normal);
   font-weight: 600;
+}
+
+.props-key-icon {
+  display: inline-flex;
+  margin-right: 6px;
+  vertical-align: -2px;
+  color: var(--text-faint);
+}
+
+.props-key-icon .app-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .props-row {
@@ -1482,6 +1525,60 @@ body.is-readable-line-length .reading-view-content {
 .props-add:hover {
   background-color: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+
+.cm-frontmatter-widget .props-value {
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+}
+
+.cm-frontmatter-widget .props-value:hover {
+  border-bottom-color: var(--text-faint);
+}
+
+.props-new-value,
+.props-new-key,
+.props-new-first,
+.props-edit-value {
+  padding: 1px 6px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.props-new-value {
+  min-width: 60px;
+  color: var(--text-faint);
+}
+
+.props-new-value:focus,
+.props-new-key:focus,
+.props-new-first:focus,
+.props-edit-value:focus {
+  background-color: var(--background-secondary);
+  border-color: var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+.props-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.props-add-row.is-hidden {
+  display: none;
+}
+
+.props-add-row input {
+  background-color: var(--background-secondary);
+  border-color: var(--background-modifier-border);
 }
 
 /* Reading-mode section folding. */

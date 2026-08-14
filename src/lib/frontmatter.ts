@@ -71,11 +71,12 @@ export function parseFrontmatter(doc: string): FrontmatterData {
     const key = match[1].trim();
     const rest = match[2].trim();
     if (rest === "") {
-      // Dash list on the following lines.
+      // Dash list on the following lines; YAML allows both indented and
+      // column-0 items.
       const values: string[] = [];
       let next = index + 1;
       while (next < lines.length) {
-        const item = /^\s+-\s+(.*)$/.exec(lines[next].replace(/\r$/, ""));
+        const item = /^\s*-\s+(.*)$/.exec(lines[next].replace(/\r$/, ""));
         if (item === null) {
           break;
         }
