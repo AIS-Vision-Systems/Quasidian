@@ -18,6 +18,7 @@
   "properties.name": "Nombre",
   "properties.value": "Valor",
   "properties.edit": "Clic para editar",
+  "preview.notCreated": "«{name}» aún no se ha creado. Clic para crearla.",
   "menu.addProperty": "Añadir una propiedad al archivo",
   "menu.rename": "Cambiar el nombre…",
   "menu.delete": "Eliminar el archivo",

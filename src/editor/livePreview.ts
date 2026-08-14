@@ -29,6 +29,10 @@ import {
 import { renderPropertiesHtml, renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import {
+  scheduleHoverHide,
+  scheduleHoverShow,
+} from "../ui/hoverPreview";
+import {
   fillEmbedImages,
   fillEmbedNotes,
   addCodePills,
@@ -37,6 +41,7 @@ import {
   markUnresolvedLinks,
   renderMathElements,
   wirePropertiesCollapse,
+  type EmbedFillHooks,
   type EmbedNoteResult,
 } from "../ui/renderedContent";
 
@@ -668,12 +673,17 @@ class NoteEmbedWidget extends WidgetType {
     const body = document.createElement("span");
     body.className = "cm-embed-note-body markdown-rendered";
     container.append(title, body);
-    const fillHooks = {
+    const fillHooks: EmbedFillHooks = {
       resolveEmbedSrc: this.hooks.resolveEmbedSrc,
       renderEmbedNote: this.hooks.renderEmbedNote,
       isResolved: this.hooks.isResolved,
       onRendered: () => view.requestMeasure(),
     };
+    // Embedded content behaves like rendered content: plain hover
+    // previews its links, even in editing mode.
+    fillHooks.onLinkHover = (x, y, target) =>
+      scheduleHoverShow(x, y, target, fillHooks);
+    fillHooks.onLinkLeave = () => scheduleHoverHide();
     void this.hooks.renderEmbedNote(this.target).then((result) => {
       if (result === null) {
         title.classList.add("cm-embed-missing");

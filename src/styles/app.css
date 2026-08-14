@@ -1328,15 +1328,15 @@ body.is-readable-line-length .reading-view-content {
   color: var(--text-accent-hover);
 }
 
-/* Links whose note does not exist: dimmed, no underline. */
+/* Links whose note does not exist: dimmed lilac, no underline. */
 .markdown-rendered a.internal-link.is-unresolved {
-  color: var(--text-faint);
+  color: color-mix(in srgb, var(--text-accent) 50%, transparent);
   text-decoration: none;
 }
 
 .cm-editor .cm-link-unresolved,
 .cm-editor .cm-link-unresolved .cm-link {
-  color: var(--text-faint);
+  color: color-mix(in srgb, var(--text-accent) 50%, transparent);
   text-decoration: none;
 }
 
@@ -1346,6 +1346,12 @@ body.is-readable-line-length .reading-view-content {
 }
 
 /* Page-preview popup (hover / Ctrl+hover on wikilinks). */
+.hover-preview-missing {
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  text-align: center;
+}
+
 .hover-preview {
   position: fixed;
   z-index: 95;

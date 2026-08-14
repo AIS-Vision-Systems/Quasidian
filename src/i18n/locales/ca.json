@@ -18,6 +18,7 @@
   "properties.name": "Nom",
   "properties.value": "Valor",
   "properties.edit": "Clica per editar",
+  "preview.notCreated": "«{name}» encara no s'ha creat. Clica per crear-la.",
   "menu.addProperty": "Afegeix una propietat al fitxer",
   "menu.rename": "Canvia el nom…",
   "menu.delete": "Elimina el fitxer",
