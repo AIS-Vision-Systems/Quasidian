@@ -40,7 +40,7 @@ import { t } from "../i18n/i18n";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag } from "../markdown/wikilinks";
-import { openContextMenu, type MenuEntry } from "../ui/contextMenu";
+import { openContextMenu } from "../ui/contextMenu";
 import { scheduleHoverHide, scheduleHoverShow } from "../ui/hoverPreview";
 import {
   copyText,
@@ -65,12 +65,12 @@ import {
   listIndentCommand,
   listOutdentCommand,
 } from "./listCommands";
+import { emptyTable } from "./tableCommands";
 import {
-  inTable,
-  tableEditCommand,
-  type TableOp,
-} from "./tableCommands";
-import { livePreview, requestAddProperty } from "./livePreview";
+  focusTableCell,
+  livePreview,
+  requestAddProperty,
+} from "./livePreview";
 
 // Renders markdown formatting (sizes, weights, code font) while Live Preview
 // hides the marks themselves. Colors always go through CSS variables.
@@ -123,11 +123,6 @@ function tabIndent(view: EditorView): boolean {
   if (state.selection.ranges.some((range) => !range.empty)) {
     return indentMore(view);
   }
-  // In a table, Tab moves between cells (a new row past the last one).
-  if (inTable(state, state.selection.main.head)) {
-    tableEditCommand({ kind: "nextCell" })(view);
-    return true;
-  }
   if (inListItem(state)) {
     // A first item has nothing to nest under: swallow the Tab anyway
     // rather than breaking the list with a plain indent.
@@ -144,10 +139,6 @@ function tabIndent(view: EditorView): boolean {
 }
 
 function shiftTabIndent(view: EditorView): boolean {
-  if (inTable(view.state, view.state.selection.main.head)) {
-    tableEditCommand({ kind: "prevCell" })(view);
-    return true;
-  }
   return listOutdentCommand(view) || indentLess(view);
 }
 
@@ -200,73 +191,24 @@ async function pasteClipboard(view: EditorView): Promise<void> {
   view.focus();
 }
 
-function tableMenuEntry(view: EditorView, op: TableOp, labelKey: string) {
-  return {
-    label: t(labelKey),
-    onClick: () => void tableEditCommand(op)(view),
-  };
+/** Inserts an empty 2x2 table on its own block and focuses it. */
+function insertTableCommand(view: EditorView): void {
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  const prefix = line.text.trim() === "" ? "" : "\n\n";
+  const skeleton = emptyTable();
+  const from = line.to;
+  const tableFrom = from + prefix.length;
+  focusTableCell(tableFrom, 0, 0);
+  view.dispatch({
+    changes: { from, insert: `${prefix}${skeleton}\n` },
+    selection: { anchor: tableFrom + skeleton.length + 1 },
+  });
 }
 
 function openEditorMenu(view: EditorView, x: number, y: number): void {
   const hasSelection = !view.state.selection.main.empty;
-  const tableEntries: MenuEntry[] = inTable(
-    view.state,
-    view.state.selection.main.head,
-  )
-    ? [
-        {
-          label: t("menu.table"),
-          submenu: [
-            tableMenuEntry(view, { kind: "addRow" }, "menu.tableAddRow"),
-            tableMenuEntry(view, { kind: "deleteRow" }, "menu.tableDeleteRow"),
-            tableMenuEntry(
-              view,
-              { kind: "moveRow", delta: -1 },
-              "menu.tableMoveRowUp",
-            ),
-            tableMenuEntry(
-              view,
-              { kind: "moveRow", delta: 1 },
-              "menu.tableMoveRowDown",
-            ),
-            tableMenuEntry(view, { kind: "addColumn" }, "menu.tableAddColumn"),
-            tableMenuEntry(
-              view,
-              { kind: "deleteColumn" },
-              "menu.tableDeleteColumn",
-            ),
-            tableMenuEntry(
-              view,
-              { kind: "moveColumn", delta: -1 },
-              "menu.tableMoveColumnLeft",
-            ),
-            tableMenuEntry(
-              view,
-              { kind: "moveColumn", delta: 1 },
-              "menu.tableMoveColumnRight",
-            ),
-            tableMenuEntry(
-              view,
-              { kind: "setAlignment", alignment: "left" },
-              "menu.tableAlignLeft",
-            ),
-            tableMenuEntry(
-              view,
-              { kind: "setAlignment", alignment: "center" },
-              "menu.tableAlignCenter",
-            ),
-            tableMenuEntry(
-              view,
-              { kind: "setAlignment", alignment: "right" },
-              "menu.tableAlignRight",
-            ),
-          ],
-        },
-        "separator",
-      ]
-    : [];
   openContextMenu(x, y, [
-    ...tableEntries,
     {
       label: t("menu.cut"),
       icon: "scissors",
@@ -296,6 +238,11 @@ function openEditorMenu(view: EditorView, x: number, y: number): void {
       label: t("menu.addLink"),
       icon: "link",
       onClick: () => insertLink(view),
+    },
+    {
+      label: t("menu.insertTable"),
+      icon: "table",
+      onClick: () => insertTableCommand(view),
     },
     {
       label: t("menu.format"),
@@ -430,8 +377,8 @@ export interface EditorHandle {
   toggleFoldAt(pos: number): void;
   /** Opens the properties editor's add-property row. */
   addProperty(): void;
-  /** Runs a table edit at the cursor (palette commands). */
-  tableEdit(op: TableOp): void;
+  /** Inserts an empty table at the cursor (palette command). */
+  insertTable(): void;
 }
 
 export function createEditor(
@@ -714,8 +661,8 @@ export function createEditor(
     addProperty(): void {
       requestAddProperty(view);
     },
-    tableEdit(op: TableOp): void {
-      tableEditCommand(op)(view);
+    insertTable(): void {
+      insertTableCommand(view);
     },
     toggleFoldAt(pos: number): void {
       const clamped = Math.min(Math.max(pos, 0), view.state.doc.length);

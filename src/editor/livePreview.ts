@@ -22,10 +22,19 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import katex from "katex";
+import { t } from "../i18n/i18n";
 import {
   parseFrontmatter,
   serializeFrontmatter,
 } from "../lib/frontmatter";
+import { openContextMenu, type MenuEntry } from "../ui/contextMenu";
+import {
+  applyTableOp,
+  parseTableSource,
+  serializeTable,
+  type TableData,
+  type TableOp,
+} from "./tableCommands";
 import { renderPropertiesHtml, renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import {
@@ -108,7 +117,8 @@ export function computeHiddenRanges(
     from,
     to,
     enter(node) {
-      if (node.name === "Table" && !selectionTouches(state, node.from, node.to)) {
+      if (node.name === "Table") {
+        // Tables are always widget-replaced; nothing inside is decorated.
         return false;
       }
       if (node.name === "Embed") {
@@ -190,7 +200,8 @@ function computeEmbeds(
     from,
     to,
     enter(node) {
-      if (node.name === "Table" && !selectionTouches(state, node.from, node.to)) {
+      if (node.name === "Table") {
+        // Tables are always widget-replaced; nothing inside is decorated.
         return false;
       }
       if (node.name !== "Embed") {
@@ -881,6 +892,27 @@ class MathWidget extends WidgetType {
   }
 }
 
+// Cell to focus after a table rebuild, keyed by the table's start.
+let pendingTableFocus: {
+  from: number;
+  row: number;
+  column: number;
+} | null = null;
+
+/** Asks the table widget at `from` to focus a cell when it (re)builds. */
+export function focusTableCell(
+  from: number,
+  row: number,
+  column: number,
+): void {
+  pendingTableFocus = { from, row, column };
+}
+
+/** Escapes pipes and newlines so a cell edit can't break the table. */
+function sanitizeCell(text: string): string {
+  return text.replace(/\r?\n/g, " ").replace(/\\?\|/g, "\\|").trim();
+}
+
 class TableWidget extends WidgetType {
   constructor(
     readonly source: string,
@@ -895,15 +927,316 @@ class TableWidget extends WidgetType {
 
   toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("div");
-    container.className = "cm-table-widget markdown-rendered";
-    container.innerHTML = renderToHtml(this.source);
-    // Clicking the table reveals its raw markdown with the cursor inside.
-    container.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-      view.dispatch({ selection: { anchor: this.pos } });
-      view.focus();
+    container.className = "cm-table-widget markdown-rendered table-editor";
+    const data = parseTableSource(this.source);
+    if (data === null) {
+      container.innerHTML = renderToHtml(this.source);
+      return container;
+    }
+
+    const dispatchTable = (
+      next: TableData,
+      focus: { row: number; column: number } | null,
+    ): void => {
+      const to = this.pos + this.source.length;
+      let insert = serializeTable(next);
+      // Always keep a blank line after the table so following text
+      // never gets absorbed into it.
+      const nextChar = view.state.doc.sliceString(to, to + 1);
+      const charAfter = view.state.doc.sliceString(to + 1, to + 2);
+      if (nextChar !== "" && (nextChar !== "\n" || (charAfter !== "" && charAfter !== "\n"))) {
+        insert += "\n";
+      }
+      if (focus !== null) {
+        pendingTableFocus = { from: this.pos, ...focus };
+      }
+      view.dispatch({ changes: { from: this.pos, to, insert } });
+    };
+
+    const apply = (
+      op: TableOp,
+      focus: { row: number; column: number } | null,
+    ): void => {
+      const next = applyTableOp(data, op);
+      if (next !== null) {
+        dispatchTable(next, focus);
+      }
+    };
+
+    const rowMenuItems = (row: number): MenuEntry[] => [
+      {
+        label: t("menu.tableAddRowAbove"),
+        onClick: () => apply({ kind: "addRow", row, side: "above" }, null),
+      },
+      {
+        label: t("menu.tableAddRow"),
+        onClick: () => apply({ kind: "addRow", row, side: "below" }, null),
+      },
+      {
+        label: t("menu.tableDuplicateRow"),
+        onClick: () => apply({ kind: "duplicateRow", row }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableMoveRowUp"),
+        disabled: row < 3,
+        onClick: () => apply({ kind: "moveRow", row, delta: -1 }, null),
+      },
+      {
+        label: t("menu.tableMoveRowDown"),
+        disabled: row < 2,
+        onClick: () => apply({ kind: "moveRow", row, delta: 1 }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableDeleteRow"),
+        danger: true,
+        disabled: row < 2,
+        onClick: () => apply({ kind: "deleteRow", row }, null),
+      },
+    ];
+
+    const columnMenuItems = (column: number): MenuEntry[] => [
+      {
+        label: t("menu.tableSortAsc"),
+        onClick: () => apply({ kind: "sort", column, ascending: true }, null),
+      },
+      {
+        label: t("menu.tableSortDesc"),
+        onClick: () => apply({ kind: "sort", column, ascending: false }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableAddColumnLeft"),
+        onClick: () => apply({ kind: "addColumn", column, side: "left" }, null),
+      },
+      {
+        label: t("menu.tableAddColumnRight"),
+        onClick: () =>
+          apply({ kind: "addColumn", column, side: "right" }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableMoveColumnLeft"),
+        onClick: () => apply({ kind: "moveColumn", column, delta: -1 }, null),
+      },
+      {
+        label: t("menu.tableMoveColumnRight"),
+        onClick: () => apply({ kind: "moveColumn", column, delta: 1 }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableAlignLeft"),
+        onClick: () =>
+          apply({ kind: "setAlignment", column, alignment: "left" }, null),
+      },
+      {
+        label: t("menu.tableAlignCenter"),
+        onClick: () =>
+          apply({ kind: "setAlignment", column, alignment: "center" }, null),
+      },
+      {
+        label: t("menu.tableAlignRight"),
+        onClick: () =>
+          apply({ kind: "setAlignment", column, alignment: "right" }, null),
+      },
+      "separator",
+      {
+        label: t("menu.tableDuplicateColumn"),
+        onClick: () => apply({ kind: "duplicateColumn", column }, null),
+      },
+      {
+        label: t("menu.tableDeleteColumn"),
+        danger: true,
+        onClick: () => apply({ kind: "deleteColumn", column }, null),
+      },
+    ];
+
+    const commitCell = (
+      cell: HTMLElement,
+      wantFocus: { row: number; column: number } | null,
+    ): void => {
+      const row = Number(cell.dataset.row);
+      const column = Number(cell.dataset.column);
+      const text = sanitizeCell(cell.textContent ?? "");
+      if (text === data.rows[row][column]) {
+        return;
+      }
+      const next: TableData = {
+        rows: data.rows.map((cells, r) =>
+          r === row
+            ? cells.map((value, c) => (c === column ? text : value))
+            : cells,
+        ),
+        alignments: data.alignments,
+      };
+      dispatchTable(next, wantFocus);
+    };
+
+    const makeCell = (
+      tag: "th" | "td",
+      row: number,
+      column: number,
+    ): HTMLElement => {
+      const cell = document.createElement(tag);
+      cell.textContent = data.rows[row][column];
+      cell.dataset.row = String(row);
+      cell.dataset.column = String(column);
+      cell.contentEditable = "plaintext-only";
+      cell.spellcheck = false;
+      const alignment = data.alignments[column];
+      if (alignment !== null) {
+        cell.style.textAlign = alignment;
+      }
+      cell.addEventListener("blur", () => commitCell(cell, null));
+      cell.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commitCell(cell, null);
+          cell.blur();
+        } else if (event.key === "Tab") {
+          event.preventDefault();
+          const editables = [
+            ...container.querySelectorAll<HTMLElement>("[data-row]"),
+          ];
+          const index = editables.indexOf(cell);
+          const target = index + (event.shiftKey ? -1 : 1);
+          if (target >= 0 && target < editables.length) {
+            const targetCell = editables[target];
+            commitCell(cell, {
+              row: Number(targetCell.dataset.row),
+              column: Number(targetCell.dataset.column),
+            });
+            targetCell.focus();
+          } else if (target >= editables.length) {
+            // Tab past the last cell grows the table by a row.
+            const text = sanitizeCell(cell.textContent ?? "");
+            const withEdit: TableData = {
+              rows: data.rows.map((cells, r) =>
+                r === Number(cell.dataset.row)
+                  ? cells.map((value, c) =>
+                      c === Number(cell.dataset.column) ? text : value,
+                    )
+                  : cells,
+              ),
+              alignments: data.alignments,
+            };
+            const grown = applyTableOp(withEdit, {
+              kind: "addRow",
+              row: data.rows.length - 1,
+              side: "below",
+            });
+            if (grown !== null) {
+              dispatchTable(grown, { row: data.rows.length, column: 0 });
+            }
+          }
+        }
+      });
+      cell.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openContextMenu(event.clientX, event.clientY, [
+          { label: t("menu.tableRow"), submenu: rowMenuItems(row).filter(
+            (entry): entry is Exclude<MenuEntry, "separator"> =>
+              entry !== "separator",
+          ) },
+          {
+            label: t("menu.tableColumn"),
+            submenu: columnMenuItems(column).filter(
+              (entry): entry is Exclude<MenuEntry, "separator"> =>
+                entry !== "separator",
+            ),
+          },
+          "separator",
+          {
+            label: t("menu.tableSortAsc"),
+            onClick: () =>
+              apply({ kind: "sort", column, ascending: true }, null),
+          },
+          {
+            label: t("menu.tableSortDesc"),
+            onClick: () =>
+              apply({ kind: "sort", column, ascending: false }, null),
+          },
+        ]);
+      });
+      return cell;
+    };
+
+    const table = document.createElement("table");
+    const columns = data.alignments.length;
+
+    // Column handles above the header.
+    const handleRow = document.createElement("tr");
+    handleRow.className = "table-handle-row";
+    const corner = document.createElement("th");
+    corner.className = "table-corner";
+    handleRow.append(corner);
+    for (let column = 0; column < columns; column++) {
+      const cell = document.createElement("th");
+      cell.className = "table-col-handle-cell";
+      const handle = document.createElement("button");
+      handle.className = "table-col-handle";
+      const open = (event: MouseEvent): void => {
+        event.preventDefault();
+        event.stopPropagation();
+        openContextMenu(event.clientX, event.clientY, columnMenuItems(column));
+      };
+      handle.addEventListener("click", open);
+      handle.addEventListener("contextmenu", open);
+      cell.append(handle);
+      handleRow.append(cell);
+    }
+    table.append(handleRow);
+
+    data.rows.forEach((cells, row) => {
+      if (row === 1) {
+        return;
+      }
+      const tr = document.createElement("tr");
+      const handleCell = document.createElement("td");
+      handleCell.className = "table-row-handle-cell";
+      const handle = document.createElement("button");
+      handle.className = "table-row-handle";
+      const open = (event: MouseEvent): void => {
+        event.preventDefault();
+        event.stopPropagation();
+        openContextMenu(event.clientX, event.clientY, rowMenuItems(row));
+      };
+      handle.addEventListener("click", open);
+      handle.addEventListener("contextmenu", open);
+      handleCell.append(handle);
+      tr.append(handleCell);
+      cells.forEach((_, column) => {
+        tr.append(makeCell(row === 0 ? "th" : "td", row, column));
+      });
+      table.append(tr);
     });
+    container.append(table);
+
+    if (pendingTableFocus !== null && pendingTableFocus.from === this.pos) {
+      const { row, column } = pendingTableFocus;
+      pendingTableFocus = null;
+      setTimeout(() => {
+        const cell = container.querySelector<HTMLElement>(
+          `[data-row="${row}"][data-column="${column}"]`,
+        );
+        if (cell !== null) {
+          cell.focus();
+          const range = document.createRange();
+          range.selectNodeContents(cell);
+          range.collapse(false);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
+      }, 0);
+    }
     return container;
+  }
+
+  override ignoreEvent(): boolean {
+    return true;
   }
 }
 
@@ -1409,9 +1742,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
         return false;
       }
       if (node.name === "Table") {
-        if (selectionTouches(state, node.from, node.to)) {
-          return false;
-        }
+        // Always a widget: tables are never edited as raw text.
         const from = state.doc.lineAt(node.from).from;
         const to = state.doc.lineAt(node.to).to;
         ranges.push(
@@ -1460,13 +1791,23 @@ const blockDecorations = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-/** The frontmatter block is atomic: the cursor can never sit inside. */
+/** Frontmatter and tables are atomic: the cursor never sits inside. */
 const frontmatterAtomic = EditorView.atomicRanges.of((view) => {
-  const first = syntaxTree(view.state).topNode.firstChild;
-  if (first === null || first.name !== "Frontmatter") {
-    return Decoration.none;
-  }
-  return Decoration.set(hideMark.range(first.from, first.to));
+  const ranges: Range<Decoration>[] = [];
+  syntaxTree(view.state).iterate({
+    enter(node) {
+      if (node.name === "Frontmatter" && node.from === 0) {
+        ranges.push(hideMark.range(node.from, node.to));
+        return false;
+      }
+      if (node.name === "Table") {
+        ranges.push(hideMark.range(node.from, node.to));
+        return false;
+      }
+      return;
+    },
+  });
+  return Decoration.set(ranges, true);
 });
 
 /**
@@ -1506,11 +1847,22 @@ function moveIntoBlock(view: EditorView, forward: boolean): boolean {
   if (blockFrom < 0) {
     return false;
   }
-  // Never step into the frontmatter: its widget is the only editor.
-  if (
-    blockFrom === 0 &&
-    state.doc.sliceString(0, 3) === "---"
-  ) {
+  // Never step into the frontmatter or a table: their widgets are the
+  // only editors (math blocks remain enterable).
+  if (blockFrom === 0 && state.doc.sliceString(0, 3) === "---") {
+    return false;
+  }
+  let insideTable = false;
+  syntaxTree(state).iterate({
+    from: blockFrom,
+    to: blockFrom,
+    enter(node) {
+      if (node.name === "Table") {
+        insideTable = true;
+      }
+    },
+  });
+  if (insideTable) {
     return false;
   }
   const entry = forward ? blockFrom : state.doc.lineAt(blockTo).from;

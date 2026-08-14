@@ -1,93 +1,92 @@
 import { describe, expect, it } from "vitest";
-import { ensureSyntaxTree } from "@codemirror/language";
-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { markdownExtensions } from "../markdown/parser";
-import { computeTableEdit, inTable, type TableOp } from "./tableCommands";
+import {
+  applyTableOp,
+  emptyTable,
+  parseTableSource,
+  serializeTable,
+  type TableOp,
+} from "./tableCommands";
 
-const DOC = "| a | b |\n| --- | --- |\n| c | d |\n| e | f |";
+const SOURCE = "| a | b |\n| --- | ---: |\n| c | d |\n| e | f |";
 
-function stateFor(doc: string, anchor: number): EditorState {
-  const state = EditorState.create({
-    doc,
-    selection: EditorSelection.single(anchor),
-    extensions: [
-      markdown({ base: markdownLanguage, extensions: markdownExtensions }),
-    ],
-  });
-  ensureSyntaxTree(state, doc.length, 5000);
-  return state;
+function edited(op: TableOp): string {
+  const data = parseTableSource(SOURCE);
+  expect(data).not.toBeNull();
+  const next = applyTableOp(data!, op);
+  expect(next).not.toBeNull();
+  return serializeTable(next!);
 }
 
-function edited(doc: string, anchor: number, op: TableOp): string {
-  const state = stateFor(doc, anchor);
-  const edit = computeTableEdit(state, op);
-  expect(edit).not.toBeNull();
-  return state.update({ changes: edit?.changes }).newDoc.toString();
-}
-
-describe("computeTableEdit", () => {
-  it("detects tables and rejects plain text", () => {
-    expect(inTable(stateFor(DOC, 3), 3)).toBe(true);
-    const plain = stateFor("text pla", 3);
-    expect(inTable(plain, 3)).toBe(false);
-    expect(computeTableEdit(plain, { kind: "addRow" })).toBeNull();
+describe("parseTableSource and serializeTable", () => {
+  it("round-trips a normalized table with alignments", () => {
+    const data = parseTableSource(SOURCE);
+    expect(data?.rows[0]).toEqual(["a", "b"]);
+    expect(data?.alignments).toEqual([null, "right"]);
+    expect(serializeTable(data!)).toBe(SOURCE);
   });
 
-  it("adds a row below the cursor's row", () => {
-    // Cursor in "c" (row 2): the new row lands between c/d and e/f.
-    expect(edited(DOC, 24, { kind: "addRow" })).toBe(
-      "| a | b |\n| --- | --- |\n| c | d |\n|   |   |\n| e | f |",
+  it("builds the empty skeleton", () => {
+    expect(emptyTable()).toBe("|   |   |\n| --- | --- |\n|   |   |");
+  });
+});
+
+describe("applyTableOp", () => {
+  it("adds, duplicates, deletes and moves rows (never the header)", () => {
+    expect(edited({ kind: "addRow", row: 2, side: "below" })).toBe(
+      "| a | b |\n| --- | ---: |\n| c | d |\n|   |   |\n| e | f |",
     );
+    expect(edited({ kind: "duplicateRow", row: 2 })).toBe(
+      "| a | b |\n| --- | ---: |\n| c | d |\n| c | d |\n| e | f |",
+    );
+    expect(edited({ kind: "deleteRow", row: 2 })).toBe(
+      "| a | b |\n| --- | ---: |\n| e | f |",
+    );
+    expect(edited({ kind: "moveRow", row: 2, delta: 1 })).toBe(
+      "| a | b |\n| --- | ---: |\n| e | f |\n| c | d |",
+    );
+    const data = parseTableSource(SOURCE);
+    expect(applyTableOp(data!, { kind: "deleteRow", row: 0 })).toBeNull();
   });
 
-  it("deletes and moves body rows, never the header", () => {
-    expect(edited(DOC, 24, { kind: "deleteRow" })).toBe(
-      "| a | b |\n| --- | --- |\n| e | f |",
+  it("adds, duplicates, deletes and moves columns with alignments", () => {
+    expect(edited({ kind: "addColumn", column: 0, side: "left" })).toBe(
+      "|   | a | b |\n| --- | --- | ---: |\n|   | c | d |\n|   | e | f |",
     );
-    expect(edited(DOC, 24, { kind: "moveRow", delta: 1 })).toBe(
-      "| a | b |\n| --- | --- |\n| e | f |\n| c | d |",
+    expect(edited({ kind: "duplicateColumn", column: 1 })).toBe(
+      "| a | b | b |\n| --- | ---: | ---: |\n| c | d | d |\n| e | f | f |",
     );
-    const header = stateFor(DOC, 2);
-    expect(computeTableEdit(header, { kind: "deleteRow" })).toBeNull();
-  });
-
-  it("adds, deletes and moves columns everywhere", () => {
-    expect(edited(DOC, 2, { kind: "addColumn" })).toBe(
-      "| a |   | b |\n| --- | --- | --- |\n| c |   | d |\n| e |   | f |",
+    expect(edited({ kind: "deleteColumn", column: 0 })).toBe(
+      "| b |\n| ---: |\n| d |\n| f |",
     );
-    expect(edited(DOC, 2, { kind: "deleteColumn" })).toBe(
-      "| b |\n| --- |\n| d |\n| f |",
-    );
-    expect(edited(DOC, 2, { kind: "moveColumn", delta: 1 })).toBe(
-      "| b | a |\n| --- | --- |\n| d | c |\n| f | e |",
-    );
-  });
-
-  it("sets the column alignment in the delimiter row", () => {
-    expect(edited(DOC, 2, { kind: "setAlignment", alignment: "center" })).toBe(
-      "| a | b |\n| :---: | --- |\n| c | d |\n| e | f |",
-    );
-    expect(edited(DOC, 6, { kind: "setAlignment", alignment: "right" })).toBe(
-      "| a | b |\n| --- | ---: |\n| c | d |\n| e | f |",
+    expect(edited({ kind: "moveColumn", column: 0, delta: 1 })).toBe(
+      "| b | a |\n| ---: | --- |\n| d | c |\n| f | e |",
     );
   });
 
-  it("navigates cells with Tab, appending a row at the end", () => {
-    // Cursor in "a": next cell selects "b".
-    const state = stateFor(DOC, 2);
-    const edit = computeTableEdit(state, { kind: "nextCell" });
-    expect(edit).not.toBeNull();
-    // Doc unchanged, cursor after "b".
-    expect(state.update({ changes: edit?.changes }).newDoc.toString()).toBe(
-      DOC,
+  it("sets alignments", () => {
+    expect(edited({ kind: "setAlignment", column: 0, alignment: "center" })).toBe(
+      "| a | b |\n| :---: | ---: |\n| c | d |\n| e | f |",
     );
-    expect(edit?.selection.anchor).toBe(7);
-    // From the very last cell ("f"), Tab appends an empty row.
-    const last = stateFor(DOC, 40);
-    const grown = computeTableEdit(last, { kind: "nextCell" });
-    expect(
-      last.update({ changes: grown?.changes }).newDoc.toString(),
-    ).toBe(DOC + "\n|   |   |");
+  });
+
+  it("sorts body rows by a column, ascending and descending", () => {
+    const source = "| n |\n| --- |\n| b2 |\n| a10 |\n| a2 |";
+    const data = parseTableSource(source)!;
+    const asc = applyTableOp(data, {
+      kind: "sort",
+      column: 0,
+      ascending: true,
+    })!;
+    expect(serializeTable(asc)).toBe(
+      "| n |\n| --- |\n| a2 |\n| a10 |\n| b2 |",
+    );
+    const desc = applyTableOp(data, {
+      kind: "sort",
+      column: 0,
+      ascending: false,
+    })!;
+    expect(serializeTable(desc)).toBe(
+      "| n |\n| --- |\n| b2 |\n| a10 |\n| a2 |",
+    );
   });
 });
