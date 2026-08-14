@@ -3,6 +3,10 @@
 // resolution logic as the editor; external links open in the system
 // browser.
 import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  arePropertiesCollapsed,
+  setPropertiesCollapsed,
+} from "../editor/livePreview";
 import { renderToHtml } from "../markdown/render";
 import { createIcon } from "./icons";
 import {
@@ -10,6 +14,7 @@ import {
   fillEmbedImages,
   highlightCodeBlocks,
   renderMathElements,
+  wirePropertiesCollapse,
 } from "./renderedContent";
 
 export interface ReadingViewHooks {
@@ -24,6 +29,8 @@ export interface ReadingViewHooks {
   foldInfoAt(pos: number): { folded: boolean } | null;
   /** Toggles the fold of the section at a doc position. */
   onToggleFold(pos: number): void;
+  /** Whether reading mode shows the properties box (settings). */
+  showProperties(): boolean;
 }
 
 export interface ReadingViewHandle {
@@ -127,7 +134,9 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
   return {
     element,
     render(doc: string): void {
-      content.innerHTML = renderToHtml(doc);
+      content.innerHTML = renderToHtml(doc, {
+        properties: hooks.showProperties(),
+      });
       fillEmbedImages(content, hooks.resolveEmbedSrc);
       for (const embed of content.querySelectorAll<HTMLElement>(
         "span.embed-note",
@@ -149,6 +158,7 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
           highlightCodeBlocks(body);
           addCodePills(body);
           renderMathElements(body);
+          wirePropertiesCollapse(body);
           embed.append(title, body);
         });
       }
@@ -156,6 +166,21 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
       addCodePills(content);
       renderMathElements(content);
       setupSectionFolds(content, hooks);
+      // The note's own properties box collapses here too, sharing the
+      // editor state (embeds toggle locally via wirePropertiesCollapse).
+      const props = content.querySelector<HTMLElement>(
+        ":scope > .frontmatter-props",
+      );
+      if (props !== null) {
+        props.classList.toggle("is-collapsed", arePropertiesCollapsed());
+        props
+          .querySelector<HTMLElement>(".props-header")
+          ?.addEventListener("click", () => {
+            const collapsed = !arePropertiesCollapsed();
+            setPropertiesCollapsed(collapsed);
+            props.classList.toggle("is-collapsed", collapsed);
+          });
+      }
     },
   };
 }

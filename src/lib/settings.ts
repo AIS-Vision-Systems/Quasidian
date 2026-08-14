@@ -33,6 +33,8 @@ export interface EditorSettings {
   autoPairBrackets: boolean;
   /** Auto-close markdown double markers (**, ==, $$, …) while typing. */
   autoPairMarkdown: boolean;
+  /** Show the properties box in reading mode and embedded notes. */
+  showProperties: boolean;
 }
 
 export interface FilesSettings {
@@ -68,6 +70,7 @@ export const DEFAULT_SETTINGS: Settings = {
     spellcheck: false,
     autoPairBrackets: true,
     autoPairMarkdown: true,
+    showProperties: false,
   },
   files: {
     confirmDelete: true,
@@ -176,6 +179,10 @@ export function mergeSettings(raw: unknown): Settings {
       autoPairMarkdown: pickBoolean(
         editor.autoPairMarkdown,
         d.editor.autoPairMarkdown,
+      ),
+      showProperties: pickBoolean(
+        editor.showProperties,
+        d.editor.showProperties,
       ),
     },
     files: {

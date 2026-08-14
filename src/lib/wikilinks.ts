@@ -14,6 +14,8 @@ export interface FolderFile {
   name: string;
   /** Full path as reported by the filesystem. */
   path: string;
+  /** Frontmatter aliases, when the caller has indexed them. */
+  aliases?: string[];
 }
 
 export interface WikilinkResolution {
@@ -47,6 +49,13 @@ export function resolveWikilink(
     });
     if (match !== undefined) {
       return { path: match.path, exists: true };
+    }
+    // Frontmatter aliases resolve after real names, case-insensitively.
+    const aliasMatch = folderFiles.find((file) =>
+      (file.aliases ?? []).some((alias) => alias.toLowerCase() === lower),
+    );
+    if (aliasMatch !== undefined) {
+      return { path: aliasMatch.path, exists: true };
     }
     const fileName = hasExtension(trimmed)
       ? trimmed

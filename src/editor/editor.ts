@@ -61,7 +61,7 @@ import {
   listIndentCommand,
   listOutdentCommand,
 } from "./listCommands";
-import { livePreview } from "./livePreview";
+import { livePreview, requestAddProperty } from "./livePreview";
 
 // Renders markdown formatting (sizes, weights, code font) while Live Preview
 // hides the marks themselves. Colors always go through CSS variables.
@@ -323,6 +323,8 @@ export interface EditorHandle {
   foldInfoAt(pos: number): { folded: boolean } | null;
   /** Folds/unfolds the section of the line holding `pos`. */
   toggleFoldAt(pos: number): void;
+  /** Opens the properties editor's add-property row. */
+  addProperty(): void;
 }
 
 export function createEditor(
@@ -575,6 +577,9 @@ export function createEditor(
       return {
         folded: foldedRangeStartingAt(view.state, range.from) !== null,
       };
+    },
+    addProperty(): void {
+      requestAddProperty(view);
     },
     toggleFoldAt(pos: number): void {
       const clamped = Math.min(Math.max(pos, 0), view.state.doc.length);

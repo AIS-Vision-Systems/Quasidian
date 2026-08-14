@@ -69,7 +69,28 @@ describe("renderToHtml — blocks", () => {
   });
 
   it("renders horizontal rules", () => {
-    expect(renderToHtml("---")).toBe("<hr>");
+    // Not at the very start: an opening --- there is frontmatter.
+    expect(renderToHtml("text\n\n---")).toBe("<p>text</p><hr>");
+  });
+
+  it("renders frontmatter as a properties block", () => {
+    const html = renderToHtml('---\ntags: [a, b]\ntitle: "La nota"\n---\ncos');
+    expect(html).toContain('class="props-title"');
+    expect(html).toContain('class="props-pill"');
+    expect(html).toContain(">a<");
+    expect(html).toContain("La nota");
+    expect(html).not.toContain("---");
+    expect(html).toContain("<p>cos</p>");
+  });
+
+  it("renders nothing for an empty frontmatter in reading mode", () => {
+    expect(renderToHtml("---\n---\ntext")).toBe("<p>text</p>");
+  });
+
+  it("omits the properties box when disabled", () => {
+    expect(
+      renderToHtml("---\ntags: [a]\n---\ntext", { properties: false }),
+    ).toBe("<p>text</p>");
   });
 
   it("renders tables with header and body", () => {

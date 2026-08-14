@@ -22,7 +22,11 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import katex from "katex";
-import { renderToHtml } from "../markdown/render";
+import {
+  parseFrontmatter,
+  serializeFrontmatter,
+} from "../lib/frontmatter";
+import { renderPropertiesHtml, renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import {
   fillEmbedImages,
@@ -30,6 +34,7 @@ import {
   createCodePill,
   highlightCodeBlocks,
   renderMathElements,
+  wirePropertiesCollapse,
 } from "../ui/renderedContent";
 
 export interface HiddenRange {
@@ -616,7 +621,17 @@ class ImageWidget extends WidgetType {
   }
 }
 
+// Bumped when settings that affect embed rendering change, so cached
+// note-embed widgets rebuild instead of showing stale content.
+let embedGeneration = 0;
+
+export function bumpEmbedGeneration(): void {
+  embedGeneration++;
+}
+
 class NoteEmbedWidget extends WidgetType {
+  readonly generation = embedGeneration;
+
   constructor(
     readonly target: string,
     readonly alias: string | null,
@@ -626,7 +641,11 @@ class NoteEmbedWidget extends WidgetType {
   }
 
   override eq(other: NoteEmbedWidget): boolean {
-    return other.target === this.target && other.alias === this.alias;
+    return (
+      other.target === this.target &&
+      other.alias === this.alias &&
+      other.generation === this.generation
+    );
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -651,6 +670,7 @@ class NoteEmbedWidget extends WidgetType {
         highlightCodeBlocks(body);
         addCodePills(body);
         renderMathElements(body);
+        wirePropertiesCollapse(body);
         for (const image of body.querySelectorAll("img")) {
           image.addEventListener("load", () => view.requestMeasure());
         }
@@ -816,6 +836,246 @@ class TableWidget extends WidgetType {
       view.focus();
     });
     return container;
+  }
+}
+
+// Collapse state, known keys and the pending "add property" request
+// survive widget rebuilds; one open document at a time keeps these
+// module-level.
+let propertiesCollapsed = false;
+let pendingAddProperty = false;
+let knownPropertyKeys: string[] = [];
+
+export function arePropertiesCollapsed(): boolean {
+  return propertiesCollapsed;
+}
+
+export function setPropertiesCollapsed(collapsed: boolean): void {
+  propertiesCollapsed = collapsed;
+}
+
+/** Vault-wide property keys offered by the add-property dropdown. */
+export function setKnownPropertyKeys(keys: string[]): void {
+  knownPropertyKeys = keys;
+}
+
+/**
+ * Opens the properties editor's add-row (creating an empty frontmatter
+ * block first when the note has none). Used by the file menu.
+ */
+export function requestAddProperty(view: EditorView): void {
+  pendingAddProperty = true;
+  propertiesCollapsed = false;
+  if (!view.state.doc.sliceString(0, 4).startsWith("---")) {
+    view.dispatch({ changes: { from: 0, insert: "---\n---\n" } });
+  } else {
+    // Selection-touch transaction so the block decorations rebuild.
+    view.dispatch({ selection: view.state.selection });
+  }
+}
+
+class PropertiesWidget extends WidgetType {
+  constructor(
+    readonly source: string,
+    readonly to: number,
+  ) {
+    super();
+  }
+
+  override eq(other: PropertiesWidget): boolean {
+    return other.source === this.source;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const container = document.createElement("div");
+    container.className = "cm-frontmatter-widget";
+    const data = parseFrontmatter(this.source);
+    container.innerHTML = renderPropertiesHtml(data, true, knownPropertyKeys);
+    container.classList.toggle("is-collapsed", propertiesCollapsed);
+
+    const replaceBlock = (
+      properties: ReturnType<typeof parseFrontmatter>["properties"],
+    ): void => {
+      const kept = properties.filter(
+        (property) => property.key.trim() !== "",
+      );
+      const replacement =
+        kept.length === 0 ? "" : serializeFrontmatter(kept);
+      let to = this.to;
+      if (
+        replacement === "" &&
+        view.state.doc.sliceString(to, to + 1) === "\n"
+      ) {
+        to++;
+      }
+      view.dispatch({ changes: { from: 0, to, insert: replacement } });
+    };
+
+    const showAddRow = (): void => {
+      const row = container.querySelector<HTMLElement>(".props-add-row");
+      row?.classList.remove("is-hidden");
+      const key = container.querySelector<HTMLInputElement>(".props-new-key");
+      setTimeout(() => key?.focus(), 0);
+    };
+
+    container.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (target.closest(".props-header") !== null) {
+        propertiesCollapsed = !propertiesCollapsed;
+        container.classList.toggle("is-collapsed", propertiesCollapsed);
+        return;
+      }
+      const remove = target.closest<HTMLElement>(".props-remove");
+      if (remove !== null) {
+        const propIndex = Number(remove.dataset.prop);
+        const valueIndex = Number(remove.dataset.value);
+        replaceBlock(
+          data.properties
+            .map((property, index) =>
+              index === propIndex
+                ? {
+                    ...property,
+                    values: property.values.filter(
+                      (_, vi) => vi !== valueIndex,
+                    ),
+                  }
+                : property,
+            )
+            .filter((property) => property.values.length > 0),
+        );
+        return;
+      }
+      const scalar = target.closest<HTMLElement>(".props-value[data-prop]");
+      if (scalar !== null) {
+        // Swap the scalar for an inline input; Enter or blur commits.
+        const propIndex = Number(scalar.dataset.prop);
+        const input = document.createElement("input");
+        input.className = "props-edit-value";
+        input.value = data.properties[propIndex]?.values[0] ?? "";
+        input.spellcheck = false;
+        scalar.replaceWith(input);
+        input.focus();
+        input.select();
+        const commit = (): void => {
+          const value = input.value.trim();
+          replaceBlock(
+            data.properties.map((property, index) =>
+              index === propIndex
+                ? { ...property, values: value === "" ? [] : [value] }
+                : property,
+            ),
+          );
+        };
+        input.addEventListener("keydown", (keyEvent) => {
+          if (keyEvent.key === "Enter") {
+            keyEvent.preventDefault();
+            commit();
+          }
+        });
+        input.addEventListener("blur", commit);
+        return;
+      }
+      if (target.closest(".props-add") !== null) {
+        showAddRow();
+      }
+    });
+
+    // Enter commits from any input; Escape backs out of the add-row
+    // (removing an all-empty block entirely).
+    container.addEventListener("keydown", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (
+          target.classList.contains("props-new-key") ||
+          target.classList.contains("props-new-first")
+        ) {
+          if (data.properties.length === 0) {
+            replaceBlock([]);
+          } else {
+            container
+              .querySelector(".props-add-row")
+              ?.classList.add("is-hidden");
+          }
+        } else {
+          target.blur();
+        }
+        return;
+      }
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      if (target.classList.contains("props-new-value")) {
+        const propIndex = Number(target.dataset.prop);
+        const value = target.value.trim();
+        if (value === "") {
+          return;
+        }
+        replaceBlock(
+          data.properties.map((property, index) =>
+            index === propIndex
+              ? { ...property, values: [...property.values, value] }
+              : property,
+          ),
+        );
+        return;
+      }
+      if (
+        target.classList.contains("props-new-key") ||
+        target.classList.contains("props-new-first")
+      ) {
+        const key = container
+          .querySelector<HTMLInputElement>(".props-new-key")
+          ?.value.trim();
+        const value = container
+          .querySelector<HTMLInputElement>(".props-new-first")
+          ?.value.trim();
+        if (key === undefined || key === "") {
+          return;
+        }
+        const lower = key.toLowerCase();
+        // Same key again: merge into the existing property, never dupe.
+        const existing = data.properties.findIndex(
+          (property) => property.key.toLowerCase() === lower,
+        );
+        if (existing >= 0) {
+          replaceBlock(
+            data.properties.map((property, index) =>
+              index === existing && value !== undefined && value !== ""
+                ? { ...property, values: [...property.values, value] }
+                : property,
+            ),
+          );
+          return;
+        }
+        const isList = ["tags", "tag", "aliases", "alias"].includes(lower);
+        replaceBlock([
+          ...data.properties,
+          {
+            key,
+            values: value === undefined || value === "" ? [] : [value],
+            isList: isList || value === undefined || value === "",
+          },
+        ]);
+      }
+    });
+
+    if (pendingAddProperty) {
+      pendingAddProperty = false;
+      showAddRow();
+    }
+    return container;
+  }
+
+  override ignoreEvent(): boolean {
+    return true;
   }
 }
 
@@ -1043,6 +1303,20 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
   const ranges: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     enter(node) {
+      if (node.name === "Frontmatter") {
+        // Always replaced: the raw YAML is never edited in place — the
+        // widget's controls are the only way in.
+        ranges.push(
+          Decoration.replace({
+            widget: new PropertiesWidget(
+              state.doc.sliceString(node.from, node.to),
+              node.to,
+            ),
+            block: true,
+          }).range(node.from, node.to),
+        );
+        return false;
+      }
       if (node.name === "Table") {
         if (selectionTouches(state, node.from, node.to)) {
           return false;
@@ -1095,6 +1369,15 @@ const blockDecorations = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
+/** The frontmatter block is atomic: the cursor can never sit inside. */
+const frontmatterAtomic = EditorView.atomicRanges.of((view) => {
+  const first = syntaxTree(view.state).topNode.firstChild;
+  if (first === null || first.name !== "Frontmatter") {
+    return Decoration.none;
+  }
+  return Decoration.set(hideMark.range(first.from, first.to));
+});
+
 /**
  * Collapsed block widgets are atomic for vertical motion, so plain
  * arrows would hop over them. When the adjacent line lies inside a
@@ -1132,6 +1415,13 @@ function moveIntoBlock(view: EditorView, forward: boolean): boolean {
   if (blockFrom < 0) {
     return false;
   }
+  // Never step into the frontmatter: its widget is the only editor.
+  if (
+    blockFrom === 0 &&
+    state.doc.sliceString(0, 3) === "---"
+  ) {
+    return false;
+  }
   const entry = forward ? blockFrom : state.doc.lineAt(blockTo).from;
   view.dispatch({ selection: { anchor: entry }, scrollIntoView: true });
   return true;
@@ -1140,6 +1430,7 @@ function moveIntoBlock(view: EditorView, forward: boolean): boolean {
 export function livePreview(hooks: LivePreviewHooks) {
   return [
     blockDecorations,
+    frontmatterAtomic,
     Prec.high(
       keymap.of([
         { key: "ArrowDown", run: (view) => moveIntoBlock(view, true) },
@@ -1155,7 +1446,15 @@ export function livePreview(hooks: LivePreviewHooks) {
         }
 
         update(update: ViewUpdate) {
-          if (update.docChanged || update.selectionSet || update.viewportChanged) {
+          const hasEffects = update.transactions.some(
+            (tr) => tr.effects.length > 0,
+          );
+          if (
+            update.docChanged ||
+            update.selectionSet ||
+            update.viewportChanged ||
+            hasEffects
+          ) {
             this.decorations = buildDecorations(update.view, hooks);
           }
         }

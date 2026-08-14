@@ -26,7 +26,11 @@ export type IconName =
   | "bold"
   | "italic"
   | "highlighter"
-  | "code";
+  | "code"
+  | "tag"
+  | "corner-up-right"
+  | "text"
+  | "plus";
 
 const ICON_PATHS: Record<IconName, string> = {
   "book-open":
@@ -97,7 +101,25 @@ const ICON_PATHS: Record<IconName, string> = {
     '<path d="m9 11-6 6v3h9l3-3"/>' +
     '<path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>',
   code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  tag:
+    '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/>' +
+    '<circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
+  "corner-up-right":
+    '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5V20"/>',
+  text: '<path d="M15 18H3"/><path d="M17 6H3"/><path d="M21 12H3"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
 };
+
+/** The same icon as a plain SVG markup string (for HTML renderers). */
+export function iconMarkup(name: IconName): string {
+  return (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" class="app-icon" aria-hidden="true">' +
+    ICON_PATHS[name] +
+    "</svg>"
+  );
+}
 
 /** A 24x24 outline icon that inherits the text color. */
 export function createIcon(name: IconName): SVGSVGElement {

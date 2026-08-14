@@ -17,6 +17,10 @@ import {
   writeFile,
 } from "../ipc/fs";
 import { createEditor } from "../editor/editor";
+import {
+  bumpEmbedGeneration,
+  setKnownPropertyKeys,
+} from "../editor/livePreview";
 import { createAutosaveScheduler } from "../editor/autosave";
 import { createBacklinkIndex } from "../lib/backlinkIndex";
 import { createSearchIndex, type SearchMatch } from "../lib/searchIndex";
@@ -29,6 +33,7 @@ import {
 } from "../lib/paths";
 import type { EditorModeSetting } from "../lib/settings";
 import { extractLinkTargets } from "../lib/backlinkIndex";
+import { parseFrontmatter } from "../lib/frontmatter";
 import { computeOutline } from "../lib/outline";
 import { applyRewrites, renameLinkTargets } from "../lib/renameLinks";
 import { countCharacters, countWords } from "../lib/text";
@@ -231,6 +236,36 @@ export function mountLayout(root: HTMLElement): void {
   let searchVisible = false;
   const backlinkIndex = createBacklinkIndex();
   const searchIndex = createSearchIndex();
+  // Frontmatter metadata (aliases, tags) per file, kept with the indexes.
+  const fileMeta = new Map<
+    string,
+    { aliases: string[]; tags: string[]; keys: string[] }
+  >();
+
+  /** Copies indexed aliases onto the folder listing used by resolution. */
+  function attachAliases(): void {
+    for (const file of folderFiles) {
+      file.aliases = fileMeta.get(normalizePath(file.path))?.aliases;
+    }
+    const keys: string[] = [];
+    for (const meta of fileMeta.values()) {
+      for (const key of meta.keys) {
+        if (!keys.includes(key)) {
+          keys.push(key);
+        }
+      }
+    }
+    setKnownPropertyKeys(keys);
+  }
+
+  function setFileMeta(path: string, contents: string): void {
+    const data = parseFrontmatter(contents);
+    fileMeta.set(normalizePath(path), {
+      aliases: data.aliases,
+      tags: data.tags,
+      keys: data.properties.map((property) => property.key),
+    });
+  }
 
   // Shared mutable options: the scheduler reads them on every change, so
   // settings updates apply on the next keystroke.
@@ -267,7 +302,9 @@ export function mountLayout(root: HTMLElement): void {
       return null;
     }
     try {
-      return renderToHtml(await readFile(resolution.path));
+      return renderToHtml(await readFile(resolution.path), {
+        properties: getSettings().editor.showProperties,
+      });
     } catch {
       return null;
     }
@@ -321,6 +358,9 @@ export function mountLayout(root: HTMLElement): void {
       const scroll = readingView.element.scrollTop;
       readingView.render(editor.getDoc());
       readingView.element.scrollTop = scroll;
+    },
+    showProperties() {
+      return getSettings().editor.showProperties;
     },
   });
   workspaceBody.append(readingView.element);
@@ -411,6 +451,8 @@ export function mountLayout(root: HTMLElement): void {
       setStatusError(null);
       backlinkIndex.setFile(openedPath, editor.getDoc());
       searchIndex.setFile(openedPath, editor.getDoc());
+      setFileMeta(openedPath, editor.getDoc());
+      attachAliases();
       renderBacklinks();
       if (searchVisible) {
         runSearch();
@@ -582,6 +624,7 @@ export function mountLayout(root: HTMLElement): void {
   async function rebuildIndex(): Promise<void> {
     backlinkIndex.clear();
     searchIndex.clear();
+    fileMeta.clear();
     const files = [...folderFiles];
     await Promise.all(
       files.map(async (file) => {
@@ -589,11 +632,13 @@ export function mountLayout(root: HTMLElement): void {
           const contents = await readFile(file.path);
           backlinkIndex.setFile(file.path, contents);
           searchIndex.setFile(file.path, contents);
+          setFileMeta(file.path, contents);
         } catch {
           // Deleted or unreadable mid-scan; the watcher will retrigger.
         }
       }),
     );
+    attachAliases();
     renderBacklinks();
     if (searchVisible) {
       runSearch();
@@ -799,6 +844,12 @@ export function mountLayout(root: HTMLElement): void {
       if (folds !== undefined) {
         editor.setFolds(folds);
       }
+      // Never leave the cursor inside an atomic frontmatter block.
+      const frontmatterData = parseFrontmatter(contents);
+      if (frontmatterData.exists) {
+        const pos = Math.min(frontmatterData.end + 1, contents.length);
+        editor.revealRange(pos, pos);
+      }
       setCounts(contents);
       const mode =
         fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode;
@@ -966,12 +1017,22 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   function openFileMenu(x: number, y: number, path: string): void {
+    const isOpenFile = openedPath !== null && samePath(path, openedPath);
     openContextMenu(x, y, [
       {
         label: t("menu.rename"),
         icon: "pencil",
         onClick: () => void renameFromMenu(path),
       },
+      ...(isOpenFile
+        ? [
+            {
+              label: t("menu.addProperty"),
+              icon: "plus" as const,
+              onClick: () => editor.addProperty(),
+            },
+          ]
+        : []),
       {
         label: t("menu.copyPath"),
         icon: "copy",
@@ -1044,12 +1105,21 @@ export function mountLayout(root: HTMLElement): void {
       placeholder: t("switcher.placeholder"),
       emptyLabel:
         currentFolder === null ? t("sidebar.noFolder") : t("palette.noResults"),
-      items: folderFiles.map((file) => ({
-        id: file.path,
-        label: file.name.replace(/\.md$/i, ""),
-      })),
+      items: [
+        ...folderFiles.map((file) => ({
+          id: file.path,
+          label: file.name.replace(/\.md$/i, ""),
+        })),
+        // Aliases jump to their note; "|" never appears in Windows paths.
+        ...folderFiles.flatMap((file) =>
+          (file.aliases ?? []).map((alias) => ({
+            id: `${file.path}|${alias}`,
+            label: `${alias} → ${file.name.replace(/\.md$/i, "")}`,
+          })),
+        ),
+      ],
       onSelect(item) {
-        void openFile(item.id);
+        void openFile(item.id.split("|")[0]);
       },
       onCreate:
         currentFolder === null
@@ -1183,10 +1253,35 @@ export function mountLayout(root: HTMLElement): void {
   });
   searchClose.addEventListener("click", closeSearch);
 
+  // The WebView's own context menu (reload, print…) never applies here;
+  // our menus preventDefault on their targets before this runs.
+  window.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+
   window.addEventListener("keydown", (event) => {
     // Already consumed (e.g. the editor keymap handled Ctrl+E): acting
     // again here would toggle twice and look like a no-op.
     if (event.defaultPrevented) {
+      return;
+    }
+    // WebView chrome shortcuts: reload would wipe the session, and
+    // Ctrl+S must save the note instead of the page.
+    if (
+      event.key === "F5" ||
+      ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r")
+    ) {
+      event.preventDefault();
+      return;
+    }
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      event.key.toLowerCase() === "s"
+    ) {
+      event.preventDefault();
+      void saveNow();
       return;
     }
     if (
@@ -1222,8 +1317,17 @@ export function mountLayout(root: HTMLElement): void {
   subscribeSettings((settings) => {
     autosaveOptions.enabled = settings.editor.autosave;
     autosaveOptions.intervalMs = settings.editor.autosaveIntervalMs;
+    // Before applyConfig: its dispatch rebuilds embed widgets, which
+    // must pick up the new generation (e.g. showProperties changes).
+    bumpEmbedGeneration();
     editor.applyConfig(editorConfigFrom(settings));
     refreshTexts();
+    // Hot-apply the properties visibility to an open reading view.
+    if (openedPath !== null && currentMode === "read") {
+      const scroll = readingView.element.scrollTop;
+      readingView.render(editor.getDoc());
+      readingView.element.scrollTop = scroll;
+    }
   });
 
   function refreshTexts(): void {

@@ -5,6 +5,12 @@
 import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
+import { t } from "../i18n/i18n";
+import {
+  parseFrontmatter,
+  type FrontmatterData,
+} from "../lib/frontmatter";
+import { iconMarkup } from "../ui/icons";
 import { markdownParser } from "./parser";
 import { isImageTarget } from "./wikilinks";
 
@@ -35,7 +41,111 @@ const SKIP = new Set([
   "LinkReference",
   "HighlightMark",
   "MathMark",
+  "FrontmatterMark",
 ]);
+
+/** Icon for a property key: tags and aliases get their own glyphs. */
+function propertyIcon(key: string): string {
+  const lower = key.toLowerCase();
+  if (lower === "tags" || lower === "tag") {
+    return iconMarkup("tag");
+  }
+  if (lower === "aliases" || lower === "alias") {
+    return iconMarkup("corner-up-right");
+  }
+  return iconMarkup("text");
+}
+
+/**
+ * Properties block HTML shared by reading mode and the editor widget;
+ * `interactive` adds the edit controls (remove, inline value inputs,
+ * add-property row, collapse chevron) the widget wires up.
+ */
+export function renderPropertiesHtml(
+  data: FrontmatterData,
+  interactive: boolean,
+  knownKeys: readonly string[] = [],
+): string {
+  if (data.properties.length === 0 && !interactive) {
+    return "";
+  }
+  const out: string[] = ['<div class="frontmatter-props">'];
+  out.push('<div class="props-header">');
+  out.push(`<span class="props-chevron">${iconMarkup("chevron-down")}</span>`);
+  out.push(
+    `<span class="props-title">${escapeHtml(t("properties.title"))}</span>`,
+  );
+  out.push("</div>");
+  out.push('<div class="props-body">');
+  data.properties.forEach((property, propIndex) => {
+    out.push('<div class="props-row">');
+    out.push(
+      `<span class="props-key"><span class="props-key-icon">${propertyIcon(property.key)}</span>${escapeHtml(property.key)}</span>`,
+    );
+    out.push('<span class="props-values">');
+    property.values.forEach((value, valueIndex) => {
+      if (property.isList) {
+        out.push(`<span class="props-pill">${escapeHtml(value)}`);
+        if (interactive) {
+          out.push(
+            `<button class="props-remove" data-prop="${propIndex}" data-value="${valueIndex}" aria-label="${escapeHtml(t("properties.remove"))}">×</button>`,
+          );
+        }
+        out.push("</span>");
+      } else if (interactive) {
+        out.push(
+          `<span class="props-value" data-prop="${propIndex}" data-value="${valueIndex}" title="${escapeHtml(t("properties.edit"))}">${escapeHtml(value)}</span>`,
+        );
+      } else {
+        out.push(`<span class="props-value">${escapeHtml(value)}</span>`);
+      }
+    });
+    if (interactive && property.isList) {
+      out.push(
+        `<input class="props-new-value" data-prop="${propIndex}" placeholder="${escapeHtml(t("properties.value"))}" spellcheck="false">`,
+      );
+    }
+    out.push("</span></div>");
+  });
+  if (interactive) {
+    // Known keys (tags/aliases first) as a datalist; free text still
+    // works, and keys already present in the note are not offered.
+    const present = new Set(
+      data.properties.map((property) => property.key.toLowerCase()),
+    );
+    const ordered = [
+      "tags",
+      "aliases",
+      ...knownKeys.filter(
+        (key) => !["tags", "aliases"].includes(key.toLowerCase()),
+      ),
+    ].filter((key) => !present.has(key.toLowerCase()));
+    const seen = new Set<string>();
+    const options = ordered
+      .filter((key) => {
+        const lower = key.toLowerCase();
+        if (seen.has(lower)) {
+          return false;
+        }
+        seen.add(lower);
+        return true;
+      })
+      .map((key) => `<option value="${escapeHtml(key)}"></option>`)
+      .join("");
+    out.push(
+      '<div class="props-add-row is-hidden">' +
+        `<input class="props-new-key" list="qs-prop-keys" placeholder="${escapeHtml(t("properties.name"))}" spellcheck="false">` +
+        `<datalist id="qs-prop-keys">${options}</datalist>` +
+        `<input class="props-new-first" placeholder="${escapeHtml(t("properties.value"))}" spellcheck="false">` +
+        "</div>",
+    );
+    out.push(
+      `<button class="props-add">+ ${escapeHtml(t("properties.add"))}</button>`,
+    );
+  }
+  out.push("</div></div>");
+  return out.join("");
+}
 
 const INLINE_WRAPPERS: Record<string, [string, string]> = {
   Paragraph: ["<p>", "</p>"],
@@ -176,6 +286,12 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
   }
 
   switch (name) {
+    case "Frontmatter": {
+      if (renderProperties) {
+        out.push(renderPropertiesHtml(parseFrontmatter(doc), false));
+      }
+      return;
+    }
     case "ListItem": {
       const isTask = node.getChild("Task") !== null;
       out.push(
@@ -375,7 +491,16 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
   }
 }
 
-export function renderToHtml(doc: string): string {
+// Whether the current render emits the properties box; single-threaded
+// rendering keeps this a module flag instead of threading a parameter
+// through every renderer.
+let renderProperties = true;
+
+export function renderToHtml(
+  doc: string,
+  options?: { properties?: boolean },
+): string {
+  renderProperties = options?.properties ?? true;
   const tree = markdownParser.parse(doc);
   const out: string[] = [];
   for (
