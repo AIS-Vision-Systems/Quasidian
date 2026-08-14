@@ -681,12 +681,35 @@ class NoteEmbedWidget extends WidgetType {
       onNavigate: this.hooks.onNavigate,
     };
     // Embedded content behaves like rendered content: plain hover
-    // previews its links, even in editing mode.
-    fillHooks.onLinkHover = (x, y, target) =>
-      scheduleHoverShow(x, y, target, fillHooks);
-    fillHooks.onLinkLeave = () => scheduleHoverHide();
-    // …and clicking one of its links opens (or creates) the note.
-    container.addEventListener("click", (event) => {
+    // previews its links (any depth — events bubble to the container).
+    container.addEventListener("mouseover", (event) => {
+      const hovered = event.target;
+      const link =
+        hovered instanceof Element
+          ? hovered.closest("a.internal-link")
+          : null;
+      if (link instanceof HTMLElement && link.dataset.target !== undefined) {
+        scheduleHoverShow(
+          event.clientX,
+          event.clientY,
+          link.dataset.target,
+          fillHooks,
+        );
+      }
+    });
+    container.addEventListener("mouseout", (event) => {
+      const hovered = event.target;
+      if (
+        hovered instanceof Element &&
+        hovered.closest("a.internal-link") !== null
+      ) {
+        scheduleHoverHide();
+      }
+    });
+    // Navigation must run on mousedown: a click would first move the
+    // CodeMirror cursor into the embed, which swaps the widget for raw
+    // text and destroys this DOM before "click" ever fires.
+    container.addEventListener("mousedown", (event) => {
       const clicked = event.target;
       const link =
         clicked instanceof Element

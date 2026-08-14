@@ -167,9 +167,6 @@ export interface EmbedFillHooks {
   isResolved(target: string): boolean;
   /** Called when async content lands (editor re-measure). */
   onRendered?(): void;
-  /** When set, links inside embed bodies preview on hover. */
-  onLinkHover?(x: number, y: number, target: string): void;
-  onLinkLeave?(): void;
   /** Navigation for links clicked inside popups/embeds. */
   onNavigate?(target: string): void;
 }
@@ -230,31 +227,6 @@ export function fillEmbedNotes(
         for (const image of body.querySelectorAll("img")) {
           image.addEventListener("load", hooks.onRendered);
         }
-      }
-      if (hooks.onLinkHover !== undefined) {
-        body.addEventListener("mouseover", (event) => {
-          const hovered = event.target;
-          const link =
-            hovered instanceof Element
-              ? hovered.closest("a.internal-link")
-              : null;
-          if (link instanceof HTMLElement && link.dataset.target !== undefined) {
-            hooks.onLinkHover?.(
-              event.clientX,
-              event.clientY,
-              link.dataset.target,
-            );
-          }
-        });
-        body.addEventListener("mouseout", (event) => {
-          const hovered = event.target;
-          if (
-            hovered instanceof Element &&
-            hovered.closest("a.internal-link") !== null
-          ) {
-            hooks.onLinkLeave?.();
-          }
-        });
       }
       embed.append(title, body);
       fillEmbedNotes(body, hooks, new Set([...visited, key]), depth + 1);
