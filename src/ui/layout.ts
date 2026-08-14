@@ -277,6 +277,17 @@ export function mountLayout(root: HTMLElement): void {
     },
     resolveEmbedSrc,
     renderEmbedNote,
+    foldInfoAt(pos) {
+      return editor.foldInfoAt(pos);
+    },
+    onToggleFold(pos) {
+      // The editor state is the single source of truth for folds, so
+      // both modes stay in sync and fileFolds keeps working.
+      editor.toggleFoldAt(pos);
+      const scroll = readingView.element.scrollTop;
+      readingView.render(editor.getDoc());
+      readingView.element.scrollTop = scroll;
+    },
   });
   workspaceBody.append(readingView.element);
 

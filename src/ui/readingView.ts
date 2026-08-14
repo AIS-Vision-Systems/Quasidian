@@ -4,6 +4,7 @@
 // browser.
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { renderToHtml } from "../markdown/render";
+import { createIcon } from "./icons";
 import {
   addCodePills,
   fillEmbedImages,
@@ -19,11 +20,71 @@ export interface ReadingViewHooks {
   resolveEmbedSrc(target: string): string | null;
   /** Renders a note embed target to HTML, or null if unknown. */
   renderEmbedNote(target: string): Promise<string | null>;
+  /** Foldability and fold state of the section at a doc position. */
+  foldInfoAt(pos: number): { folded: boolean } | null;
+  /** Toggles the fold of the section at a doc position. */
+  onToggleFold(pos: number): void;
 }
 
 export interface ReadingViewHandle {
   element: HTMLElement;
   render(doc: string): void;
+}
+
+/** Hides a folded heading's section: siblings up to the next peer. */
+function applyHeadingFold(heading: HTMLElement, level: number): void {
+  for (
+    let el = heading.nextElementSibling;
+    el !== null;
+    el = el.nextElementSibling
+  ) {
+    const match = /^H([1-6])$/.exec(el.tagName);
+    if (match !== null && Number(match[1]) <= level) {
+      break;
+    }
+    el.classList.add("is-fold-hidden");
+  }
+}
+
+/** Chevrons + hidden sections for headings and list items with children. */
+function setupSectionFolds(
+  content: HTMLElement,
+  hooks: ReadingViewHooks,
+): void {
+  const targets = content.querySelectorAll<HTMLElement>(
+    "h1[data-pos], h2[data-pos], h3[data-pos], h4[data-pos], h5[data-pos], h6[data-pos], li[data-pos]",
+  );
+  for (const el of targets) {
+    const pos = Number(el.dataset.pos);
+    if (!Number.isFinite(pos)) {
+      continue;
+    }
+    const info = hooks.foldInfoAt(pos);
+    if (info === null) {
+      continue;
+    }
+    el.classList.add("is-foldable");
+    const chevron = document.createElement("span");
+    chevron.className = info.folded
+      ? "reading-fold-chevron is-folded"
+      : "reading-fold-chevron";
+    chevron.append(createIcon(info.folded ? "chevron-right" : "chevron-down"));
+    chevron.addEventListener("click", (event) => {
+      event.stopPropagation();
+      hooks.onToggleFold(pos);
+    });
+    el.prepend(chevron);
+    if (info.folded) {
+      const headingMatch = /^H([1-6])$/.exec(el.tagName);
+      if (headingMatch !== null) {
+        applyHeadingFold(el, Number(headingMatch[1]));
+      } else {
+        for (const list of el.querySelectorAll(":scope > ul, :scope > ol")) {
+          list.classList.add("is-fold-hidden");
+        }
+      }
+    }
+  }
 }
 
 export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
@@ -94,6 +155,7 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
       highlightCodeBlocks(content);
       addCodePills(content);
       renderMathElements(content);
+      setupSectionFolds(content, hooks);
     },
   };
 }

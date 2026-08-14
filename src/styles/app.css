@@ -414,30 +414,38 @@ body.is-readable-line-length .cm-editor .cm-content {
   color: var(--text-faint);
 }
 
-/* Fold chevrons: visible while hovering the editor; folded ones stay. */
-.cm-editor .cm-fold-marker {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  cursor: pointer;
+/* Room for the inline fold chevrons hanging left of the text. */
+.cm-editor .cm-content {
+  padding-left: 28px;
+}
+
+/* Fold chevrons ride inside the line, so they sit at the text's height
+   and reveal on per-line hover; folded ones stay visible. */
+.cm-editor .cm-fold-chevron {
+  display: inline-block;
+  width: 0;
+  position: relative;
+}
+
+.cm-editor .cm-fold-chevron .app-icon {
+  position: absolute;
+  left: -24px;
+  bottom: 0.1em;
+  width: 15px;
+  height: 15px;
   color: var(--text-faint);
+  cursor: pointer;
   opacity: 0;
   transition: opacity 0.1s ease;
 }
 
-.cm-editor:hover .cm-fold-marker {
+.cm-editor .cm-line:hover .cm-fold-chevron .app-icon {
   opacity: 1;
 }
 
-.cm-editor .cm-fold-marker.is-folded {
+.cm-editor .cm-fold-chevron.is-folded .app-icon {
   opacity: 1;
   color: var(--text-muted);
-}
-
-.cm-fold-marker .app-icon {
-  width: 14px;
-  height: 14px;
 }
 
 .cm-editor .cm-foldPlaceholder {
@@ -1258,4 +1266,43 @@ body.is-readable-line-length .reading-view-content {
 
 .markdown-rendered img {
   max-width: 100%;
+}
+
+/* Reading-mode section folding. */
+.markdown-rendered .is-foldable {
+  position: relative;
+}
+
+.reading-fold-chevron {
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.markdown-rendered .is-foldable:hover > .reading-fold-chevron,
+.reading-fold-chevron.is-folded {
+  opacity: 1;
+}
+
+.reading-fold-chevron.is-folded {
+  color: var(--text-muted);
+}
+
+.reading-fold-chevron .app-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.markdown-rendered li .reading-fold-chevron {
+  top: 0.75em;
+}
+
+.markdown-rendered .is-fold-hidden {
+  display: none;
 }

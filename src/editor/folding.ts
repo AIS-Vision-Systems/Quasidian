@@ -1,16 +1,19 @@
-// Section folding by heading: a heading folds everything up to the next
-// heading of the same or a higher level. The range computation is pure
-// and exported for tests; the extension bundles CodeMirror's folding
-// with a hover chevron gutter.
+// Section folding: headings fold their whole section (up to the next
+// heading of the same or a higher level) and list items fold their
+// sub-lists. Chevrons are inline widgets at the start of each foldable
+// line — they ride at the text's height and can reveal on per-line
+// hover — instead of the generic fold gutter, and the language's
+// foldNodeProp folding (paragraphs, code blocks, quotes) is never used.
+import { codeFolding, foldedRanges, foldEffect, syntaxTree, unfoldEffect } from "@codemirror/language";
+import type { EditorState, Extension, Range } from "@codemirror/state";
 import {
-  codeFolding,
-  foldGutter,
-  foldKeymap,
-  foldService,
-} from "@codemirror/language";
-import { syntaxTree } from "@codemirror/language";
-import type { EditorState, Extension } from "@codemirror/state";
-import { keymap } from "@codemirror/view";
+  Decoration,
+  type DecorationSet,
+  EditorView,
+  ViewPlugin,
+  type ViewUpdate,
+  WidgetType,
+} from "@codemirror/view";
 import { createIcon } from "../ui/icons";
 
 const HEADING_RE = /^(?:ATXHeading|SetextHeading)([1-6])$/;
@@ -76,19 +79,179 @@ export function headingSectionRange(
   return end <= heading.to ? null : { from: heading.to, to: end };
 }
 
-/** Folding extension: heading sections, hover chevrons, fold keymap. */
-export function headingFolding(): Extension {
-  return [
-    codeFolding(),
-    foldService.of((state, lineStart) => headingSectionRange(state, lineStart)),
-    foldGutter({
-      markerDOM(open) {
-        const marker = document.createElement("span");
-        marker.className = open ? "cm-fold-marker" : "cm-fold-marker is-folded";
-        marker.append(createIcon(open ? "chevron-down" : "chevron-right"));
-        return marker;
-      },
-    }),
-    keymap.of(foldKeymap),
-  ];
+/**
+ * Fold range of a list item whose marker sits on the line at `lineFrom`
+ * and that contains a nested list: from the end of the marker line to
+ * the end of the item. Null otherwise.
+ */
+export function listItemFoldRange(
+  state: EditorState,
+  lineFrom: number,
+): FoldRange | null {
+  const line = state.doc.lineAt(lineFrom);
+  const candidates: FoldRange[] = [];
+  syntaxTree(state).iterate({
+    from: line.from,
+    to: line.to,
+    enter(node) {
+      if (node.name !== "ListMark") {
+        return;
+      }
+      const item = node.node.parent;
+      if (
+        item === null ||
+        item.name !== "ListItem" ||
+        state.doc.lineAt(node.from).from !== line.from
+      ) {
+        return;
+      }
+      const hasNestedList =
+        item.getChild("BulletList") !== null ||
+        item.getChild("OrderedList") !== null;
+      if (hasNestedList && item.to > line.to) {
+        candidates.push({ from: line.to, to: item.to });
+      }
+    },
+  });
+  return candidates[candidates.length - 1] ?? null;
+}
+
+/** Foldable range for the line: heading section or list sub-items. */
+export function foldRangeForLine(
+  state: EditorState,
+  lineFrom: number,
+): FoldRange | null {
+  return (
+    headingSectionRange(state, lineFrom) ?? listItemFoldRange(state, lineFrom)
+  );
+}
+
+/** The already-folded range starting exactly at `from`, or null. */
+export function foldedRangeStartingAt(
+  state: EditorState,
+  from: number,
+): FoldRange | null {
+  const found: FoldRange[] = [];
+  foldedRanges(state).between(from, from, (rangeFrom, rangeTo) => {
+    if (rangeFrom === from) {
+      found.push({ from: rangeFrom, to: rangeTo });
+    }
+  });
+  return found[0] ?? null;
+}
+
+/** Fold ranges of every heading section in the document. */
+export function allHeadingFolds(state: EditorState): FoldRange[] {
+  const folds: FoldRange[] = [];
+  const lines = new Set<number>();
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (HEADING_RE.test(node.name)) {
+        lines.add(state.doc.lineAt(node.from).from);
+      }
+    },
+  });
+  for (const lineFrom of lines) {
+    const range = headingSectionRange(state, lineFrom);
+    if (range !== null) {
+      folds.push(range);
+    }
+  }
+  return folds;
+}
+
+function toggleFold(view: EditorView, range: FoldRange): void {
+  const folded = foldedRangeStartingAt(view.state, range.from);
+  view.dispatch({
+    effects:
+      folded === null ? foldEffect.of(range) : unfoldEffect.of(folded),
+  });
+}
+
+class ChevronWidget extends WidgetType {
+  constructor(
+    readonly range: FoldRange,
+    readonly folded: boolean,
+  ) {
+    super();
+  }
+
+  override eq(other: ChevronWidget): boolean {
+    return (
+      other.range.from === this.range.from &&
+      other.range.to === this.range.to &&
+      other.folded === this.folded
+    );
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const span = document.createElement("span");
+    span.className = this.folded
+      ? "cm-fold-chevron is-folded"
+      : "cm-fold-chevron";
+    span.append(createIcon(this.folded ? "chevron-right" : "chevron-down"));
+    span.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      toggleFold(view, this.range);
+    });
+    return span;
+  }
+
+  override ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+function buildChevrons(view: EditorView): DecorationSet {
+  const ranges: Range<Decoration>[] = [];
+  for (const { from, to } of view.visibleRanges) {
+    let pos = from;
+    while (pos <= to) {
+      const line = view.state.doc.lineAt(pos);
+      const range = foldRangeForLine(view.state, line.from);
+      if (range !== null) {
+        ranges.push(
+          Decoration.widget({
+            widget: new ChevronWidget(
+              range,
+              foldedRangeStartingAt(view.state, range.from) !== null,
+            ),
+            side: -1,
+          }).range(line.from),
+        );
+      }
+      if (line.to >= to) {
+        break;
+      }
+      pos = line.to + 1;
+    }
+  }
+  return Decoration.set(ranges, true);
+}
+
+const chevronPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = buildChevrons(view);
+    }
+
+    update(update: ViewUpdate): void {
+      const foldsChanged = update.transactions.some((tr) =>
+        tr.effects.some(
+          (effect) => effect.is(foldEffect) || effect.is(unfoldEffect),
+        ),
+      );
+      if (update.docChanged || update.viewportChanged || foldsChanged) {
+        this.decorations = buildChevrons(update.view);
+      }
+    }
+  },
+  { decorations: (value) => value.decorations },
+);
+
+/** Folding for heading sections and list sub-items, with inline chevrons. */
+export function sectionFolding(): Extension {
+  return [codeFolding(), chevronPlugin];
 }

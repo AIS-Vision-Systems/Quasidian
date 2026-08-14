@@ -17,7 +17,6 @@ import {
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import {
-  foldAll,
   foldedRanges,
   foldEffect,
   HighlightStyle,
@@ -25,6 +24,7 @@ import {
   syntaxHighlighting,
   syntaxTree,
   unfoldAll,
+  unfoldEffect,
 } from "@codemirror/language";
 import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
@@ -38,7 +38,13 @@ import {
   markerBackspace,
   wrapSelection,
 } from "./autoPair";
-import { headingFolding, type FoldRange } from "./folding";
+import {
+  allHeadingFolds,
+  foldedRangeStartingAt,
+  foldRangeForLine,
+  sectionFolding,
+  type FoldRange,
+} from "./folding";
 import {
   emptyListItemExitCommand,
   inListItem,
@@ -192,6 +198,10 @@ export interface EditorHandle {
   setFolds(ranges: FoldRange[]): void;
   foldAllSections(): void;
   unfoldAllSections(): void;
+  /** Foldability and state of the line holding `pos` (reading mode). */
+  foldInfoAt(pos: number): { folded: boolean } | null;
+  /** Folds/unfolds the section of the line holding `pos`. */
+  toggleFoldAt(pos: number): void;
 }
 
 export function createEditor(
@@ -314,7 +324,7 @@ export function createEditor(
           codeLanguages: languages,
         }),
         syntaxHighlighting(markdownHighlighting),
-        headingFolding(),
+        sectionFolding(),
         livePreview({
           resolveEmbedSrc: hooks.resolveEmbedSrc,
           renderEmbedNote: hooks.renderEmbedNote,
@@ -419,10 +429,39 @@ export function createEditor(
       }
     },
     foldAllSections(): void {
-      foldAll(view);
+      const effects = allHeadingFolds(view.state).map((range) =>
+        foldEffect.of(range),
+      );
+      if (effects.length > 0) {
+        view.dispatch({ effects });
+      }
     },
     unfoldAllSections(): void {
       unfoldAll(view);
+    },
+    foldInfoAt(pos: number): { folded: boolean } | null {
+      const clamped = Math.min(Math.max(pos, 0), view.state.doc.length);
+      const line = view.state.doc.lineAt(clamped);
+      const range = foldRangeForLine(view.state, line.from);
+      if (range === null) {
+        return null;
+      }
+      return {
+        folded: foldedRangeStartingAt(view.state, range.from) !== null,
+      };
+    },
+    toggleFoldAt(pos: number): void {
+      const clamped = Math.min(Math.max(pos, 0), view.state.doc.length);
+      const line = view.state.doc.lineAt(clamped);
+      const range = foldRangeForLine(view.state, line.from);
+      if (range === null) {
+        return;
+      }
+      const folded = foldedRangeStartingAt(view.state, range.from);
+      view.dispatch({
+        effects:
+          folded === null ? foldEffect.of(range) : unfoldEffect.of(folded),
+      });
     },
   };
 }

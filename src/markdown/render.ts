@@ -123,7 +123,9 @@ function renderHeading(
       to--;
     }
   }
-  out.push(`<h${level}>`);
+  // data-pos lets reading mode map the heading back to the document
+  // for section folding.
+  out.push(`<h${level} data-pos="${node.from}">`);
   renderInline(node, from, to, doc, out);
   out.push(`</h${level}>`);
 }
@@ -176,7 +178,11 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
   switch (name) {
     case "ListItem": {
       const isTask = node.getChild("Task") !== null;
-      out.push(isTask ? '<li class="task-list-item">' : "<li>");
+      out.push(
+        isTask
+          ? `<li class="task-list-item" data-pos="${node.from}">`
+          : `<li data-pos="${node.from}">`,
+      );
       renderBlockChildren(node, doc, out);
       out.push("</li>");
       return;

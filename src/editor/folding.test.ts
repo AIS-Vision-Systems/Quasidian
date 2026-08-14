@@ -3,7 +3,7 @@ import { ensureSyntaxTree } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 import { markdownExtensions } from "../markdown/parser";
-import { headingSectionRange } from "./folding";
+import { foldRangeForLine, headingSectionRange } from "./folding";
 
 function stateFor(doc: string): EditorState {
   const state = EditorState.create({
@@ -54,5 +54,21 @@ describe("headingSectionRange", () => {
     expect(headingSectionRange(state, 0)).toBeNull();
     // "text" line (from 8) holds no heading.
     expect(headingSectionRange(state, 8)).toBeNull();
+  });
+});
+
+describe("foldRangeForLine", () => {
+  it("folds list items that contain nested lists", () => {
+    const state = stateFor("- a\n  - b\n- c");
+    expect(foldRangeForLine(state, 0)).toEqual({ from: 3, to: 9 });
+    // "  - b" (line at 4) and "- c" (line at 10) have no children.
+    expect(foldRangeForLine(state, 4)).toBeNull();
+    expect(foldRangeForLine(state, 10)).toBeNull();
+  });
+
+  it("never folds paragraphs, code blocks or blockquotes", () => {
+    expect(foldRangeForLine(stateFor("una\ndues"), 0)).toBeNull();
+    expect(foldRangeForLine(stateFor("```js\nx\n```"), 0)).toBeNull();
+    expect(foldRangeForLine(stateFor("> a\n> b"), 0)).toBeNull();
   });
 });
