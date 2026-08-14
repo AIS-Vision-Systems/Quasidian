@@ -36,6 +36,27 @@ describe("resolveWikilink — bare names", () => {
     });
   });
 
+  it("resolves frontmatter aliases, after real names", () => {
+    const withAliases: FolderFile[] = [
+      { name: "Nota.md", path: "C:\\notes\\Nota.md", aliases: ["altra"] },
+      { name: "altra.md", path: "C:\\notes\\altra.md" },
+      {
+        name: "assaig.md",
+        path: "C:\\notes\\assaig.md",
+        aliases: ["Against Egalitarianism"],
+      },
+    ];
+    // The alias resolves case-insensitively…
+    expect(
+      resolveWikilink("against egalitarianism", folder, withAliases),
+    ).toEqual({ path: "C:\\notes\\assaig.md", exists: true });
+    // …but a real file name always wins over a same-named alias.
+    expect(resolveWikilink("altra", folder, withAliases)).toEqual({
+      path: "C:\\notes\\altra.md",
+      exists: true,
+    });
+  });
+
   it("returns null for empty targets", () => {
     expect(resolveWikilink("  ", folder, files)).toBeNull();
   });

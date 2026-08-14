@@ -59,6 +59,7 @@ Llegeix `SPEC.md` abans de començar: tot el que hi diu segueix vigent excepte o
     - Widget «Properties» estil Obsidian en mode edició (pills de tags, aliases, «Add property»); el YAML cru només es veu amb el cursor dins, com la resta de sintaxi. Render equivalent en mode lectura.
     - Els **aliases** es fan servir per resoldre wikilinks i al quick switcher; els **tags** són cercables a la cerca global.
 20. **Wikilinks avançats**:
+    - Els links sense referència (la nota no existeix) es mostren amb un to apagat i sense subratllat, tant en mode edició com en lectura.
     - Àncores de secció: `[[nota#secció]]` i `[[#secció]]` (mateix fitxer) resolen contra els headings de la nota, naveguen fins a la secció i s'autocompleten en teclejar `#` dins del wikilink.
     - Transclusió amb profunditat > 1: un `![[nota]]` que conté altres transclusions les renderitza recursivament, amb detecció de cicles i un límit de profunditat raonable. També transclusió de seccions: `![[nota#secció]]`.
     - Finestra emergent de previsualització: en mode lectura, fer hover sobre un wikilink mostra el contingut de la nota (o de la secció, si el link porta àncora) en un popup; en mode edició, el mateix amb Ctrl+hover. El popup es renderitza amb el mateix pipeline de lectura (mateix arbre Lezer).

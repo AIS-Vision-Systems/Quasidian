@@ -5,6 +5,11 @@
 import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
+import { t } from "../i18n/i18n";
+import {
+  parseFrontmatter,
+  type FrontmatterData,
+} from "../lib/frontmatter";
 import { markdownParser } from "./parser";
 import { isImageTarget } from "./wikilinks";
 
@@ -35,7 +40,48 @@ const SKIP = new Set([
   "LinkReference",
   "HighlightMark",
   "MathMark",
+  "FrontmatterMark",
 ]);
+
+/**
+ * Properties block HTML shared by reading mode and the editor widget;
+ * `interactive` adds the remove/add controls the widget wires up.
+ */
+export function renderPropertiesHtml(
+  data: FrontmatterData,
+  interactive: boolean,
+): string {
+  if (data.properties.length === 0 && !interactive) {
+    return "";
+  }
+  const out: string[] = ['<div class="frontmatter-props">'];
+  out.push(
+    `<div class="props-title">${escapeHtml(t("properties.title"))}</div>`,
+  );
+  data.properties.forEach((property, propIndex) => {
+    out.push('<div class="props-row">');
+    out.push(`<span class="props-key">${escapeHtml(property.key)}</span>`);
+    out.push('<span class="props-values">');
+    property.values.forEach((value, valueIndex) => {
+      const cls = property.isList ? "props-pill" : "props-value";
+      out.push(`<span class="${cls}">${escapeHtml(value)}`);
+      if (interactive) {
+        out.push(
+          `<button class="props-remove" data-prop="${propIndex}" data-value="${valueIndex}" aria-label="${escapeHtml(t("properties.remove"))}">×</button>`,
+        );
+      }
+      out.push("</span>");
+    });
+    out.push("</span></div>");
+  });
+  if (interactive) {
+    out.push(
+      `<button class="props-add">+ ${escapeHtml(t("properties.add"))}</button>`,
+    );
+  }
+  out.push("</div>");
+  return out.join("");
+}
 
 const INLINE_WRAPPERS: Record<string, [string, string]> = {
   Paragraph: ["<p>", "</p>"],
@@ -176,6 +222,10 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
   }
 
   switch (name) {
+    case "Frontmatter": {
+      out.push(renderPropertiesHtml(parseFrontmatter(doc), false));
+      return;
+    }
     case "ListItem": {
       const isTask = node.getChild("Task") !== null;
       out.push(

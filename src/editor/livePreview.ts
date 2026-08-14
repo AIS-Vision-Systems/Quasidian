@@ -22,7 +22,11 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import katex from "katex";
-import { renderToHtml } from "../markdown/render";
+import {
+  parseFrontmatter,
+  serializeFrontmatter,
+} from "../lib/frontmatter";
+import { renderPropertiesHtml, renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import {
   fillEmbedImages,
@@ -819,6 +823,90 @@ class TableWidget extends WidgetType {
   }
 }
 
+class PropertiesWidget extends WidgetType {
+  constructor(
+    readonly source: string,
+    readonly to: number,
+  ) {
+    super();
+  }
+
+  override eq(other: PropertiesWidget): boolean {
+    return other.source === this.source;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const container = document.createElement("div");
+    container.className = "cm-frontmatter-widget";
+    const data = parseFrontmatter(this.source);
+    container.innerHTML = renderPropertiesHtml(data, true);
+    container.addEventListener("mousedown", (event) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        (target.closest(".props-remove") !== null ||
+          target.closest(".props-add") !== null)
+      ) {
+        // Handled on click; keep the selection out of the block.
+        event.preventDefault();
+        return;
+      }
+      // Clicking the widget reveals the raw YAML with the cursor inside.
+      event.preventDefault();
+      view.dispatch({
+        selection: { anchor: Math.min(3, view.state.doc.length) },
+      });
+      view.focus();
+    });
+    container.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const remove = target.closest<HTMLElement>(".props-remove");
+      if (remove !== null) {
+        const propIndex = Number(remove.dataset.prop);
+        const valueIndex = Number(remove.dataset.value);
+        const remaining = data.properties
+          .map((property, index) =>
+            index === propIndex
+              ? {
+                  ...property,
+                  values: property.values.filter((_, vi) => vi !== valueIndex),
+                }
+              : property,
+          )
+          .filter((property) => property.values.length > 0);
+        const replacement =
+          remaining.length === 0 ? "" : serializeFrontmatter(remaining);
+        let to = this.to;
+        if (
+          replacement === "" &&
+          view.state.doc.sliceString(to, to + 1) === "\n"
+        ) {
+          to++;
+        }
+        view.dispatch({ changes: { from: 0, to, insert: replacement } });
+        return;
+      }
+      if (target.closest(".props-add") !== null) {
+        // Reveal the raw YAML at the end of the last content line.
+        const anchor = Math.min(
+          Math.max(3, this.to - 4),
+          view.state.doc.length,
+        );
+        view.dispatch({ selection: { anchor } });
+        view.focus();
+      }
+    });
+    return container;
+  }
+
+  override ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 const hideMark = Decoration.replace({});
 const blockquoteLine = Decoration.line({ class: "cm-blockquote-line" });
 const codeblockLine = Decoration.line({ class: "cm-codeblock-line" });
@@ -1043,6 +1131,21 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
   const ranges: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     enter(node) {
+      if (node.name === "Frontmatter") {
+        if (selectionTouches(state, node.from, node.to)) {
+          return false;
+        }
+        ranges.push(
+          Decoration.replace({
+            widget: new PropertiesWidget(
+              state.doc.sliceString(node.from, node.to),
+              node.to,
+            ),
+            block: true,
+          }).range(node.from, node.to),
+        );
+        return false;
+      }
       if (node.name === "Table") {
         if (selectionTouches(state, node.from, node.to)) {
           return false;
