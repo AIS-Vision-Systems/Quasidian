@@ -14,6 +14,7 @@ import {
   computeMathRanges,
   computeNoteEmbeds,
   computeTaskMarkers,
+  tableBlankGuard,
   type HiddenRange,
 } from "./livePreview";
 
@@ -84,6 +85,15 @@ describe("computeHiddenRanges — italic, inline code, strikethrough", () => {
       { from: 3, to: 5 },
     ]);
     expect(hiddenRanges("~~s~~ x", 3)).toEqual([]);
+  });
+
+  it("hides footnote marks when outside, reveals inside the ref", () => {
+    const doc = "a [^1] b";
+    expect(hiddenRanges(doc, doc.length)).toEqual([
+      { from: 2, to: 4 },
+      { from: 5, to: 6 },
+    ]);
+    expect(hiddenRanges(doc, 3)).toEqual([]);
   });
 
   it("hides == marks of highlights when outside", () => {
@@ -412,5 +422,50 @@ describe("computeHiddenRanges — nesting and multiple selections", () => {
     });
     ensureSyntaxTree(state, doc.length, 5000);
     expect(computeHiddenRanges(state, 0, doc.length)).toEqual([]);
+  });
+});
+
+describe("tableBlankGuard — the blank line after a table is protected", () => {
+  const doc = "| a |\n| --- |\n| b |\n\n| c |\n| --- |\n| d |";
+
+  function stateFor(docText: string) {
+    const state = EditorState.create({
+      doc: docText,
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+        tableBlankGuard,
+      ],
+    });
+    ensureSyntaxTree(state, docText.length, 5000);
+    return state;
+  }
+
+  it("blocks deleting the newline right after a table", () => {
+    const state = stateFor(doc);
+    const tr = state.update({ changes: { from: 19, to: 20 } });
+    expect(tr.state.doc.toString()).toBe(doc);
+  });
+
+  it("blocks merging the next table up into the blank line", () => {
+    const state = stateFor(doc);
+    const tr = state.update({ changes: { from: 20, to: 21 } });
+    expect(tr.state.doc.toString()).toBe(doc);
+  });
+
+  it("pushes typed text down to a fresh line, keeping the guard blank", () => {
+    const state = stateFor(doc);
+    const tr = state.update({
+      changes: { from: 20, to: 20, insert: "x" },
+    });
+    expect(tr.state.doc.toString()).toBe(
+      `${doc.slice(0, 20)}\nx${doc.slice(20)}`,
+    );
+    expect(tr.state.selection.main.head).toBe(22);
+  });
+
+  it("still allows deleting a whole table together with its blank line", () => {
+    const state = stateFor(doc);
+    const tr = state.update({ changes: { from: 0, to: 21 } });
+    expect(tr.state.doc.toString()).toBe(doc.slice(21));
   });
 });

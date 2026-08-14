@@ -10,7 +10,7 @@ export interface MenuItem {
   danger?: boolean;
   disabled?: boolean;
   onClick?: () => void;
-  submenu?: MenuItem[];
+  submenu?: MenuEntry[];
 }
 
 export type MenuEntry = MenuItem | "separator";
@@ -46,7 +46,13 @@ function buildItem(
     const submenu = document.createElement("div");
     submenu.className = "context-menu context-menu-submenu";
     for (const child of item.submenu) {
-      submenu.append(buildItem(child, close));
+      if (child === "separator") {
+        const separator = document.createElement("div");
+        separator.className = "context-menu-separator";
+        submenu.append(separator);
+      } else {
+        submenu.append(buildItem(child, close));
+      }
     }
     element.append(submenu);
   } else if (item.disabled !== true) {

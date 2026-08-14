@@ -575,6 +575,9 @@ body.is-readable-line-length .cm-editor .cm-content {
 .cm-editor .cm-blockquote-line {
   border-left: 2px solid var(--interactive-accent);
   padding-left: 12px;
+  /* Quote text is muted via the line (not the highlight tag) so callout
+     lines can restore the normal color without inner spans winning. */
+  color: var(--text-muted);
 }
 
 .cm-editor .cm-codeblock-line {
@@ -1385,6 +1388,13 @@ body.is-readable-line-length .reading-view-content {
   padding-bottom: 20px;
 }
 
+/* The wrap's padding provides the block spacing; without this the
+   table's own bottom margin pushes the add-row button too far down.
+   (span-qualified so it outranks `.markdown-rendered table`.) */
+span.table-wrap > table {
+  margin: 0;
+}
+
 .table-edge-add {
   position: absolute;
   display: flex;
@@ -1758,6 +1768,154 @@ body.is-readable-line-length .reading-view-content {
 .props-add-row input {
   background-color: var(--background-secondary);
   border-color: var(--background-modifier-border);
+}
+
+/* --- Callouts (reading mode + hover popups) --- */
+
+.callout {
+  margin: 0 0 1em;
+  padding: 14px 16px;
+  background-color: rgba(var(--callout-color), 0.18);
+  border-radius: 10px;
+}
+
+.callout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--callout-color));
+  font-weight: 600;
+}
+
+.callout-title .app-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.callout-content {
+  margin-top: 6px;
+}
+
+.callout-content > :last-child {
+  margin-bottom: 0;
+}
+
+/* Foldable callouts: chevron in the title, content hidden when
+   collapsed. */
+.callout-fold {
+  display: inline-flex;
+  margin-left: 6px;
+  cursor: pointer;
+  color: rgb(var(--callout-color));
+}
+
+.callout-fold .app-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.1s ease;
+}
+
+.callout.is-collapsed .callout-fold .app-icon {
+  transform: rotate(-90deg);
+}
+
+.callout.is-collapsed .callout-content {
+  display: none;
+}
+
+/* Editing mode: the same rounded box as reading mode, drawn with line
+   decorations (corner classes on the first and last lines). */
+.cm-editor .cm-callout-line {
+  background-color: rgba(var(--callout-color), 0.18);
+  border-left: none;
+  padding-left: 16px;
+  padding-right: 16px;
+  color: var(--text-normal);
+}
+
+.cm-editor .cm-callout-first {
+  border-radius: 10px 10px 0 0;
+  padding-top: 10px;
+}
+
+.cm-editor .cm-callout-last {
+  border-radius: 0 0 10px 10px;
+  padding-bottom: 10px;
+}
+
+/* A collapsed (or single-line) callout is first and last at once. */
+.cm-editor .cm-callout-first.cm-callout-last {
+  border-radius: 10px;
+}
+
+.cm-editor .cm-callout-icon {
+  display: inline-flex;
+  margin-right: 6px;
+  vertical-align: -2px;
+  color: rgb(var(--callout-color));
+}
+
+.cm-editor .cm-callout-icon .app-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.cm-editor .cm-callout-title {
+  color: rgb(var(--callout-color));
+  font-weight: 600;
+}
+
+.cm-editor .cm-callout-fold {
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: -3px;
+  cursor: pointer;
+  color: rgb(var(--callout-color));
+}
+
+.cm-editor .cm-callout-fold .app-icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* --- Footnotes --- */
+
+.footnote-ref {
+  line-height: 1;
+}
+
+.footnote-ref .footnote-link {
+  font-size: 0.85em;
+}
+
+/* Footnote section at the bottom of the note, after a separator. */
+.footnotes {
+  margin-top: 2em;
+}
+
+.footnotes .footnotes-sep {
+  margin: 0 0 0.8em;
+}
+
+.footnotes-list {
+  margin: 0;
+  padding-left: 1.6em;
+  color: var(--text-muted);
+  font-size: calc(var(--font-text-size) * 0.9);
+}
+
+.footnotes-list .footnote-def {
+  margin: 0 0 0.4em;
+}
+
+.footnotes-list .footnote-def::marker {
+  color: var(--text-faint);
+}
+
+.footnote-back {
+  font-size: 0.85em;
+  text-decoration: none;
 }
 
 /* Reading-mode section folding. */

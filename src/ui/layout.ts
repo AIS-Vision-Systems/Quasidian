@@ -434,6 +434,13 @@ export function mountLayout(root: HTMLElement): void {
       void saveNow();
       readingView.render(editor.getDoc());
     },
+    onCalloutToggle(pos, fold) {
+      editor.replaceRange(pos, pos + 1, fold ? "-" : "+");
+      void saveNow();
+      const scroll = readingView.element.scrollTop;
+      readingView.render(editor.getDoc());
+      readingView.element.scrollTop = scroll;
+    },
     resolveEmbedSrc,
     renderEmbedNote,
     isResolved: isResolvedTarget,

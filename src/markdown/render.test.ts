@@ -15,6 +15,62 @@ describe("renderToHtml — blocks", () => {
     expect(renderToHtml("`codi`")).toBe("<p><code>codi</code></p>");
   });
 
+  it("renders footnote references and collects definitions at the bottom", () => {
+    const html = renderToHtml("text[^1]\n\n[^1]: la nota");
+    expect(html).toContain(
+      '<sup class="footnote-ref"><a class="footnote-link" id="fnref-1" href="#fn-1">[1]</a></sup>',
+    );
+    expect(html).toContain('<hr class="footnotes-sep">');
+    expect(html).toContain('<ol class="footnotes-list">');
+    expect(html).toContain('<li class="footnote-def" id="fn-1"');
+    expect(html).toContain("la nota");
+    expect(html).toContain('href="#fnref-1"');
+    // The definition renders at the bottom, after the last paragraph.
+    expect(html.indexOf("la nota")).toBeGreaterThan(html.indexOf("</p>"));
+  });
+
+  it("renders direct footnotes ^[...] with automatic numbers", () => {
+    const html = renderToHtml("abans^[nota directa] i despres[^x]\n\n[^x]: def");
+    expect(html).toContain('id="fnref-i1" href="#fn-i1">[1]');
+    expect(html).toContain('<li class="footnote-def" id="fn-i1"');
+    expect(html).toContain("nota directa");
+    expect(html).toContain('href="#fn-x">[2]');
+  });
+
+  it("renders callouts with type, icon, title and content", () => {
+    const html = renderToHtml("> [!warning] Compte\n> Cos del callout");
+    expect(html).toContain('data-callout="warning"');
+    expect(html).toContain("--callout-color:233,151,63");
+    expect(html).toContain("Compte");
+    expect(html).toContain('class="callout-content"');
+    expect(html).toContain("Cos del callout");
+    expect(html).not.toContain("[!warning]");
+  });
+
+  it("uses the type as title when the callout has none", () => {
+    const html = renderToHtml("> [!tip]\n> Cos");
+    expect(html).toContain(">Tip</");
+  });
+
+  it("colors the success family green, check alias included", () => {
+    const html = renderToHtml("> [!check] Fet\n> cos");
+    expect(html).toContain("--callout-color:68,207,110");
+  });
+
+  it("renders foldable callouts with their fold state and sign position", () => {
+    const collapsed = renderToHtml("> [!note]- Plegat\n> contingut");
+    expect(collapsed).toContain("callout-foldable");
+    expect(collapsed).toContain("is-collapsed");
+    expect(collapsed).toContain('class="callout-fold"');
+    expect(collapsed).toContain('data-fold-pos="9"');
+    const open = renderToHtml("> [!note]+ Obert\n> contingut");
+    expect(open).toContain("callout-foldable");
+    expect(open).not.toContain("is-collapsed");
+    const plain = renderToHtml("> [!note] Fix\n> contingut");
+    expect(plain).not.toContain("callout-foldable");
+    expect(plain).not.toContain("callout-fold");
+  });
+
   it("renders blockquotes", () => {
     expect(renderToHtml("> cita")).toBe(
       "<blockquote><p>cita</p></blockquote>",
@@ -105,6 +161,14 @@ describe("renderToHtml — blocks", () => {
     const html = renderToHtml("| a | b |\n| --- | --- |\n| c | d |");
     expect(html).toContain("<table><thead><tr><th>a</th><th>b</th></tr></thead>");
     expect(html).toContain("<tbody><tr><td>c</td><td>d</td></tr></tbody>");
+  });
+
+  it("keeps empty cells so columns stay aligned", () => {
+    const html = renderToHtml(
+      "| a | b | c |\n| --- | --- | --- |\n|   |   | x |\n|   | y |   |",
+    );
+    expect(html).toContain("<tr><td></td><td></td><td>x</td></tr>");
+    expect(html).toContain("<tr><td></td><td>y</td><td></td></tr>");
   });
 });
 

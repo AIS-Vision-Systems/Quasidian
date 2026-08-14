@@ -31,7 +31,15 @@ export type IconName =
   | "corner-up-right"
   | "text"
   | "plus"
-  | "table";
+  | "table"
+  | "info"
+  | "flame"
+  | "alert-triangle"
+  | "check"
+  | "help-circle"
+  | "minus"
+  | "quote"
+  | "sigma";
 
 const ICON_PATHS: Record<IconName, string> = {
   "book-open":
@@ -112,6 +120,21 @@ const ICON_PATHS: Record<IconName, string> = {
   table:
     '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/>' +
     '<path d="M3 9h18"/><path d="M3 15h18"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  flame:
+    '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  "alert-triangle":
+    '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>' +
+    '<path d="M12 9v4"/><path d="M12 17h.01"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  minus: '<path d="M5 12h14"/>',
+  quote:
+    '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/><path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
+  sigma:
+    '<path d="M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2"/>',
+  "help-circle":
+    '<circle cx="12" cy="12" r="10"/>' +
+    '<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
 };
 
 /** The same icon as a plain SVG markup string (for HTML renderers). */

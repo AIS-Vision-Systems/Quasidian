@@ -146,6 +146,44 @@ async function show(
 }
 
 /**
+ * Shows a popup with prebuilt HTML (footnote content, etc.) after the
+ * same delay as note previews. `key` identifies the content so
+ * re-hovering the same element keeps the popup alive.
+ */
+export function scheduleHtmlHover(
+  x: number,
+  y: number,
+  key: string,
+  html: string,
+  level = 0,
+): void {
+  const target = `html:${key}`;
+  const existing = stack[level];
+  if (existing !== undefined && existing.target === target) {
+    if (hideTimer !== null) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+    return;
+  }
+  cancelTimers();
+  showTimer = setTimeout(() => {
+    showTimer = null;
+    const element = document.createElement("div");
+    element.className = "hover-preview";
+    const body = document.createElement("div");
+    body.className = "markdown-rendered";
+    body.innerHTML = html;
+    element.append(body);
+    trimStack(level);
+    stack.push({ element, target });
+    attachKeepAlive(element);
+    document.body.append(element);
+    positionPopup(element, x, y);
+  }, 300);
+}
+
+/**
  * Shows a preview after a short delay. `level` 0 replaces the whole
  * chain; deeper levels stack under their parent popup.
  */

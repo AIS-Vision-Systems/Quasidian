@@ -11,7 +11,7 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
-import { Prec, StateField, type EditorState, type Range } from "@codemirror/state";
+import { EditorState, Prec, StateField, type Range } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -29,6 +29,11 @@ import {
 } from "../lib/frontmatter";
 import { openContextMenu, type MenuEntry } from "../ui/contextMenu";
 import {
+  calloutColor,
+  calloutIcon,
+  parseCalloutHeader,
+} from "../markdown/callouts";
+import {
   applyTableOp,
   parseTableSource,
   serializeTable,
@@ -37,6 +42,7 @@ import {
 } from "./tableCommands";
 import { renderPropertiesHtml, renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
+import { createIcon } from "../ui/icons";
 import {
   scheduleHoverHide,
   scheduleHoverShow,
@@ -78,6 +84,7 @@ const INLINE_MARKS: Record<string, string[]> = {
   CodeMark: ["InlineCode"],
   StrikethroughMark: ["Strikethrough"],
   HighlightMark: ["Highlight"],
+  FootnoteMark: ["FootnoteRef", "FootnoteInline"],
 };
 
 function selectionTouches(
@@ -1727,6 +1734,101 @@ const taskDoneLine = Decoration.line({ class: "cm-task-done" });
 const bulletDecoration = Decoration.replace({ widget: new BulletWidget() });
 const hrDecoration = Decoration.replace({ widget: new HrWidget() });
 
+export interface CalloutRange {
+  /** The `[!type]` marker (plus one following space). */
+  markerFrom: number;
+  markerTo: number;
+  /** End of the title (the first line). */
+  titleTo: number;
+  type: string;
+  /** Fold marker: "-" starts collapsed, "+" expanded, null not foldable. */
+  fold: "+" | "-" | null;
+  /** Document position of the fold sign character. */
+  signPos: number;
+}
+
+/** Callout info for a blockquote node, or null when it is a plain one. */
+export function calloutForQuote(
+  state: EditorState,
+  quote: SyntaxNode,
+): CalloutRange | null {
+  const paragraph = quote.getChild("Paragraph");
+  if (paragraph === null) {
+    return null;
+  }
+  const text = state.doc.sliceString(paragraph.from, paragraph.to);
+  const newline = text.indexOf("\n");
+  const firstLine = newline === -1 ? text : text.slice(0, newline);
+  const header = parseCalloutHeader(firstLine);
+  if (header === null) {
+    return null;
+  }
+  return {
+    markerFrom: paragraph.from,
+    markerTo: paragraph.from + header.markerLength,
+    titleTo: newline === -1 ? paragraph.to : paragraph.from + newline,
+    type: header.type,
+    fold: header.fold,
+    signPos: paragraph.from + header.signOffset,
+  };
+}
+
+/**
+ * Fold chevron after a foldable callout's title. Toggling flips the
+ * `+`/`-` sign in the source, so the fold state is shared by both
+ * modes and persists in the file.
+ */
+class CalloutFoldWidget extends WidgetType {
+  constructor(
+    readonly folded: boolean,
+    readonly signPos: number,
+  ) {
+    super();
+  }
+
+  override eq(other: CalloutFoldWidget): boolean {
+    return other.folded === this.folded && other.signPos === this.signPos;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-callout-fold";
+    span.append(createIcon(this.folded ? "chevron-right" : "chevron-down"));
+    span.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({
+        changes: {
+          from: this.signPos,
+          to: this.signPos + 1,
+          insert: this.folded ? "+" : "-",
+        },
+      });
+    });
+    return span;
+  }
+
+  override ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+class CalloutIconWidget extends WidgetType {
+  constructor(readonly type: string) {
+    super();
+  }
+
+  override eq(other: CalloutIconWidget): boolean {
+    return other.type === this.type;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-callout-icon";
+    span.append(createIcon(calloutIcon(this.type)));
+    return span;
+  }
+}
+
 function hasBlockquoteAncestor(node: SyntaxNode): boolean {
   for (let cur = node.parent; cur !== null; cur = cur.parent) {
     if (cur.name === "Blockquote") {
@@ -1815,7 +1917,75 @@ function buildDecorations(
       to,
       enter(node) {
         if (node.name === "Blockquote" && !hasBlockquoteAncestor(node.node)) {
-          decorateLines(node.node, blockquoteLine);
+          const callout = calloutForQuote(state, node.node);
+          if (callout === null) {
+            decorateLines(node.node, blockquoteLine);
+            return;
+          }
+          // Rounded-box look: the first and last lines carry the
+          // corner classes so both modes show the same callout box.
+          // A collapsed callout shows only its title line.
+          const collapsed =
+            callout.fold === "-" &&
+            !selectionTouches(state, node.from, node.to);
+          const firstLine = state.doc.lineAt(node.from).number;
+          const lastLine = state.doc.lineAt(node.to).number;
+          for (let lineNo = firstLine; lineNo <= lastLine; lineNo++) {
+            const line = state.doc.line(lineNo);
+            let cls = "cm-blockquote-line cm-callout-line";
+            if (lineNo === firstLine) {
+              cls += " cm-callout-first";
+            }
+            if (lineNo === lastLine || (collapsed && lineNo === firstLine)) {
+              cls += " cm-callout-last";
+            }
+            ranges.push(
+              Decoration.line({
+                class: cls,
+                attributes: {
+                  style: `--callout-color: ${calloutColor(callout.type)}`,
+                },
+              }).range(line.from),
+            );
+          }
+          // Guarded by the visible range: a collapsed callout can
+          // fragment visibleRanges and iterate the node twice, which
+          // would duplicate this point widget.
+          if (
+            callout.fold !== null &&
+            callout.titleTo >= from &&
+            callout.titleTo <= to
+          ) {
+            ranges.push(
+              Decoration.widget({
+                widget: new CalloutFoldWidget(
+                  callout.fold === "-",
+                  callout.signPos,
+                ),
+                side: -1,
+              }).range(callout.titleTo),
+            );
+          }
+          // The collapsed content itself is hidden by the block
+          // decorations state field: replaced ranges that cross line
+          // breaks may not come from a view plugin.
+          // The [!type] marker renders as the callout's icon when the
+          // line is not being edited; the title reads bold.
+          if (!selectionTouchesLine(state, callout.markerFrom)) {
+            ranges.push(
+              Decoration.replace({
+                widget: new CalloutIconWidget(callout.type),
+              }).range(callout.markerFrom, callout.markerTo),
+            );
+          }
+          if (callout.titleTo > callout.markerTo) {
+            ranges.push(
+              Decoration.mark({ class: "cm-callout-title" }).range(
+                callout.markerTo,
+                callout.titleTo,
+              ),
+            );
+          }
           return;
         }
         if (node.name === "FencedCode") {
@@ -1988,6 +2158,22 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
         );
         return false;
       }
+      if (node.name === "Blockquote" && !hasBlockquoteAncestor(node.node)) {
+        // Collapsed callout: hide everything after the title line.
+        // The range crosses line breaks, so it must come from this
+        // state field, not the view plugin.
+        const callout = calloutForQuote(state, node.node);
+        if (
+          callout !== null &&
+          callout.fold === "-" &&
+          callout.titleTo < node.to &&
+          !selectionTouches(state, node.from, node.to)
+        ) {
+          ranges.push(Decoration.replace({}).range(callout.titleTo, node.to));
+          return false;
+        }
+        return;
+      }
       if (node.name === "MathBlock") {
         const fromLine = state.doc.lineAt(node.from);
         const toLine = state.doc.lineAt(node.to);
@@ -2024,6 +2210,104 @@ const blockDecorations = StateField.define<DecorationSet>({
     return value;
   },
   provide: (field) => EditorView.decorations.from(field),
+});
+
+/**
+ * The blank line after a table is protected: navigable but never
+ * deletable (two tables must not merge), and typing on it pushes the
+ * text to a fresh line below so it always stays blank.
+ */
+export const tableBlankGuard = EditorState.transactionFilter.of((tr) => {
+  if (!tr.docChanged) {
+    return tr;
+  }
+  const state = tr.startState;
+  interface Guard {
+    tableFrom: number;
+    newline: number;
+    lineFrom: number;
+    lineTo: number;
+  }
+  const guards: Guard[] = [];
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== "Table") {
+        return;
+      }
+      const end = state.doc.lineAt(node.to).to;
+      if (end < state.doc.length) {
+        const guardLine = state.doc.lineAt(end + 1);
+        if (guardLine.text.trim() === "") {
+          guards.push({
+            tableFrom: state.doc.lineAt(node.from).from,
+            newline: end,
+            lineFrom: guardLine.from,
+            lineTo: guardLine.to,
+          });
+        }
+      }
+      return false;
+    },
+  });
+  if (guards.length === 0) {
+    return tr;
+  }
+  // Pure insertion on a guard line: push the text to a fresh line below
+  // so the guard stays blank.
+  const retyped: { pos: number; text: string; fromB: number; toB: number }[] =
+    [];
+  tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+    const text = inserted.toString();
+    for (const guard of guards) {
+      if (
+        fromA === toA &&
+        fromA >= guard.lineFrom &&
+        fromA <= guard.lineTo &&
+        text !== "" &&
+        !text.startsWith("\n")
+      ) {
+        retyped.push({ pos: fromA, text, fromB, toB });
+      }
+    }
+  });
+  const typed = retyped[0];
+  if (typed !== undefined) {
+    // Keep the transaction's intended cursor when it sits inside the
+    // inserted text (menu snippets place it there), shifted past the
+    // extra newline; otherwise put it after the insertion.
+    const intended = tr.newSelection.main.anchor;
+    const anchor =
+      intended >= typed.fromB && intended <= typed.toB
+        ? intended + 1
+        : typed.pos + 1 + typed.text.length;
+    return [
+      {
+        changes: { from: typed.pos, to: typed.pos, insert: `\n${typed.text}` },
+        selection: { anchor },
+        scrollIntoView: true,
+      },
+    ];
+  }
+  // Anything else: check the invariant on the resulting document — the
+  // line after every surviving table must still be blank. This blocks
+  // deleting the blank line (merging whatever follows, table or not)
+  // while still allowing a table to be deleted whole.
+  for (const guard of guards) {
+    const tableStart = tr.changes.mapPos(guard.tableFrom, 1);
+    const tableEnd = tr.changes.mapPos(guard.newline, -1);
+    if (tableEnd <= tableStart) {
+      continue;
+    }
+    const endLine = tr.newDoc.lineAt(Math.min(tableEnd, tr.newDoc.length));
+    if (endLine.to >= tr.newDoc.length) {
+      continue;
+    }
+    const after = tr.newDoc.lineAt(endLine.to + 1);
+    if (after.text.trim() !== "") {
+      return [];
+    }
+  }
+  return tr;
 });
 
 /** Frontmatter and tables are atomic: the cursor never sits inside. */
@@ -2109,6 +2393,7 @@ export function livePreview(hooks: LivePreviewHooks) {
   return [
     blockDecorations,
     frontmatterAtomic,
+    tableBlankGuard,
     Prec.high(
       keymap.of([
         { key: "ArrowDown", run: (view) => moveIntoBlock(view, true) },

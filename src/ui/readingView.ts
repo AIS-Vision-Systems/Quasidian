@@ -12,6 +12,7 @@ import { createIcon } from "./icons";
 import {
   scheduleHoverHide,
   scheduleHoverShow,
+  scheduleHtmlHover,
 } from "./hoverPreview";
 import {
   addCodePills,
@@ -39,6 +40,8 @@ export interface ReadingViewHooks {
   foldInfoAt(pos: number): { folded: boolean } | null;
   /** Toggles the fold of the section at a doc position. */
   onToggleFold(pos: number): void;
+  /** Flips a callout's fold sign (`+`/`-`) at a doc position. */
+  onCalloutToggle(pos: number, fold: boolean): void;
   /** Whether reading mode shows the properties box (settings). */
   showProperties(): boolean;
 }
@@ -111,7 +114,8 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
   content.className = "reading-view-content markdown-rendered";
   element.append(content);
 
-  // Hovering an internal link previews the note (or section).
+  // Hovering an internal link previews the note (or section); hovering
+  // a footnote reference previews the footnote's content.
   element.addEventListener("mouseover", (event) => {
     const target = event.target;
     const link =
@@ -123,13 +127,33 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
         isResolved: hooks.isResolved,
         onNavigate: hooks.onInternalLink,
       });
+      return;
+    }
+    const footnote =
+      target instanceof Element ? target.closest("a.footnote-link") : null;
+    if (footnote !== null) {
+      const href = footnote.getAttribute("href") ?? "";
+      const def = href.startsWith("#fn-")
+        ? content.querySelector(`[id="${href.slice(1)}"]`)
+        : null;
+      if (def !== null) {
+        const clone = def.cloneNode(true) as HTMLElement;
+        clone.querySelector(".footnote-back")?.remove();
+        scheduleHtmlHover(
+          event.clientX,
+          event.clientY,
+          href,
+          `<p>${clone.innerHTML}</p>`,
+        );
+      }
     }
   });
   element.addEventListener("mouseout", (event) => {
     const target = event.target;
     if (
       target instanceof Element &&
-      target.closest("a.internal-link") !== null
+      (target.closest("a.internal-link") !== null ||
+        target.closest("a.footnote-link") !== null)
     ) {
       scheduleHoverHide();
     }
@@ -138,6 +162,22 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
   element.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) {
+      return;
+    }
+    const fold = target.closest(".callout-fold");
+    if (fold !== null) {
+      const box = fold.closest(".callout");
+      if (box !== null) {
+        const pos = Number(box.getAttribute("data-fold-pos"));
+        if (target.closest(".embed-note") === null && Number.isFinite(pos)) {
+          // The note's own callouts persist the fold in the source.
+          hooks.onCalloutToggle(pos, !box.classList.contains("is-collapsed"));
+        } else {
+          // Callouts inside embeds toggle locally: their positions
+          // belong to another document.
+          box.classList.toggle("is-collapsed");
+        }
+      }
       return;
     }
     const link = target.closest("a");
@@ -149,6 +189,13 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
         return;
       }
       const href = link.getAttribute("href");
+      if (href !== null && href.startsWith("#")) {
+        // Footnote jumps (reference <-> definition).
+        content
+          .querySelector(`[id="${href.slice(1)}"]`)
+          ?.scrollIntoView({ block: "center" });
+        return;
+      }
       if (href !== null && /^https?:\/\//i.test(href)) {
         void openUrl(href);
       }
