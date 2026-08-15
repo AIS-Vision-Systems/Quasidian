@@ -64,6 +64,7 @@ import { getSettings, subscribeSettings } from "../ipc/settingsStore";
 import { editorConfigFrom } from "./applySettings";
 import { commandPaletteItems, type Command } from "./commands";
 import { openContextMenu, openPromptModal } from "./contextMenu";
+import { openHelpModal } from "./helpModal";
 import { hideHoverPreview } from "./hoverPreview";
 import { createIcon } from "./icons";
 import { copyText } from "./renderedContent";
@@ -237,6 +238,10 @@ export function mountLayout(root: HTMLElement): void {
   settingsButton.className = "status-bar-icon";
   settingsButton.append(createIcon("settings"));
   settingsButton.addEventListener("click", () => openSettingsModal());
+  const helpButton = document.createElement("button");
+  helpButton.className = "status-bar-icon";
+  helpButton.append(createIcon("help-circle"));
+  helpButton.addEventListener("click", () => openHelpModal());
   const statusError = document.createElement("span");
   statusError.className = "status-bar-error";
   const statusBacklinks = document.createElement("button");
@@ -251,6 +256,7 @@ export function mountLayout(root: HTMLElement): void {
   modeButton.addEventListener("click", () => void toggleMode());
   statusBar.append(
     settingsButton,
+    helpButton,
     statusPalette,
     statusSwitcher,
     statusError,
@@ -1858,6 +1864,8 @@ export function mountLayout(root: HTMLElement): void {
     collapseRightButton.title = t("workspace.collapseRight");
     settingsButton.title = t("settings.title");
     settingsButton.setAttribute("aria-label", t("settings.title"));
+    helpButton.title = t("help.title");
+    helpButton.setAttribute("aria-label", t("help.title"));
     statusPalette.title = t("command.commandPalette");
     statusPalette.setAttribute("aria-label", t("command.commandPalette"));
     statusSwitcher.title = t("command.quickSwitcher");
