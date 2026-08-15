@@ -353,7 +353,9 @@ export function computeTaskMarkers(
       // touches the "- [ ]" marker region, not the whole line.
       const listMark = node.node.parent?.parent?.getChild("ListMark") ?? null;
       const revealFrom = listMark === null ? node.from : listMark.from;
-      if (!selectionTouches(state, revealFrom, node.to + 1)) {
+      // The boundary right after the trailing space already shows the
+      // checkbox: typing "- [ ] " renders it immediately.
+      if (!selectionTouches(state, revealFrom, node.to)) {
         markers.push({
           pos: node.from,
           checked: state.doc
@@ -403,7 +405,9 @@ export function computeListMarks(
       }
       const task = item.getChild("Task");
       const taskMarker = task?.getChild("TaskMarker") ?? null;
-      const revealTo = (taskMarker ?? node).to + 1;
+      // The marker itself, not the boundary after its space: typing
+      // "- " shows the bullet as soon as the space is pressed.
+      const revealTo = (taskMarker ?? node).to;
       if (selectionTouches(state, node.from, revealTo)) {
         return;
       }

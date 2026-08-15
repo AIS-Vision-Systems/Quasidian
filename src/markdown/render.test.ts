@@ -99,6 +99,18 @@ describe("renderToHtml — blocks", () => {
     );
   });
 
+  it("keeps the start number of ordered lists", () => {
+    expect(renderToHtml("3. a\n4. b")).toContain('<ol start="3">');
+    expect(renderToHtml("1. a")).not.toContain("start=");
+  });
+
+  it("lets an ordered list interrupt a paragraph whatever its number", () => {
+    const html = renderToHtml("text\n3. un\n4. dos");
+    expect(html).toContain("<p>text</p>");
+    expect(html).toContain('<ol start="3">');
+    expect(html).toContain("<p>un</p>");
+  });
+
   it("renders fenced code with language class and display-name label", () => {
     const html = renderToHtml("```js\ncrida()\n```");
     expect(html).toContain('<pre data-lang="JavaScript"><code class="language-js">');

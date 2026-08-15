@@ -159,7 +159,6 @@ const INLINE_WRAPPERS: Record<string, [string, string]> = {
 const BLOCK_WRAPPERS: Record<string, [string, string]> = {
   Blockquote: ["<blockquote>", "</blockquote>"],
   BulletList: ["<ul>", "</ul>"],
-  OrderedList: ["<ol>", "</ol>"],
 };
 
 const HEADING_LEVELS: Record<string, number> = {
@@ -452,6 +451,23 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
       if (renderProperties) {
         out.push(renderPropertiesHtml(parseFrontmatter(doc), false));
       }
+      return;
+    }
+    case "OrderedList": {
+      // The start number must survive: the editor shows "3." as typed.
+      const firstMark =
+        node.getChild("ListItem")?.getChild("ListMark") ?? null;
+      const start =
+        firstMark === null
+          ? NaN
+          : parseInt(doc.slice(firstMark.from, firstMark.to), 10);
+      out.push(
+        Number.isFinite(start) && start !== 1
+          ? `<ol start="${start}">`
+          : "<ol>",
+      );
+      renderBlockChildren(node, doc, out);
+      out.push("</ol>");
       return;
     }
     case "ListItem": {

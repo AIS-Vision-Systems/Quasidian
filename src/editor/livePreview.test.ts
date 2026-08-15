@@ -273,6 +273,21 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     ]);
   });
 
+  it("shows the bullet as soon as the marker's space is typed", () => {
+    const doc = "- ";
+    expect(computeListMarks(stateFor(doc, 2), 0, doc.length)).toEqual([
+      { from: 0, to: 2, kind: "bullet" },
+    ]);
+    // The cursor on the dash itself still reveals the raw marker.
+    expect(computeListMarks(stateFor(doc, 1), 0, doc.length)).toEqual([]);
+  });
+
+  it("decorates ordered lists that interrupt a paragraph", () => {
+    const doc = "text\n3. un";
+    const state = stateFor(doc, 0);
+    expect(computeListLines(state, 0, doc.length)).toHaveLength(1);
+  });
+
   it("computes list lines: hanging indent, guides and fixed leading", () => {
     const doc = "- poma\n  - nena\n1. tres";
     const state = stateFor(doc, doc.length);
@@ -367,8 +382,9 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
 
   it("keeps the raw mark only while the selection touches it", () => {
     const doc = "- poma\n- pera";
-    // Cursor right after the first "- ": that mark stays raw.
-    const state = stateFor(doc, 2);
+    // Cursor on the first dash: that mark stays raw. (Right after the
+    // marker's space the bullet already renders — see the typing test.)
+    const state = stateFor(doc, 1);
     expect(computeListMarks(state, 0, doc.length)).toEqual([
       { from: 7, to: 9, kind: "bullet" },
     ]);

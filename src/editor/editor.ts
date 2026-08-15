@@ -395,8 +395,11 @@ function footnoteHoverAt(
   return html === null ? null : { key: `fn-${id}`, html };
 }
 
-/** Wikilink target at `pos`, or null when the position is not inside one. */
-function wikilinkTargetAt(state: EditorState, pos: number): string | null {
+/** Wikilink (target + range) at `pos`, or null when not inside one. */
+function wikilinkAt(
+  state: EditorState,
+  pos: number,
+): { target: string; from: number; to: number } | null {
   let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 0);
   while (node !== null && node.name !== "Wikilink") {
     node = node.parent;
@@ -405,7 +408,14 @@ function wikilinkTargetAt(state: EditorState, pos: number): string | null {
     return null;
   }
   const path = node.getChild("WikilinkPath");
-  return path === null ? null : state.sliceDoc(path.from, path.to);
+  if (path === null) {
+    return null;
+  }
+  return {
+    target: state.sliceDoc(path.from, path.to),
+    from: node.from,
+    to: node.to,
+  };
 }
 
 export interface EditorHooks {
@@ -553,6 +563,20 @@ export function createEditor(
                 return true;
               },
             },
+            {
+              key: "Mod-b",
+              run: (target) => {
+                applyFormat(target, "**", "**");
+                return true;
+              },
+            },
+            {
+              key: "Mod-i",
+              run: (target) => {
+                applyFormat(target, "*", "*");
+                return true;
+              },
+            },
             // Before lang-markdown's Enter (list continuation): an empty
             // item climbs one level instead of adding another marker.
             { key: "Enter", run: emptyListItemExitCommand },
@@ -656,7 +680,7 @@ export function createEditor(
               y: event.clientY,
             });
             const target =
-              pos === null ? null : wikilinkTargetAt(view.state, pos);
+              pos === null ? null : (wikilinkAt(view.state, pos)?.target ?? null);
             if (target === null) {
               const note =
                 pos === null ? null : footnoteHoverAt(view.state, pos);
@@ -680,20 +704,48 @@ export function createEditor(
             });
             return false;
           },
+          // Clicking a wikilink navigates like reading mode: plain
+          // click opens (or creates) in the current tab; Ctrl+click
+          // always in a new tab. When the cursor already touches the
+          // link (its raw syntax is revealed for editing), a plain
+          // click opens in a new tab so the editing context survives.
           mousedown(event, view) {
-            if (!(event.ctrlKey || event.metaKey) || event.button !== 0) {
+            if (event.button !== 0) {
               return false;
             }
             const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
             if (pos === null) {
               return false;
             }
-            const target = wikilinkTargetAt(view.state, pos);
-            if (target === null) {
+            const link = wikilinkAt(view.state, pos);
+            if (link === null) {
+              return false;
+            }
+            const selection = view.state.selection.main;
+            const touching =
+              selection.from <= link.to && selection.to >= link.from;
+            event.preventDefault();
+            hooks.onWikilinkClick(
+              link.target,
+              event.ctrlKey || event.metaKey || touching,
+            );
+            return true;
+          },
+          // Middle-click on a wikilink: new tab, like rendered views.
+          auxclick(event, view) {
+            if (event.button !== 1) {
+              return false;
+            }
+            const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+            if (pos === null) {
+              return false;
+            }
+            const link = wikilinkAt(view.state, pos);
+            if (link === null) {
               return false;
             }
             event.preventDefault();
-            hooks.onWikilinkClick(target, event.shiftKey);
+            hooks.onWikilinkClick(link.target, true);
             return true;
           },
         }),
