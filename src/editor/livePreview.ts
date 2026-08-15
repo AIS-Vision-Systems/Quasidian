@@ -455,6 +455,14 @@ function leadingColumns(lineText: string): number {
   return columns;
 }
 
+/**
+ * Chars taken by the (hidden) `> ` quote prefix at the line start, so
+ * list columns inside blockquotes/callouts ignore the invisible marks.
+ */
+function quotePrefixLength(lineText: string): number {
+  return /^(?:[ \t]*>[ \t]?)*/.exec(lineText)?.[0].length ?? 0;
+}
+
 /** Rendered content column of a list item: scaled leading + marker + space. */
 function itemContentColumn(state: EditorState, item: SyntaxNode): number {
   const mark = item.getChild("ListMark");
@@ -463,9 +471,12 @@ function itemContentColumn(state: EditorState, item: SyntaxNode): number {
   }
   const taskMarker = item.getChild("Task")?.getChild("TaskMarker") ?? null;
   const line = state.doc.lineAt(mark.from);
-  const wsLength = /^[ \t]*/.exec(line.text)?.[0].length ?? 0;
-  const markerLength = (taskMarker ?? mark).to - (line.from + wsLength) + 1;
-  return leadingColumns(line.text) * INDENT_SCALE + markerLength;
+  const prefix = quotePrefixLength(line.text);
+  const afterPrefix = line.text.slice(prefix);
+  const wsLength = /^[ \t]*/.exec(afterPrefix)?.[0].length ?? 0;
+  const markerLength =
+    (taskMarker ?? mark).to - (line.from + prefix + wsLength) + 1;
+  return leadingColumns(afterPrefix) * INDENT_SCALE + markerLength;
 }
 
 /**
@@ -495,10 +506,14 @@ export function computeListLines(
       }
       const line = state.doc.lineAt(node.from);
       const taskMarker = item.getChild("Task")?.getChild("TaskMarker") ?? null;
-      const wsLength = /^[ \t]*/.exec(line.text)?.[0].length ?? 0;
-      const wsWidth = leadingColumns(line.text) * INDENT_SCALE;
+      // Hidden `> ` quote marks take no visual space: columns count
+      // from after them so lists inside callouts align like reading.
+      const prefix = quotePrefixLength(line.text);
+      const afterPrefix = line.text.slice(prefix);
+      const wsLength = /^[ \t]*/.exec(afterPrefix)?.[0].length ?? 0;
+      const wsWidth = leadingColumns(afterPrefix) * INDENT_SCALE;
       const markerLength =
-        (taskMarker ?? node).to - (line.from + wsLength) + 1;
+        (taskMarker ?? node).to - (line.from + prefix + wsLength) + 1;
       const width = wsWidth + markerLength;
       const existing = byLine.get(line.from);
       if (existing !== undefined && existing.width >= width) {
@@ -519,7 +534,11 @@ export function computeListLines(
       const leading =
         wsLength === 0
           ? null
-          : { from: line.from, to: line.from + wsLength, width: wsWidth };
+          : {
+              from: line.from + prefix,
+              to: line.from + prefix + wsLength,
+              width: wsWidth,
+            };
       let marker: ListLineInfo["marker"] = null;
       if (item.parent?.name === "OrderedList" && taskMarker === null) {
         const markEnd = withFollowingSpace(state, node.from, node.to).to;
@@ -635,25 +654,48 @@ class ImageWidget extends WidgetType {
       missing.textContent = this.target;
       return missing;
     }
+    const src = this.src;
     const image = document.createElement("img");
     image.className = "cm-embed-image";
     // The real height is known only once loaded; remeasure so the gutter
-    // and coordinate mapping stay aligned with the content.
-    image.addEventListener("load", () => view.requestMeasure());
-    image.src = this.src;
+    // and coordinate mapping stay aligned with the content. The natural
+    // size is cached so a widget recreated while scrolling takes its
+    // final box synchronously and the scroll position never jumps.
+    image.addEventListener("load", () => {
+      if (!imageSizeCache.has(src)) {
+        imageSizeCache.set(src, {
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        });
+      }
+      view.requestMeasure();
+    });
+    image.src = src;
+    const cached = imageSizeCache.get(src);
     const dimensions = parseImageDimensions(this.alias);
     if (dimensions === null) {
       image.alt = this.alias ?? this.target;
+      if (cached !== undefined) {
+        image.width = cached.width;
+        image.height = cached.height;
+      }
     } else {
       image.alt = this.target;
       image.width = dimensions.width;
       if (dimensions.height !== null) {
         image.height = dimensions.height;
+      } else if (cached !== undefined && cached.width > 0) {
+        image.height = Math.round(
+          (dimensions.width * cached.height) / cached.width,
+        );
       }
     }
     return image;
   }
 }
+
+// Natural sizes of loaded embed images, per resolved src.
+const imageSizeCache = new Map<string, { width: number; height: number }>();
 
 // Bumped when settings that affect embed rendering change, so cached
 // note-embed widgets rebuild instead of showing stale content.
@@ -661,6 +703,17 @@ let embedGeneration = 0;
 
 export function bumpEmbedGeneration(): void {
   embedGeneration++;
+  embedHtmlCache.clear();
+}
+
+// Filled HTML per (generation, target, alias): a widget recreated while
+// scrolling renders synchronously at its final height, so the scroll
+// position never jumps while embeds refill. Invalidated on generation
+// bumps and by the layout on saves and external folder changes.
+const embedHtmlCache = new Map<string, string>();
+
+export function clearEmbedHtmlCache(): void {
+  embedHtmlCache.clear();
 }
 
 class NoteEmbedWidget extends WidgetType {
@@ -695,11 +748,17 @@ class NoteEmbedWidget extends WidgetType {
     const body = document.createElement("span");
     body.className = "cm-embed-note-body markdown-rendered";
     container.append(title, body);
+    const cacheKey = `${this.generation}:${this.target}|${this.alias ?? ""}`;
     const fillHooks: EmbedFillHooks = {
       resolveEmbedSrc: this.hooks.resolveEmbedSrc,
       renderEmbedNote: this.hooks.renderEmbedNote,
       isResolved: this.hooks.isResolved,
-      onRendered: () => view.requestMeasure(),
+      onRendered: () => {
+        // Nested transclusions keep deepening the content: keep the
+        // cache at the latest markup.
+        embedHtmlCache.set(cacheKey, body.innerHTML);
+        view.requestMeasure();
+      },
       onNavigate: this.hooks.onNavigate,
     };
     // Embedded content behaves like rendered content: plain hover
@@ -742,6 +801,18 @@ class NoteEmbedWidget extends WidgetType {
         this.hooks.onNavigate(link.dataset.target);
       }
     });
+    const cachedHtml = embedHtmlCache.get(cacheKey);
+    if (cachedHtml !== undefined) {
+      // Synchronous restore at the final height. Listeners never
+      // survive HTML caching: re-wire the interactive bits.
+      body.innerHTML = cachedHtml;
+      addCodePills(body);
+      wirePropertiesCollapse(body);
+      for (const image of body.querySelectorAll("img")) {
+        image.addEventListener("load", () => view.requestMeasure());
+      }
+      return container;
+    }
     void this.hooks.renderEmbedNote(this.target).then((result) => {
       if (result === null) {
         title.classList.add("cm-embed-missing");
@@ -764,6 +835,7 @@ class NoteEmbedWidget extends WidgetType {
             : [current.toLowerCase(), result.path.toLowerCase()],
         );
         fillEmbedNotes(body, fillHooks, visited, 1);
+        embedHtmlCache.set(cacheKey, body.innerHTML);
       }
       // The fill changed the widget height after CodeMirror measured it.
       view.requestMeasure();

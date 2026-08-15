@@ -19,6 +19,7 @@ import {
 import { createEditor } from "../editor/editor";
 import {
   bumpEmbedGeneration,
+  clearEmbedHtmlCache,
   setKnownPropertyKeys,
 } from "../editor/livePreview";
 import { createAutosaveScheduler } from "../editor/autosave";
@@ -797,6 +798,9 @@ export function mountLayout(root: HTMLElement): void {
     autosave.cancel();
     try {
       await writeFile(openedPath, editor.getDoc());
+      // The saved note may be embedded elsewhere: stale HTML must not
+      // be served when those widgets rebuild.
+      clearEmbedHtmlCache();
       setStatusError(null);
       backlinkIndex.setFile(openedPath, editor.getDoc());
       searchIndex.setFile(openedPath, editor.getDoc());
@@ -1921,6 +1925,7 @@ export function mountLayout(root: HTMLElement): void {
       watcherDebounce = null;
       const folder = currentFolder;
       if (folder !== null) {
+        clearEmbedHtmlCache();
         void (async () => {
           await refreshFolder(folder);
           await rebuildIndex();

@@ -288,6 +288,16 @@ describe("computeImageEmbeds and computeTaskMarkers", () => {
     expect(computeListLines(state, 0, doc.length)).toHaveLength(1);
   });
 
+  it("ignores hidden quote marks in list columns inside callouts", () => {
+    const doc = "> [!note] T\n> - a\n> - b";
+    const state = stateFor(doc, 0);
+    const lines = computeListLines(state, 6 + 6, doc.length);
+    // Same hanging indent as a top-level "- " item: the invisible "> "
+    // prefix must not widen the column.
+    expect(lines.every((line) => line.width === 2)).toBe(true);
+    expect(lines.every((line) => line.leading === null)).toBe(true);
+  });
+
   it("computes list lines: hanging indent, guides and fixed leading", () => {
     const doc = "- poma\n  - nena\n1. tres";
     const state = stateFor(doc, doc.length);
