@@ -4,7 +4,8 @@
 import { normalizePath } from "./paths";
 
 export interface Tab {
-  path: string;
+  /** Open file, or null for an empty ("new") tab. */
+  path: string | null;
   pinned: boolean;
   /** Paths visited before the current one (per-tab history). */
   back: string[];
@@ -15,8 +16,17 @@ export interface Tab {
 /** Kept per side; older entries fall off the far end. */
 const HISTORY_LIMIT = 50;
 
-export function makeTab(path: string, pinned = false): Tab {
+export function makeTab(path: string | null, pinned = false): Tab {
   return { path, pinned, back: [], forward: [] };
+}
+
+/** Inserts an empty tab after the active one and activates it. */
+export function newEmptyTab(state: WorkspaceState): WorkspaceState {
+  const at = state.active === -1 ? state.tabs.length : state.active + 1;
+  return {
+    tabs: [...state.tabs.slice(0, at), makeTab(null), ...state.tabs.slice(at)],
+    active: at,
+  };
 }
 
 export interface WorkspaceState {
@@ -36,7 +46,9 @@ export function activeTabPath(state: WorkspaceState): string | null {
 /** Index of the tab holding `path`, or -1. */
 export function findTab(state: WorkspaceState, path: string): number {
   const key = normalizePath(path);
-  return state.tabs.findIndex((tab) => normalizePath(tab.path) === key);
+  return state.tabs.findIndex(
+    (tab) => tab.path !== null && normalizePath(tab.path) === key,
+  );
 }
 
 /**
@@ -63,12 +75,16 @@ export function openPath(
     };
   }
   // Navigation replaces the active tab's file: the old one goes into
-  // the tab's history and any undone future is discarded.
+  // the tab's history (empty tabs have nothing to record) and any
+  // undone future is discarded.
   const tabs = [...state.tabs];
   tabs[state.active] = {
     ...active,
     path,
-    back: [...active.back, active.path].slice(-HISTORY_LIMIT),
+    back:
+      active.path === null
+        ? active.back
+        : [...active.back, active.path].slice(-HISTORY_LIMIT),
     forward: [],
   };
   return { tabs, active: state.active };
@@ -78,7 +94,7 @@ export function openPath(
 export function goBack(state: WorkspaceState): WorkspaceState | null {
   const active = state.tabs[state.active];
   const previous = active?.back[active.back.length - 1];
-  if (active === undefined || previous === undefined) {
+  if (active === undefined || active.path === null || previous === undefined) {
     return null;
   }
   const tabs = [...state.tabs];
@@ -95,7 +111,7 @@ export function goBack(state: WorkspaceState): WorkspaceState | null {
 export function goForward(state: WorkspaceState): WorkspaceState | null {
   const active = state.tabs[state.active];
   const next = active?.forward[active.forward.length - 1];
-  if (active === undefined || next === undefined) {
+  if (active === undefined || active.path === null || next === undefined) {
     return null;
   }
   const tabs = [...state.tabs];
@@ -211,7 +227,7 @@ export function renameTabPath(
   const tabs = state.tabs.map((tab) => {
     const next = {
       ...tab,
-      path: rename(tab.path),
+      path: tab.path === null ? null : rename(tab.path),
       back: tab.back.map(rename),
       forward: tab.forward.map(rename),
     };
@@ -247,33 +263,39 @@ export interface PanelSizes {
 
 export type RightPanelView = "backlinks" | "outgoing" | "outline";
 
-export interface SessionData {
+export interface SessionTabs {
   tabs: SessionTab[];
   active: number;
-  /** Side panel widths in px, or null when never resized. */
-  panels: PanelSizes | null;
-  /** Selected right-panel view, or null for the default. */
-  rightView: RightPanelView | null;
 }
 
-/** Snapshot of the workspace plus each tab's mode, for session.json. */
-export function serializeSession(
+/**
+ * Serializable snapshot of one workspace's tabs with their modes.
+ * Empty tabs are not persisted; the active index is remapped.
+ */
+export function serializeTabs(
   state: WorkspaceState,
   modeOf: (path: string) => SessionMode,
-  panels: PanelSizes | null = null,
-  rightView: RightPanelView | null = null,
-): SessionData {
-  return {
-    tabs: state.tabs.map((tab) => ({
+): SessionTabs {
+  const tabs: SessionTab[] = [];
+  let active = 0;
+  state.tabs.forEach((tab, index) => {
+    if (tab.path === null) {
+      return;
+    }
+    if (index <= state.active) {
+      active = tabs.length;
+    }
+    tabs.push({
       path: tab.path,
       pinned: tab.pinned,
       mode: modeOf(tab.path),
       back: tab.back.slice(-HISTORY_LIMIT),
       forward: tab.forward.slice(-HISTORY_LIMIT),
-    })),
-    active: state.active,
-    panels,
-    rightView,
+    });
+  });
+  return {
+    tabs,
+    active: tabs.length === 0 ? -1 : Math.min(active, tabs.length - 1),
   };
 }
 
@@ -286,17 +308,8 @@ function pathList(value: unknown): string[] {
     .slice(-HISTORY_LIMIT);
 }
 
-/**
- * Parses a session.json payload; malformed input or an empty tab list
- * yields null (start fresh). Individual bad entries are dropped.
- */
-export function parseSession(json: string): SessionData | null {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(json);
-  } catch {
-    return null;
-  }
+/** Parses one workspace's serialized tabs; null when nothing valid. */
+export function parseTabs(raw: unknown): SessionTabs | null {
   if (typeof raw !== "object" || raw === null) {
     return null;
   }
@@ -328,6 +341,14 @@ export function parseSession(json: string): SessionData | null {
     typeof root.active === "number" && Number.isInteger(root.active)
       ? Math.max(0, Math.min(root.active, tabs.length - 1))
       : 0;
+  return { tabs, active };
+}
+
+/** Parses the shared session extras (panel widths, right view). */
+export function parseSessionExtras(root: Record<string, unknown>): {
+  panels: PanelSizes | null;
+  rightView: RightPanelView | null;
+} {
   const rawPanels =
     typeof root.panels === "object" && root.panels !== null
       ? (root.panels as Record<string, unknown>)
@@ -346,5 +367,5 @@ export function parseSession(json: string): SessionData | null {
     root.rightView === "outline"
       ? root.rightView
       : null;
-  return { tabs, active, panels, rightView };
+  return { panels, rightView };
 }

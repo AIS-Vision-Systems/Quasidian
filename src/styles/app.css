@@ -941,9 +941,13 @@ body.is-readable-line-length .cm-editor .cm-content {
   cursor: pointer;
 }
 
+/* height auto always: the width/height attributes still provide the
+   intrinsic aspect ratio (no layout jumps), and a width constrained by
+   the pane never distorts the image. */
 .cm-editor .cm-embed-image,
 .markdown-rendered img.internal-embed {
   max-width: 100%;
+  height: auto;
   border-radius: 4px;
   vertical-align: bottom;
 }
@@ -954,11 +958,6 @@ body.is-readable-line-length .cm-editor .cm-content {
 .cm-editor .cm-embed-image:not([width]),
 .markdown-rendered img.internal-embed:not([width]) {
   max-height: 420px;
-}
-
-.cm-editor .cm-embed-image:not([height]),
-.markdown-rendered img.internal-embed:not([height]) {
-  height: auto;
 }
 
 .cm-embed-missing,
@@ -2346,4 +2345,102 @@ span.table-wrap > table {
   font-weight: inherit;
   -webkit-user-select: text;
   user-select: text;
+}
+
+/* --- New-tab button and empty tab view --- */
+
+.tab-new-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  padding: 3px 6px;
+  margin-left: 2px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tab-new-button:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.empty-tab-view {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+.empty-tab-view.is-hidden {
+  display: none;
+}
+
+.empty-tab-action {
+  background: transparent;
+  border: none;
+  color: var(--text-accent);
+  font-family: var(--font-interface);
+  font-size: var(--font-text-size);
+  cursor: pointer;
+}
+
+.empty-tab-action:hover {
+  text-decoration: underline;
+}
+
+/* --- Split panes --- */
+
+.panes-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  min-height: 0;
+  flex-basis: 0;
+  flex-shrink: 1;
+}
+
+.pane + .pane,
+.split-resize + .pane {
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.split-resize {
+  width: 7px;
+  margin: 0 -3px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  z-index: 30;
+}
+
+.split-resize:hover {
+  background: linear-gradient(
+    to right,
+    transparent 2px,
+    var(--interactive-accent) 2px,
+    var(--interactive-accent) 4px,
+    transparent 4px
+  );
+}
+
+.pane.split-drop-hint {
+  box-shadow: inset -4px 0 0 0 var(--interactive-accent);
+}
+
+/* The inactive pane's strip dims a bit so the active one reads. */
+.pane:not(.is-active-pane) .view-header {
+  opacity: 0.85;
 }

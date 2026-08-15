@@ -492,6 +492,8 @@ export interface EditorHandle {
   replaceRange(from: number, to: number, insert: string): void;
   /** Rebuilds block decorations (inline title / settings changed). */
   refreshBlocks(): void;
+  /** Tears the editor down (pane closed). */
+  destroy(): void;
   /**
    * Replaces the whole document keeping undo history, cursor (clamped)
    * and scroll — for reloading external changes from disk.
@@ -805,6 +807,9 @@ export function createEditor(
     },
     refreshBlocks(): void {
       view.dispatch({ effects: refreshBlockDecorations.of(null) });
+    },
+    destroy(): void {
+      view.destroy();
     },
     reloadDoc(contents: string): void {
       const head = Math.min(view.state.selection.main.head, contents.length);

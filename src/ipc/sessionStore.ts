@@ -3,7 +3,7 @@
 // inside note folders. Best-effort: failures never break the app.
 import { appConfigDir } from "@tauri-apps/api/path";
 import { joinPath } from "../lib/paths";
-import { parseSession, type SessionData } from "../lib/workspace";
+import { parseSession, type SessionData } from "../lib/panes";
 import { ensureDir, readFile, writeFileAtomic } from "./fs";
 
 const SESSION_FILE = "session.json";
