@@ -269,6 +269,21 @@ export function mountLayout(root: HTMLElement): void {
     welcomeEl.textContent = t("workspace.welcome");
     const host = document.createElement("div");
     host.className = "editor-host is-hidden";
+    // Right-clicking the editor's empty margins or the line-number
+    // gutter opens the view menu; inside the text, the editor's menu
+    // applies.
+    host.addEventListener("contextmenu", (event) => {
+      const target = event.target;
+      if (
+        !(target instanceof Element) ||
+        target.closest(".cm-content") !== null
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      openViewMenu(event.clientX, event.clientY);
+    });
     const emptyView = document.createElement("div");
     emptyView.className = "empty-tab-view is-hidden";
     const emptyTabAction = (
@@ -2557,18 +2572,6 @@ export function mountLayout(root: HTMLElement): void {
     }
   });
   searchClose.addEventListener("click", closeSearch);
-
-  // Right-clicking the editor's empty margins or the line-number gutter
-  // opens the view menu; inside the text, the editor's menu applies.
-  editorHost.addEventListener("contextmenu", (event) => {
-    const target = event.target;
-    if (!(target instanceof Element) || target.closest(".cm-content") !== null) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    openViewMenu(event.clientX, event.clientY);
-  });
 
   // The WebView's own context menu (reload, print…) never applies here;
   // our menus preventDefault on their targets before this runs.
