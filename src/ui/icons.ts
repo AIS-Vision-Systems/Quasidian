@@ -44,7 +44,8 @@ export type IconName =
   | "pin"
   | "file-down"
   | "arrow-left"
-  | "arrow-right";
+  | "arrow-right"
+  | "separator-vertical";
 
 const ICON_PATHS: Record<IconName, string> = {
   "book-open":
@@ -140,6 +141,9 @@ const ICON_PATHS: Record<IconName, string> = {
   "more-vertical":
     '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/>' +
     '<circle cx="12" cy="19" r="1"/>',
+  "separator-vertical":
+    '<line x1="12" y1="3" x2="12" y2="21"/>' +
+    '<polyline points="8 8 4 12 8 16"/><polyline points="16 16 20 12 16 8"/>',
   "arrow-left": '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
   "arrow-right": '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
   "file-down":

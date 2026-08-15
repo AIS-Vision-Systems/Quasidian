@@ -349,8 +349,10 @@ export function mountLayout(root: HTMLElement): void {
 
   /** Saves the bound pane's volatile state and rebinds all aliases. */
   function bindPaneUi(id: number): void {
+    // Always save first — also when re-binding the same pane, so the
+    // read-back below never resurrects stale state.
     const current = paneUis.get(boundPaneId);
-    if (current !== undefined && boundPaneId !== id) {
+    if (current !== undefined) {
       current.openedPath = openedPath;
       current.mode = currentMode;
       splitState = withWorkspace(splitState, boundPaneId, tabsState);
@@ -1347,7 +1349,7 @@ export function mountLayout(root: HTMLElement): void {
       "separator",
       {
         label: t("tabs.splitRight"),
-        icon: "panel-right",
+        icon: "separator-vertical",
         onClick: () => void splitTabRight(index),
       },
       {
@@ -2296,7 +2298,7 @@ export function mountLayout(root: HTMLElement): void {
             },
             {
               label: t("tabs.splitRight"),
-              icon: "panel-right" as const,
+              icon: "separator-vertical" as const,
               onClick: () => void splitTabRight(tabsState.active),
             },
           ]

@@ -941,9 +941,13 @@ body.is-readable-line-length .cm-editor .cm-content {
   cursor: pointer;
 }
 
+/* height auto always: the width/height attributes still provide the
+   intrinsic aspect ratio (no layout jumps), and a width constrained by
+   the pane never distorts the image. */
 .cm-editor .cm-embed-image,
 .markdown-rendered img.internal-embed {
   max-width: 100%;
+  height: auto;
   border-radius: 4px;
   vertical-align: bottom;
 }
@@ -954,11 +958,6 @@ body.is-readable-line-length .cm-editor .cm-content {
 .cm-editor .cm-embed-image:not([width]),
 .markdown-rendered img.internal-embed:not([width]) {
   max-height: 420px;
-}
-
-.cm-editor .cm-embed-image:not([height]),
-.markdown-rendered img.internal-embed:not([height]) {
-  height: auto;
 }
 
 .cm-embed-missing,
