@@ -39,6 +39,7 @@
   "menu.formatCode": "Codi",
   "menu.table": "Taula",
   "menu.insertTable": "Insereix una taula",
+  "menu.exportPdf": "Exporta a PDF",
   "menu.insert": "Insereix",
   "menu.insertFootnote": "Nota al peu",
   "menu.insertCallout": "Callout",

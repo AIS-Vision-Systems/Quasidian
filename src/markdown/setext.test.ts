@@ -27,13 +27,14 @@ function blockNames(doc: string): string[] {
 describe("setext restriction — dash underlines need 3+ dashes", () => {
   it("does not turn the previous line into a heading with 1 or 2 dashes", () => {
     expect(blockNames("Foo\n-")).toEqual(["Paragraph"]);
-    expect(blockNames("Foo\n- ")).toEqual(["Paragraph"]);
+    // "- " starts a list at once (listInterrupt) — never a heading.
+    expect(blockNames("Foo\n- ")).toEqual(["Paragraph", "BulletList"]);
     expect(blockNames("Foo\n--")).toEqual(["Paragraph"]);
   });
 
-  it("keeps the short dash line as paragraph text", () => {
-    expect(blockNodes("Foo\n- ")).toEqual([
-      { name: "Paragraph", from: 0, to: 6 },
+  it("keeps a bare dash line as paragraph text", () => {
+    expect(blockNodes("Foo\n-")).toEqual([
+      { name: "Paragraph", from: 0, to: 5 },
     ]);
     expect(blockNames("Foo\n-\nbar")).toEqual(["Paragraph"]);
   });

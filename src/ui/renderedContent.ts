@@ -142,13 +142,12 @@ export function createCodePill(
 /** Adds the copy pill to every code block under `root`. */
 export function addCodePills(root: HTMLElement): void {
   for (const pre of root.querySelectorAll<HTMLPreElement>("pre")) {
-    if (pre.querySelector(".code-lang-pill") !== null) {
-      continue;
-    }
     const code = pre.querySelector("code");
     if (code === null) {
       continue;
     }
+    // A pill restored from cached HTML has no listener: replace it.
+    pre.querySelector(".code-lang-pill")?.remove();
     pre.append(
       createCodePill(pre.dataset.lang ?? "", () => code.textContent ?? ""),
     );

@@ -16,7 +16,8 @@
         "title": "Quasidian",
         "width": 1200,
         "height": 800,
-        "theme": "Dark"
+        "theme": "Dark",
+        "visible": false
       }
     ],
     "security": {

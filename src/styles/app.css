@@ -1967,6 +1967,12 @@ span.table-wrap > table {
   border-radius: 10px;
 }
 
+/* List lines keep their hanging indent inside the callout's padding
+   (this rule is later than both, so neither padding wins alone). */
+.cm-editor .cm-callout-line.cm-list-line {
+  padding-left: calc(16px + 1em + var(--list-indent, 2ch));
+}
+
 .cm-editor .cm-callout-icon {
   display: inline-flex;
   margin-right: 6px;
@@ -2073,4 +2079,60 @@ span.table-wrap > table {
 
 .markdown-rendered .is-fold-hidden {
   display: none;
+}
+
+/* --- Export to PDF (print) --- */
+
+.print-root {
+  display: none;
+}
+
+@media print {
+  #app,
+  .hover-preview,
+  .context-menu {
+    display: none !important;
+  }
+
+  body {
+    overflow: visible;
+  }
+
+  .print-root {
+    display: block;
+    /* Light palette regardless of the app theme. */
+    --background-primary: #ffffff;
+    --background-secondary: #f6f6f6;
+    --background-modifier-border: #cccccc;
+    --background-modifier-hover: #eeeeee;
+    --text-normal: #1f1f1f;
+    --text-muted: #555555;
+    --text-faint: #888888;
+    --text-accent: #2f5fb3;
+    --interactive-accent: #2f5fb3;
+    --text-on-accent: #ffffff;
+    --code-background: #f2f2f2;
+    --text-highlight-bg: #fdee9c;
+    --hr-color: #bbbbbb;
+    --indentation-guide: #dddddd;
+    background: #ffffff;
+    color: var(--text-normal);
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Interactive chrome never prints. */
+  .print-root .code-lang-pill,
+  .print-root .reading-fold-chevron,
+  .print-root .callout-fold {
+    display: none !important;
+  }
+}
+
+.print-title {
+  margin: 0 0 0.6em;
+}
+
+@page {
+  margin: 18mm 16mm;
 }
