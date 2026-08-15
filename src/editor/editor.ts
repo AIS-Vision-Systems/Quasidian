@@ -28,11 +28,15 @@ import {
   unfoldEffect,
 } from "@codemirror/language";
 import {
+  Annotation,
   Compartment,
   EditorSelection,
   EditorState,
   Prec,
 } from "@codemirror/state";
+
+// Marks reload/mirror transactions: no autosave, no re-mirroring.
+const quietReload = Annotation.define<boolean>();
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
@@ -421,7 +425,11 @@ function wikilinkAt(
 }
 
 export interface EditorHooks {
-  onDocChanged(doc: string): void;
+  /**
+   * `quiet` marks reloads (disk, mirrors from a twin pane): no autosave
+   * and no re-mirroring must follow them.
+   */
+  onDocChanged(doc: string, quiet: boolean): void;
   onSaveRequested(): void;
   onToggleModeRequested(): void;
   /** `newTab` is set on Ctrl+Shift+click (edit) / Ctrl+click (read). */
@@ -782,7 +790,10 @@ export function createEditor(
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
-            hooks.onDocChanged(update.state.doc.toString());
+            const quiet = update.transactions.some(
+              (tr) => tr.annotation(quietReload) === true,
+            );
+            hooks.onDocChanged(update.state.doc.toString(), quiet);
           }
         }),
       ],
@@ -816,6 +827,7 @@ export function createEditor(
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: contents },
         selection: { anchor: head },
+        annotations: quietReload.of(true),
       });
     },
     revealRange(from: number, to: number): void {

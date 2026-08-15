@@ -165,6 +165,7 @@
   "tabs.close": "Tanca la pestanya",
   "tabs.new": "Pestanya nova",
   "tabs.splitRight": "Obre a la dreta",
+  "tabs.moveToWindow": "Mou a una finestra nova",
   "tabs.newTab": "Nova pestanya",
   "tabs.untitled": "Sense títol",
   "tabs.actionNewNote": "Crea una nota nova (Ctrl + N)",

@@ -6,23 +6,31 @@ import { joinPath } from "../lib/paths";
 import { parseSession, type SessionData } from "../lib/panes";
 import { ensureDir, readFile, writeFileAtomic } from "./fs";
 
-const SESSION_FILE = "session.json";
+/** The main window uses session.json; others their own labeled file. */
+function sessionFile(label: string): string {
+  return label === "main" ? "session.json" : `session-${label}.json`;
+}
 
-export async function loadSession(): Promise<SessionData | null> {
+export async function loadSession(
+  label = "main",
+): Promise<SessionData | null> {
   try {
     const dir = await appConfigDir();
-    return parseSession(await readFile(joinPath(dir, SESSION_FILE)));
+    return parseSession(await readFile(joinPath(dir, sessionFile(label))));
   } catch {
     return null;
   }
 }
 
-export async function saveSession(data: SessionData): Promise<void> {
+export async function saveSession(
+  data: SessionData,
+  label = "main",
+): Promise<void> {
   try {
     const dir = await appConfigDir();
     await ensureDir(dir);
     await writeFileAtomic(
-      joinPath(dir, SESSION_FILE),
+      joinPath(dir, sessionFile(label)),
       JSON.stringify(data, null, 2),
     );
   } catch {

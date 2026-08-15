@@ -163,6 +163,7 @@
   "tabs.close": "Cerrar la pestaña",
   "tabs.new": "Pestaña nueva",
   "tabs.splitRight": "Abrir a la derecha",
+  "tabs.moveToWindow": "Mover a una ventana nueva",
   "tabs.newTab": "Nueva pestaña",
   "tabs.untitled": "Sin título",
   "tabs.actionNewNote": "Crear una nota nueva (Ctrl + N)",

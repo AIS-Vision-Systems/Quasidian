@@ -163,6 +163,7 @@
   "tabs.close": "Close tab",
   "tabs.new": "New tab",
   "tabs.splitRight": "Open to the right",
+  "tabs.moveToWindow": "Move to new window",
   "tabs.newTab": "New tab",
   "tabs.untitled": "Untitled",
   "tabs.actionNewNote": "Create new note (Ctrl + N)",

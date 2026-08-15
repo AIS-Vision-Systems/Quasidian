@@ -1,6 +1,7 @@
 // App shell: sidebar with folder listing, CM6 editor, status bar.
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -542,6 +543,11 @@ export function mountLayout(root: HTMLElement): void {
   let tabsState: WorkspaceState = emptyWorkspace();
   let splitState: SplitState = singlePane(emptyWorkspace());
   let currentFolder: string | null = null;
+  // Multi-window: each window keeps its own session file; the main one
+  // also remembers which secondary windows to restore.
+  const windowLabel = getCurrentWindow().label;
+  const isMainWindow = windowLabel === "main";
+  let secondaryWindows: string[] = [];
   let folderFiles: FolderFile[] = [];
   let folderImages: FolderFile[] = [];
   let lastWordCount = 0;
@@ -684,12 +690,48 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
+  // Re-render timers for read-mode twins while typing in another pane.
+  const twinRenderTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+  /**
+   * Same note open in more than one pane: every other pane showing
+   * `path` mirrors the buffer (reading views re-render, debounced).
+   */
+  function mirrorToTwins(path: string, doc: string): void {
+    for (const ui of paneUis.values()) {
+      if (
+        ui.id === boundPaneId ||
+        ui.openedPath === null ||
+        !samePath(ui.openedPath, path)
+      ) {
+        continue;
+      }
+      ui.editor.reloadDoc(doc);
+      if (ui.mode === "read") {
+        const pending = twinRenderTimers.get(ui.id);
+        if (pending !== undefined) {
+          clearTimeout(pending);
+        }
+        twinRenderTimers.set(
+          ui.id,
+          setTimeout(() => {
+            twinRenderTimers.delete(ui.id);
+            const scroll = ui.readingView.element.scrollTop;
+            ui.readingView.render(ui.editor.getDoc());
+            ui.readingView.element.scrollTop = scroll;
+          }, 250),
+        );
+      }
+    }
+  }
+
   function createPaneEditor(host: HTMLElement): EditorHandle {
     return createEditor(host, {
-    onDocChanged(doc) {
+    onDocChanged(doc, quiet) {
       setCounts(doc);
-      if (openedPath !== null && !reloadingFromDisk) {
+      if (openedPath !== null && !reloadingFromDisk && !quiet) {
         autosave.notifyChange();
+        mirrorToTwins(openedPath, doc);
       }
       scheduleRightPanelRefresh();
     },
@@ -830,6 +872,7 @@ export function mountLayout(root: HTMLElement): void {
         fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode,
       panelSizes,
       rightView,
+      isMainWindow ? secondaryWindows : [],
     );
   }
 
@@ -840,7 +883,7 @@ export function mountLayout(root: HTMLElement): void {
     }
     sessionSaveDebounce = setTimeout(() => {
       sessionSaveDebounce = null;
-      void saveSession(snapshotSession());
+      void saveSession(snapshotSession(), windowLabel);
     }, 300);
   }
 
@@ -1134,6 +1177,42 @@ export function mountLayout(root: HTMLElement): void {
     scheduleSessionSave();
   }
 
+  /** Opens a new app window; `path` (with `mode`) preloads a file. */
+  function spawnWindow(
+    label: string,
+    path: string | null,
+    mode?: EditorModeSetting,
+  ): void {
+    const query =
+      path === null
+        ? ""
+        : `?open=${encodeURIComponent(path)}${mode !== undefined ? `&mode=${mode}` : ""}`;
+    const spawned = new WebviewWindow(label, {
+      url: `index.html${query}`,
+      title: "Quasidian",
+      width: 1100,
+      height: 750,
+      visible: false,
+      theme: "dark",
+    });
+    void spawned.once("tauri://error", (event) => {
+      setStatusError(t("error.openFile", { error: String(event.payload) }));
+    });
+  }
+
+  /** Moves the tab at `index` into a brand-new window. */
+  async function moveTabToNewWindow(index: number): Promise<void> {
+    const tab = tabsState.tabs[index];
+    if (tab === undefined || tab.path === null) {
+      return;
+    }
+    // Flush pending edits so the new window reads the fresh contents.
+    await stashCurrentTabState();
+    const label = `w${Date.now().toString(36)}`;
+    spawnWindow(label, tab.path, fileModes.get(normalizePath(tab.path)));
+    await closeTabAt(index);
+  }
+
   /** Moves the tab at `index` of the active pane into a new right pane. */
   async function splitTabRight(index: number): Promise<void> {
     const tab = tabsState.tabs[index];
@@ -1352,6 +1431,15 @@ export function mountLayout(root: HTMLElement): void {
         icon: "separator-vertical",
         onClick: () => void splitTabRight(index),
       },
+      ...(tab.path !== null
+        ? [
+            {
+              label: t("tabs.moveToWindow"),
+              icon: "external-link" as const,
+              onClick: () => void moveTabToNewWindow(index),
+            },
+          ]
+        : []),
       {
         label: t(tab.pinned ? "tabs.unpin" : "tabs.pin"),
         icon: "pin",
@@ -2784,6 +2872,7 @@ export function mountLayout(root: HTMLElement): void {
     if (currentMode === "read") {
       readingView.render(contents);
     }
+    mirrorToTwins(openedPath, contents);
   }
 
   // The watcher fires in bursts (editors write several times); coalesce
@@ -2810,7 +2899,7 @@ export function mountLayout(root: HTMLElement): void {
   // Best-effort save of pending changes when the window closes.
   window.addEventListener("beforeunload", () => {
     autosave.flush();
-    void saveSession(snapshotSession());
+    void saveSession(snapshotSession(), windowLabel);
   });
 
   // Mount the initial single pane and bind everything to it.
@@ -2825,31 +2914,70 @@ export function mountLayout(root: HTMLElement): void {
   renderBacklinks();
 
   // A second app instance forwards its command line here (single
-  // instance): open the file in a new tab of this window.
-  void listen<string[]>("single-instance", (event) => {
-    const file = event.payload.find((arg) =>
-      arg.toLowerCase().endsWith(".md"),
-    );
-    if (file !== undefined) {
-      void openFile(file, { newTab: true });
-    }
-  });
+  // instance): the main window opens the file in a new tab.
+  if (isMainWindow) {
+    void listen<string[]>("single-instance", (event) => {
+      const file = event.payload.find((arg) =>
+        arg.toLowerCase().endsWith(".md"),
+      );
+      if (file !== undefined) {
+        void openFile(file, { newTab: true });
+      }
+    });
+    // The main window tracks which secondary windows are alive so the
+    // session can restore them.
+    void listen<string>("qd-window-opened", (event) => {
+      if (!secondaryWindows.includes(event.payload)) {
+        secondaryWindows.push(event.payload);
+        scheduleSessionSave();
+      }
+    });
+    void listen<string>("qd-window-closed", (event) => {
+      secondaryWindows = secondaryWindows.filter(
+        (label) => label !== event.payload,
+      );
+      scheduleSessionSave();
+    });
+  } else {
+    void emit("qd-window-opened", windowLabel);
+    window.addEventListener("beforeunload", () => {
+      void emit("qd-window-closed", windowLabel);
+    });
+  }
 
-  // Double-clicking an associated .md passes its path on the command
-  // line and takes precedence; otherwise the last session is restored
-  // (when the setting allows it).
+  // Startup precedence: a file passed via the URL (tab moved to this
+  // window), then the command line (main window), then the restored
+  // session of this window (when the setting allows it).
   void (async () => {
-    const file = await startupFile();
-    if (file !== null) {
-      await openFile(file);
+    const params = new URLSearchParams(window.location.search);
+    const openParam = params.get("open");
+    if (openParam !== null) {
+      const mode = params.get("mode");
+      if (mode === "edit" || mode === "read") {
+        fileModes.set(normalizePath(openParam), mode);
+      }
+      await openFile(openParam);
       return;
+    }
+    if (isMainWindow) {
+      const file = await startupFile();
+      if (file !== null) {
+        await openFile(file);
+        return;
+      }
     }
     if (!getSettings().files.restoreSession) {
       return;
     }
-    const session = await loadSession();
+    const session = await loadSession(windowLabel);
     if (session === null) {
       return;
+    }
+    if (isMainWindow && session.windows.length > 0) {
+      secondaryWindows = [...session.windows];
+      for (const label of session.windows) {
+        spawnWindow(label, null);
+      }
     }
     if (session.panels !== null) {
       panelSizes = session.panels;
