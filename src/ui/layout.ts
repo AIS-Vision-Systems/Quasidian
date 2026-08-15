@@ -20,6 +20,8 @@ import { createEditor } from "../editor/editor";
 import {
   bumpEmbedGeneration,
   clearEmbedHtmlCache,
+  setInlineTitle,
+  setInlineTitleRename,
   setKnownPropertyKeys,
 } from "../editor/livePreview";
 import { createAutosaveScheduler } from "../editor/autosave";
@@ -50,17 +52,26 @@ import {
   closeTab,
   emptyWorkspace,
   findTab,
+  goBack,
+  goForward,
+  historyState,
   moveTab,
   openPath as openTabPath,
   renameTabPath,
   serializeSession,
   setPinned,
+  type PanelSizes,
+  type Tab,
   type WorkspaceState,
 } from "../lib/workspace";
 import { loadSession, saveSession } from "../ipc/sessionStore";
 import { renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
-import { getSettings, subscribeSettings } from "../ipc/settingsStore";
+import {
+  getSettings,
+  subscribeSettings,
+  updateSettings,
+} from "../ipc/settingsStore";
 import { editorConfigFrom } from "./applySettings";
 import { commandPaletteItems, type Command } from "./commands";
 import { openContextMenu, openPromptModal } from "./contextMenu";
@@ -145,10 +156,21 @@ export function mountLayout(root: HTMLElement): void {
   collapseRightButton.addEventListener("click", () => toggleRightPanel());
   viewHeader.append(collapseLeftButton, tabBar, collapseRightButton);
 
-  // File bar: note name centered, mode toggle and the file menu (three
-  // dots) on the right.
+  // File bar: navigation arrows on the left, note name centered, mode
+  // toggle and the file menu (three dots) on the right.
   const fileBar = document.createElement("div");
   fileBar.className = "file-bar is-hidden";
+  const navGroup = document.createElement("div");
+  navGroup.className = "view-header-actions file-nav";
+  const navBackButton = document.createElement("button");
+  navBackButton.className = "view-header-button";
+  navBackButton.append(createIcon("arrow-left"));
+  navBackButton.addEventListener("click", () => void navigateHistory(-1));
+  const navForwardButton = document.createElement("button");
+  navForwardButton.className = "view-header-button";
+  navForwardButton.append(createIcon("arrow-right"));
+  navForwardButton.addEventListener("click", () => void navigateHistory(1));
+  navGroup.append(navBackButton, navForwardButton);
   const viewTitle = document.createElement("span");
   viewTitle.className = "view-title";
   const fileActions = document.createElement("div");
@@ -174,7 +196,7 @@ export function mountLayout(root: HTMLElement): void {
       openFileMenu(event.clientX, event.clientY, openedPath);
     }
   });
-  fileBar.append(viewTitle, fileActions);
+  fileBar.append(navGroup, viewTitle, fileActions);
 
   const workspaceBody = document.createElement("div");
   workspaceBody.className = "workspace-body";
@@ -267,6 +289,55 @@ export function mountLayout(root: HTMLElement): void {
   );
 
   root.append(sidebar, workspace, backlinksPanel, statusBar);
+
+  // Side panels resize by dragging the workspace's edges; the widths
+  // persist with the session.
+  let panelSizes: PanelSizes | null = null;
+
+  function applyPanelSizes(): void {
+    if (panelSizes !== null) {
+      root.style.setProperty("--left-panel-width", `${panelSizes.left}px`);
+      root.style.setProperty("--right-panel-width", `${panelSizes.right}px`);
+    }
+  }
+
+  function panelResizeHandle(side: "left" | "right"): HTMLElement {
+    const handle = document.createElement("div");
+    handle.className = `panel-resize panel-resize-${side}`;
+    handle.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const start: PanelSizes = panelSizes ?? {
+        left: Math.round(sidebar.getBoundingClientRect().width),
+        right: Math.round(backlinksPanel.getBoundingClientRect().width),
+      };
+      const startWidth = side === "left" ? start.left : start.right;
+      handle.classList.add("is-dragging");
+      const onMove = (move: MouseEvent): void => {
+        const delta =
+          side === "left" ? move.clientX - startX : startX - move.clientX;
+        const width = Math.max(
+          160,
+          Math.min(600, Math.round(startWidth + delta)),
+        );
+        panelSizes =
+          side === "left"
+            ? { ...start, left: width }
+            : { ...start, right: width };
+        applyPanelSizes();
+      };
+      const onUp = (): void => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        handle.classList.remove("is-dragging");
+        scheduleSessionSave();
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    });
+    return handle;
+  }
+  workspace.append(panelResizeHandle("left"), panelResizeHandle("right"));
 
   let openedPath: string | null = null;
   let tabsState: WorkspaceState = emptyWorkspace();
@@ -500,8 +571,26 @@ export function mountLayout(root: HTMLElement): void {
     showProperties() {
       return getSettings().editor.showProperties;
     },
+    inlineTitle() {
+      return openedPath !== null && getSettings().appearance.inlineTitle
+        ? basename(openedPath).replace(/\.md$/i, "")
+        : null;
+    },
+    onInlineTitleRename(name) {
+      if (openedPath !== null) {
+        void renameNoteTo(openedPath, name);
+      }
+    },
   });
   workspaceBody.append(readingView.element);
+
+  // Inline-title edits in the editor widget commit through the same
+  // rename flow (links repointed, tabs and state updated).
+  setInlineTitleRename((name) => {
+    if (openedPath !== null) {
+      void renameNoteTo(openedPath, name);
+    }
+  });
 
   const fileModes = new Map<string, EditorModeSetting>();
   // Fold state per file, in memory only (never written to the folder).
@@ -529,10 +618,13 @@ export function mountLayout(root: HTMLElement): void {
 
   // --- Tabs ---
 
-  /** Session snapshot of the current tabs and their modes. */
+  /** Session snapshot of the current tabs, modes and panel sizes. */
   function snapshotSession() {
-    return serializeSession(tabsState, (path) =>
-      fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode,
+    return serializeSession(
+      tabsState,
+      (path) =>
+        fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode,
+      panelSizes,
     );
   }
 
@@ -617,6 +709,7 @@ export function mountLayout(root: HTMLElement): void {
         return el;
       }),
     );
+    updateNavButtons();
   }
 
   /**
@@ -647,6 +740,27 @@ export function mountLayout(root: HTMLElement): void {
 
   async function closeTabAt(index: number): Promise<void> {
     await applyTabsChange(closeTab(tabsState, index));
+  }
+
+  /** Steps the active tab through its own history (-1 back, 1 forward). */
+  async function navigateHistory(direction: -1 | 1): Promise<void> {
+    const next = direction === -1 ? goBack(tabsState) : goForward(tabsState);
+    if (next === null) {
+      return;
+    }
+    hideHoverPreview();
+    await stashCurrentTabState();
+    tabsState = next;
+    const path = activeTabPath(tabsState);
+    if (path !== null) {
+      await loadFile(path);
+    }
+  }
+
+  function updateNavButtons(): void {
+    const { canBack, canForward } = historyState(tabsState);
+    navBackButton.disabled = !canBack;
+    navForwardButton.disabled = !canForward;
   }
 
   async function activateTab(index: number): Promise<void> {
@@ -1243,6 +1357,8 @@ export function mountLayout(root: HTMLElement): void {
     fileBar.classList.remove("is-hidden");
     const noteName = basename(path).replace(/\.md$/i, "");
     viewTitle.textContent = noteName;
+    // Before setDoc: the block-decorations field reads it on rebuild.
+    setInlineTitle(getSettings().appearance.inlineTitle ? noteName : null);
     // Window title "folder - note"; cosmetic, so failures are ignored.
     void getCurrentWindow()
       .setTitle(`${basename(dirname(path))} - ${noteName}`)
@@ -1313,6 +1429,7 @@ export function mountLayout(root: HTMLElement): void {
     }
     viewTitle.textContent = "";
     fileBar.classList.add("is-hidden");
+    setInlineTitle(null);
     setCounts("");
     if (currentFolder !== null) {
       void getCurrentWindow()
@@ -1352,6 +1469,11 @@ export function mountLayout(root: HTMLElement): void {
     if (name === null || name === current) {
       return;
     }
+    await renameNoteTo(path, name);
+  }
+
+  /** Renames `path` to `name`, repointing links (menu + inline title). */
+  async function renameNoteTo(path: string, name: string): Promise<void> {
     const target = joinPath(
       dirname(path),
       name.toLowerCase().endsWith(".md") ? name : `${name}.md`,
@@ -1417,6 +1539,15 @@ export function mountLayout(root: HTMLElement): void {
       void getCurrentWindow()
         .setTitle(`${basename(dirname(target))} - ${noteName}`)
         .catch(() => undefined);
+      setInlineTitle(
+        getSettings().appearance.inlineTitle ? noteName : null,
+      );
+      editor.refreshBlocks();
+      if (currentMode === "read") {
+        const scroll = readingView.element.scrollTop;
+        readingView.render(editor.getDoc());
+        readingView.element.scrollTop = scroll;
+      }
     }
     renderTabs();
     scheduleSessionSave();
@@ -1480,6 +1611,52 @@ export function mountLayout(root: HTMLElement): void {
     } catch (error) {
       setStatusError(t("error.readFile", { error: String(error) }));
     }
+  }
+
+  /** View menu on the editor's empty margins / line-number gutter. */
+  function openViewMenu(x: number, y: number): void {
+    const settings = getSettings();
+    openContextMenu(x, y, [
+      {
+        label: t("settings.readableLine.name"),
+        icon: "text",
+        checked: settings.appearance.readableLineLength,
+        onClick: () =>
+          void updateSettings((s) => ({
+            ...s,
+            appearance: {
+              ...s.appearance,
+              readableLineLength: !s.appearance.readableLineLength,
+            },
+          })),
+      },
+      {
+        label: t("settings.lineNumbers.name"),
+        icon: "list",
+        checked: settings.editor.showLineNumbers,
+        onClick: () =>
+          void updateSettings((s) => ({
+            ...s,
+            editor: {
+              ...s.editor,
+              showLineNumbers: !s.editor.showLineNumbers,
+            },
+          })),
+      },
+      {
+        label: t("settings.inlineTitle.name"),
+        icon: "pencil",
+        checked: settings.appearance.inlineTitle,
+        onClick: () =>
+          void updateSettings((s) => ({
+            ...s,
+            appearance: {
+              ...s.appearance,
+              inlineTitle: !s.appearance.inlineTitle,
+            },
+          })),
+      },
+    ]);
   }
 
   function openFileMenu(x: number, y: number, path: string): void {
@@ -1711,6 +1888,7 @@ export function mountLayout(root: HTMLElement): void {
   function toggleRightPanel(): void {
     rightVisible = !rightVisible;
     backlinksPanel.classList.toggle("is-hidden", !rightVisible);
+    root.classList.toggle("right-collapsed", !rightVisible);
     if (rightVisible) {
       renderRightPanel();
     }
@@ -1758,10 +1936,33 @@ export function mountLayout(root: HTMLElement): void {
   });
   searchClose.addEventListener("click", closeSearch);
 
+  // Right-clicking the editor's empty margins or the line-number gutter
+  // opens the view menu; inside the text, the editor's menu applies.
+  editorHost.addEventListener("contextmenu", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest(".cm-content") !== null) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    openViewMenu(event.clientX, event.clientY);
+  });
+
   // The WebView's own context menu (reload, print…) never applies here;
   // our menus preventDefault on their targets before this runs.
   window.addEventListener("contextmenu", (event) => {
     event.preventDefault();
+  });
+
+  // Mouse side buttons: history back/forward, like a browser.
+  window.addEventListener("auxclick", (event) => {
+    if (event.button === 3) {
+      event.preventDefault();
+      void navigateHistory(-1);
+    } else if (event.button === 4) {
+      event.preventDefault();
+      void navigateHistory(1);
+    }
   });
 
   window.addEventListener("keydown", (event) => {
@@ -1798,6 +1999,18 @@ export function mountLayout(root: HTMLElement): void {
       event.preventDefault();
       toggleSearch();
       return;
+    }
+    if (event.altKey && !event.ctrlKey && !event.metaKey) {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        void navigateHistory(-1);
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        void navigateHistory(1);
+        return;
+      }
     }
     if ((event.ctrlKey || event.metaKey) && event.key === "Tab") {
       event.preventDefault();
@@ -1843,7 +2056,13 @@ export function mountLayout(root: HTMLElement): void {
     // Before applyConfig: its dispatch rebuilds embed widgets, which
     // must pick up the new generation (e.g. showProperties changes).
     bumpEmbedGeneration();
+    setInlineTitle(
+      openedPath !== null && settings.appearance.inlineTitle
+        ? basename(openedPath).replace(/\.md$/i, "")
+        : null,
+    );
     editor.applyConfig(editorConfigFrom(settings));
+    editor.refreshBlocks();
     refreshTexts();
     // Hot-apply the properties visibility to an open reading view.
     if (openedPath !== null && currentMode === "read") {
@@ -1881,6 +2100,10 @@ export function mountLayout(root: HTMLElement): void {
     modeHeaderButton.title = t("command.toggleReadingMode");
     moreButton.title = t("workspace.moreOptions");
     moreButton.setAttribute("aria-label", t("workspace.moreOptions"));
+    navBackButton.title = t("nav.back");
+    navBackButton.setAttribute("aria-label", t("nav.back"));
+    navForwardButton.title = t("nav.forward");
+    navForwardButton.setAttribute("aria-label", t("nav.forward"));
     renderTabs();
     searchTitle.textContent = t("search.title");
     searchInput.placeholder = t("search.placeholder");
@@ -1981,14 +2204,23 @@ export function mountLayout(root: HTMLElement): void {
     if (session === null) {
       return;
     }
-    const tabs: { path: string; pinned: boolean }[] = [];
+    if (session.panels !== null) {
+      panelSizes = session.panels;
+      applyPanelSizes();
+    }
+    const tabs: Tab[] = [];
     for (const tab of session.tabs) {
       try {
         await readFile(tab.path);
       } catch {
         continue; // gone since last session
       }
-      tabs.push({ path: tab.path, pinned: tab.pinned });
+      tabs.push({
+        path: tab.path,
+        pinned: tab.pinned,
+        back: tab.back,
+        forward: tab.forward,
+      });
       fileModes.set(normalizePath(tab.path), tab.mode);
     }
     if (tabs.length === 0) {

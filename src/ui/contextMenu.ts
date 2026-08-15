@@ -9,6 +9,8 @@ export interface MenuItem {
   /** Rendered in the error color (destructive actions). */
   danger?: boolean;
   disabled?: boolean;
+  /** Shows a check mark on the right (toggle items). */
+  checked?: boolean;
   onClick?: () => void;
   submenu?: MenuEntry[];
 }
@@ -38,6 +40,12 @@ function buildItem(
   label.className = "context-menu-label";
   label.textContent = item.label;
   element.append(iconSlot, label);
+  if (item.checked === true) {
+    const check = document.createElement("span");
+    check.className = "context-menu-check";
+    check.append(createIcon("check"));
+    element.append(check);
+  }
   if (item.submenu !== undefined) {
     const arrow = document.createElement("span");
     arrow.className = "context-menu-arrow";

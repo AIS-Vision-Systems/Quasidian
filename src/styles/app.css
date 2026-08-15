@@ -17,7 +17,7 @@ body {
 #app {
   display: grid;
   height: 100%;
-  grid-template-columns: 260px 1fr auto;
+  grid-template-columns: var(--left-panel-width, 260px) 1fr auto;
   grid-template-rows: 1fr auto;
   grid-template-areas:
     "sidebar main backlinks"
@@ -360,7 +360,7 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 240px;
+  width: var(--right-panel-width, 240px);
   padding: 12px;
   background-color: var(--background-secondary);
   border-left: 1px solid var(--background-modifier-border);
@@ -423,9 +423,48 @@ button:focus-visible {
 
 .workspace {
   grid-area: main;
+  position: relative;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Drag strips over the panel borders; the workspace never scrolls
+   itself, so they stay put. */
+.panel-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 30;
+}
+
+.panel-resize-left {
+  left: -4px;
+}
+
+.panel-resize-right {
+  right: -4px;
+}
+
+.panel-resize:hover,
+.panel-resize.is-dragging {
+  background: linear-gradient(
+    to right,
+    transparent 2px,
+    var(--interactive-accent) 2px,
+    var(--interactive-accent) 4px,
+    transparent 4px
+  );
+}
+
+#app.left-collapsed .panel-resize-left {
+  display: none;
+}
+
+#app.right-collapsed .panel-resize-right {
+  display: none;
 }
 
 /* Obsidian-style tab strip: gray bar, dark active tab that merges with
@@ -542,14 +581,24 @@ button:focus-visible {
   box-shadow: 2px 0 0 0 var(--interactive-accent);
 }
 
-/* File bar: note name centered, mode toggle and file menu on the right. */
+/* File bar: nav arrows left, note name centered, actions right. */
 .file-bar {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 12px;
   padding: 4px 16px;
+}
+
+.view-header-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.view-header-button:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
 }
 
 .file-bar.is-hidden {
@@ -2188,4 +2237,40 @@ span.table-wrap > table {
   min-height: 0;
   padding: 16px 24px 24px;
   overflow-y: auto;
+}
+
+/* --- View menu check marks --- */
+
+.context-menu-check {
+  display: inline-flex;
+  margin-left: 12px;
+  color: var(--text-muted);
+}
+
+.context-menu-check .app-icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* --- Inline title (both modes) --- */
+
+.inline-title {
+  font-size: 1.802em;
+  font-weight: 700;
+  color: var(--text-normal);
+  margin: 0 0 0.4em;
+  outline: none;
+  cursor: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cm-editor .cm-inline-title {
+  font-family: inherit;
+  padding: 2px 0 6px;
+}
+
+.markdown-rendered h1.inline-title {
+  margin-top: 0;
+  padding-top: 0;
 }

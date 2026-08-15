@@ -45,6 +45,10 @@ export interface ReadingViewHooks {
   onCalloutToggle(pos: number, fold: boolean): void;
   /** Whether reading mode shows the properties box (settings). */
   showProperties(): boolean;
+  /** Note name for the inline title, or null when hidden. */
+  inlineTitle(): string | null;
+  /** Commits an inline-title edit as a file rename. */
+  onInlineTitleRename(name: string): void;
 }
 
 export interface ReadingViewHandle {
@@ -230,12 +234,44 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
     }
   });
 
+  /** Editable H1 with the note name; Enter/blur commits as a rename. */
+  function buildInlineTitle(title: string): HTMLElement {
+    const el = document.createElement("h1");
+    el.className = "inline-title";
+    el.textContent = title;
+    el.contentEditable = "true";
+    el.spellcheck = false;
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        el.blur();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        el.textContent = title;
+        el.blur();
+      }
+    });
+    el.addEventListener("blur", () => {
+      const name = (el.textContent ?? "").trim();
+      if (name !== "" && name !== title) {
+        hooks.onInlineTitleRename(name);
+      } else {
+        el.textContent = title;
+      }
+    });
+    return el;
+  }
+
   return {
     element,
     render(doc: string): void {
       content.innerHTML = renderToHtml(doc, {
         properties: hooks.showProperties(),
       });
+      const title = hooks.inlineTitle();
+      if (title !== null) {
+        content.prepend(buildInlineTitle(title));
+      }
       fillEmbedImages(content, hooks.resolveEmbedSrc);
       const currentPath = hooks.currentFilePath();
       fillEmbedNotes(

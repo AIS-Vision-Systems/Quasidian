@@ -73,8 +73,10 @@ import {
 } from "./listCommands";
 import { emptyTable } from "./tableCommands";
 import {
+  focusInlineTitle,
   focusTableCell,
   livePreview,
+  refreshBlockDecorations,
   requestAddProperty,
 } from "./livePreview";
 
@@ -488,6 +490,8 @@ export interface EditorHandle {
   getDoc(): string;
   /** In-place edit that preserves undo history (e.g. task toggles). */
   replaceRange(from: number, to: number, insert: string): void;
+  /** Rebuilds block decorations (inline title / settings changed). */
+  refreshBlocks(): void;
   /**
    * Replaces the whole document keeping undo history, cursor (clamped)
    * and scroll — for reloading external changes from disk.
@@ -575,6 +579,30 @@ export function createEditor(
               run: (target) => {
                 applyFormat(target, "*", "*");
                 return true;
+              },
+            },
+            // ArrowUp on the first content line enters the inline title.
+            {
+              key: "ArrowUp",
+              run: (target) => {
+                const { state } = target;
+                const head = state.selection.main.head;
+                let firstPos = 0;
+                const first = syntaxTree(state).topNode.firstChild;
+                if (
+                  first !== null &&
+                  first.name === "Frontmatter" &&
+                  first.from === 0
+                ) {
+                  firstPos = Math.min(first.to + 1, state.doc.length);
+                }
+                if (
+                  state.doc.lineAt(head).number !==
+                  state.doc.lineAt(firstPos).number
+                ) {
+                  return false;
+                }
+                return focusInlineTitle(target);
               },
             },
             // Before lang-markdown's Enter (list continuation): an empty
@@ -774,6 +802,9 @@ export function createEditor(
     },
     replaceRange(from: number, to: number, insert: string): void {
       view.dispatch({ changes: { from, to, insert } });
+    },
+    refreshBlocks(): void {
+      view.dispatch({ effects: refreshBlockDecorations.of(null) });
     },
     reloadDoc(contents: string): void {
       const head = Math.min(view.state.selection.main.head, contents.length);

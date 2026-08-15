@@ -274,6 +274,11 @@ export function openSettingsModal(): void {
           patch({ readableLineLength }),
         ),
       ),
+      row(
+        "settings.inlineTitle.name",
+        "settings.inlineTitle.desc",
+        toggle(a.inlineTitle, (inlineTitle) => patch({ inlineTitle })),
+      ),
     ];
   }
 

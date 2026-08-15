@@ -17,6 +17,8 @@ export interface AppearanceSettings {
   /** Editor font size in px. */
   fontSize: number;
   readableLineLength: boolean;
+  /** Note name shown as an editable H1 at the top of the note. */
+  inlineTitle: boolean;
 }
 
 export interface EditorSettings {
@@ -64,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
     editorFont: "proportional",
     fontSize: 15,
     readableLineLength: true,
+    inlineTitle: true,
   },
   editor: {
     defaultMode: "edit",
@@ -154,6 +157,10 @@ export function mergeSettings(raw: unknown): Settings {
       readableLineLength: pickBoolean(
         appearance.readableLineLength,
         d.appearance.readableLineLength,
+      ),
+      inlineTitle: pickBoolean(
+        appearance.inlineTitle,
+        d.appearance.inlineTitle,
       ),
     },
     editor: {

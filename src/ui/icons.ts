@@ -42,7 +42,9 @@ export type IconName =
   | "sigma"
   | "more-vertical"
   | "pin"
-  | "file-down";
+  | "file-down"
+  | "arrow-left"
+  | "arrow-right";
 
 const ICON_PATHS: Record<IconName, string> = {
   "book-open":
@@ -138,6 +140,8 @@ const ICON_PATHS: Record<IconName, string> = {
   "more-vertical":
     '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/>' +
     '<circle cx="12" cy="19" r="1"/>',
+  "arrow-left": '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  "arrow-right": '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
   "file-down":
     '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/>' +
     '<path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 18v-6"/>' +
