@@ -55,18 +55,33 @@ import {
   goBack,
   goForward,
   historyState,
+  makeTab,
   moveTab,
   newEmptyTab,
   openPath as openTabPath,
   renameTabPath,
-  serializeSession,
   setPinned,
   type PanelSizes,
   type RightPanelView,
   type Tab,
   type WorkspaceState,
 } from "../lib/workspace";
+import {
+  closePane,
+  moveTabToPane,
+  paneById,
+  resizeBorder,
+  serializeSession,
+  setActivePane,
+  singlePane,
+  splitRight,
+  withWorkspace,
+  withWorkspaceOrCollapse,
+  type SplitState,
+} from "../lib/panes";
 import { loadSession, saveSession } from "../ipc/sessionStore";
+import type { EditorHandle } from "../editor/editor";
+import type { ReadingViewHandle } from "./readingView";
 import { renderToHtml } from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import {
@@ -143,99 +158,239 @@ export function mountLayout(root: HTMLElement): void {
   const workspace = document.createElement("main");
   workspace.className = "workspace";
 
-  // Center top bar: collapse left, the tab bar, collapse right.
-  const viewHeader = document.createElement("div");
-  viewHeader.className = "view-header";
+  // Central area: a row of vertical panes (splits), each with its own
+  // tab strip, file bar, editor and reading view. The collapse buttons
+  // sit at the far ends of the first/last pane's strip.
   const collapseLeftButton = document.createElement("button");
   collapseLeftButton.className = "view-header-button";
   collapseLeftButton.append(createIcon("panel-left"));
   collapseLeftButton.addEventListener("click", () => toggleSidebar());
-  const tabBar = document.createElement("div");
-  tabBar.className = "tab-bar";
   const collapseRightButton = document.createElement("button");
   collapseRightButton.className = "view-header-button";
   collapseRightButton.append(createIcon("panel-right"));
   collapseRightButton.addEventListener("click", () => toggleRightPanel());
-  viewHeader.append(collapseLeftButton, tabBar, collapseRightButton);
 
-  // File bar: navigation arrows on the left, note name centered, mode
-  // toggle and the file menu (three dots) on the right.
-  const fileBar = document.createElement("div");
-  fileBar.className = "file-bar is-hidden";
-  const navGroup = document.createElement("div");
-  navGroup.className = "view-header-actions file-nav";
-  const navBackButton = document.createElement("button");
-  navBackButton.className = "view-header-button";
-  navBackButton.append(createIcon("arrow-left"));
-  navBackButton.addEventListener("click", () => void navigateHistory(-1));
-  const navForwardButton = document.createElement("button");
-  navForwardButton.className = "view-header-button";
-  navForwardButton.append(createIcon("arrow-right"));
-  navForwardButton.addEventListener("click", () => void navigateHistory(1));
-  navGroup.append(navBackButton, navForwardButton);
-  const viewTitle = document.createElement("span");
-  viewTitle.className = "view-title";
-  const fileActions = document.createElement("div");
-  fileActions.className = "view-header-actions";
-  const modeHeaderButton = document.createElement("button");
-  modeHeaderButton.className = "view-header-button";
-  modeHeaderButton.append(createIcon("book-open"));
-  modeHeaderButton.title = t("command.toggleReadingMode");
-  modeHeaderButton.addEventListener("click", () => void toggleMode());
-  const moreButton = document.createElement("button");
-  moreButton.className = "view-header-button";
-  moreButton.append(createIcon("more-vertical"));
-  moreButton.addEventListener("click", () => {
-    if (openedPath !== null) {
-      const rect = moreButton.getBoundingClientRect();
-      openFileMenu(rect.left, rect.bottom + 4, openedPath);
-    }
-  });
-  fileActions.append(modeHeaderButton, moreButton);
-  viewTitle.addEventListener("contextmenu", (event) => {
-    if (openedPath !== null) {
-      event.preventDefault();
-      openFileMenu(event.clientX, event.clientY, openedPath);
-    }
-  });
-  fileBar.append(navGroup, viewTitle, fileActions);
+  const panesRow = document.createElement("div");
+  panesRow.className = "panes-row";
+  workspace.append(panesRow);
 
-  const workspaceBody = document.createElement("div");
-  workspaceBody.className = "workspace-body";
+  interface PaneUi {
+    id: number;
+    root: HTMLElement;
+    header: HTMLElement;
+    tabBar: HTMLElement;
+    fileBar: HTMLElement;
+    viewTitle: HTMLElement;
+    navBackButton: HTMLButtonElement;
+    navForwardButton: HTMLButtonElement;
+    modeHeaderButton: HTMLButtonElement;
+    moreButton: HTMLButtonElement;
+    body: HTMLElement;
+    welcome: HTMLElement;
+    editorHost: HTMLElement;
+    emptyTabView: HTMLElement;
+    editor: EditorHandle;
+    readingView: ReadingViewHandle;
+    openedPath: string | null;
+    mode: EditorModeSetting;
+  }
 
-  const welcome = document.createElement("div");
-  welcome.className = "workspace-welcome";
-  welcome.textContent = t("workspace.welcome");
+  const paneUis = new Map<number, PaneUi>();
+  let boundPaneId = 1;
 
-  const editorHost = document.createElement("div");
-  editorHost.className = "editor-host is-hidden";
+  // Active-pane bindings: everything below operates on these; they are
+  // re-assigned whenever another pane becomes the active one.
+  let tabBar!: HTMLElement;
+  let fileBar!: HTMLElement;
+  let viewTitle!: HTMLElement;
+  let navBackButton!: HTMLButtonElement;
+  let navForwardButton!: HTMLButtonElement;
+  let modeHeaderButton!: HTMLButtonElement;
+  let workspaceBody!: HTMLElement;
+  let welcome!: HTMLElement;
+  let editorHost!: HTMLElement;
+  let emptyTabView!: HTMLElement;
+  let editor!: EditorHandle;
+  let readingView!: ReadingViewHandle;
 
-  // Empty ("new") tab: three centered accent actions.
-  const emptyTabView = document.createElement("div");
-  emptyTabView.className = "empty-tab-view is-hidden";
-  const emptyTabAction = (
-    labelKey: string,
-    onClick: () => void,
-  ): HTMLButtonElement => {
-    const action = document.createElement("button");
-    action.className = "empty-tab-action";
-    action.dataset.labelKey = labelKey;
-    action.textContent = t(labelKey);
-    action.addEventListener("click", onClick);
-    return action;
-  };
-  emptyTabView.append(
-    emptyTabAction("tabs.actionNewNote", () => void createNewNote()),
-    emptyTabAction("tabs.actionOpenFile", () => openQuickSwitcher()),
-    emptyTabAction("tabs.actionClose", () => {
-      if (tabsState.active !== -1) {
-        void closeTabAt(tabsState.active);
+  function createPaneUi(id: number): PaneUi {
+    const root = document.createElement("section");
+    root.className = "pane";
+    root.dataset.paneId = String(id);
+    const header = document.createElement("div");
+    header.className = "view-header";
+    const paneTabBar = document.createElement("div");
+    paneTabBar.className = "tab-bar";
+    header.append(paneTabBar);
+
+    const paneFileBar = document.createElement("div");
+    paneFileBar.className = "file-bar is-hidden";
+    const navGroup = document.createElement("div");
+    navGroup.className = "view-header-actions file-nav";
+    const back = document.createElement("button");
+    back.className = "view-header-button";
+    back.append(createIcon("arrow-left"));
+    back.addEventListener("click", () => void navigateHistory(-1));
+    const forward = document.createElement("button");
+    forward.className = "view-header-button";
+    forward.append(createIcon("arrow-right"));
+    forward.addEventListener("click", () => void navigateHistory(1));
+    navGroup.append(back, forward);
+    const title = document.createElement("span");
+    title.className = "view-title";
+    title.addEventListener("contextmenu", (event) => {
+      if (openedPath !== null) {
+        event.preventDefault();
+        openFileMenu(event.clientX, event.clientY, openedPath);
       }
-    }),
-  );
+    });
+    const actions = document.createElement("div");
+    actions.className = "view-header-actions";
+    const mode = document.createElement("button");
+    mode.className = "view-header-button";
+    mode.append(createIcon("book-open"));
+    mode.addEventListener("click", () => void toggleMode());
+    const more = document.createElement("button");
+    more.className = "view-header-button";
+    more.append(createIcon("more-vertical"));
+    more.addEventListener("click", () => {
+      if (openedPath !== null) {
+        const rect = more.getBoundingClientRect();
+        openFileMenu(rect.left, rect.bottom + 4, openedPath);
+      }
+    });
+    actions.append(mode, more);
+    paneFileBar.append(navGroup, title, actions);
 
-  workspaceBody.append(welcome, editorHost, emptyTabView);
-  workspace.append(viewHeader, fileBar, workspaceBody);
+    const body = document.createElement("div");
+    body.className = "workspace-body";
+    const welcomeEl = document.createElement("div");
+    welcomeEl.className = "workspace-welcome";
+    welcomeEl.textContent = t("workspace.welcome");
+    const host = document.createElement("div");
+    host.className = "editor-host is-hidden";
+    const emptyView = document.createElement("div");
+    emptyView.className = "empty-tab-view is-hidden";
+    const emptyTabAction = (
+      labelKey: string,
+      onClick: () => void,
+    ): HTMLButtonElement => {
+      const action = document.createElement("button");
+      action.className = "empty-tab-action";
+      action.dataset.labelKey = labelKey;
+      action.textContent = t(labelKey);
+      action.addEventListener("click", onClick);
+      return action;
+    };
+    emptyView.append(
+      emptyTabAction("tabs.actionNewNote", () => void createNewNote()),
+      emptyTabAction("tabs.actionOpenFile", () => openQuickSwitcher()),
+      emptyTabAction("tabs.actionClose", () => {
+        if (tabsState.active !== -1) {
+          void closeTabAt(tabsState.active);
+        }
+      }),
+    );
+    const paneEditor = createPaneEditor(host);
+    const paneReading = createPaneReading();
+    body.append(welcomeEl, host, emptyView, paneReading.element);
+    root.append(header, paneFileBar, body);
+
+    // Interacting anywhere in a pane makes it the active one — in the
+    // capture phase, so every inner handler sees the new bindings.
+    root.addEventListener(
+      "mousedown",
+      () => {
+        if (boundPaneId !== id) {
+          focusPane(id);
+        }
+      },
+      true,
+    );
+
+    const ui: PaneUi = {
+      id,
+      root,
+      header,
+      tabBar: paneTabBar,
+      fileBar: paneFileBar,
+      viewTitle: title,
+      navBackButton: back,
+      navForwardButton: forward,
+      modeHeaderButton: mode,
+      moreButton: more,
+      body,
+      welcome: welcomeEl,
+      editorHost: host,
+      emptyTabView: emptyView,
+      editor: paneEditor,
+      readingView: paneReading,
+      openedPath: null,
+      mode: "edit",
+    };
+    paneUis.set(id, ui);
+    return ui;
+  }
+
+  /** Saves the bound pane's volatile state and rebinds all aliases. */
+  function bindPaneUi(id: number): void {
+    const current = paneUis.get(boundPaneId);
+    if (current !== undefined && boundPaneId !== id) {
+      current.openedPath = openedPath;
+      current.mode = currentMode;
+      splitState = withWorkspace(splitState, boundPaneId, tabsState);
+    }
+    const ui = paneUis.get(id);
+    if (ui === undefined) {
+      return;
+    }
+    boundPaneId = id;
+    tabBar = ui.tabBar;
+    fileBar = ui.fileBar;
+    viewTitle = ui.viewTitle;
+    navBackButton = ui.navBackButton;
+    navForwardButton = ui.navForwardButton;
+    modeHeaderButton = ui.modeHeaderButton;
+    workspaceBody = ui.body;
+    welcome = ui.welcome;
+    editorHost = ui.editorHost;
+    emptyTabView = ui.emptyTabView;
+    editor = ui.editor;
+    readingView = ui.readingView;
+    openedPath = ui.openedPath;
+    currentMode = ui.mode;
+    const pane = paneById(splitState, id);
+    tabsState = pane === null ? emptyWorkspace() : pane.workspace;
+    // The inline-title module state follows the bound pane.
+    setInlineTitle(
+      openedPath !== null && getSettings().appearance.inlineTitle
+        ? basename(openedPath).replace(/\.md$/i, "")
+        : null,
+    );
+    editor.refreshBlocks();
+  }
+
+  /** Makes pane `id` the active one (user interaction). */
+  function focusPane(id: number): void {
+    if (boundPaneId === id && splitState.activePane === id) {
+      return;
+    }
+    bindPaneUi(id);
+    splitState = setActivePane(splitState, id);
+    for (const [paneId, ui] of paneUis) {
+      ui.root.classList.toggle("is-active-pane", paneId === id);
+    }
+    // Status bar and right panel follow the active pane. The tab bars
+    // themselves are not rebuilt here: a rebuild mid-mousedown would
+    // detach the element the user is clicking.
+    setCounts(editor.getDoc());
+    modeButton.textContent = t(
+      currentMode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
+    );
+    updateNavButtons();
+    renderBacklinks();
+    scheduleSessionSave();
+  }
 
   // Right panel: one list, three views (backlinks, outgoing, outline).
   type RightView = RightPanelView;
@@ -368,6 +523,7 @@ export function mountLayout(root: HTMLElement): void {
 
   let openedPath: string | null = null;
   let tabsState: WorkspaceState = emptyWorkspace();
+  let splitState: SplitState = singlePane(emptyWorkspace());
   let currentFolder: string | null = null;
   let folderFiles: FolderFile[] = [];
   let folderImages: FolderFile[] = [];
@@ -511,7 +667,8 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
-  const editor = createEditor(editorHost, {
+  function createPaneEditor(host: HTMLElement): EditorHandle {
+    return createEditor(host, {
     onDocChanged(doc) {
       setCounts(doc);
       if (openedPath !== null && !reloadingFromDisk) {
@@ -562,9 +719,11 @@ export function mountLayout(root: HTMLElement): void {
     renderEmbedNote,
     isResolved: isResolvedTarget,
     currentFilePath: () => openedPath,
-  }, editorConfigFrom(getSettings()));
+    }, editorConfigFrom(getSettings()));
+  }
 
-  const readingView = createReadingView({
+  function createPaneReading(): ReadingViewHandle {
+    return createReadingView({
     onInternalLink(target, newTab) {
       void openWikilink(target, newTab === true);
     },
@@ -608,8 +767,8 @@ export function mountLayout(root: HTMLElement): void {
         void renameNoteTo(openedPath, name);
       }
     },
-  });
-  workspaceBody.append(readingView.element);
+    });
+  }
 
   // Inline-title edits in the editor widget commit through the same
   // rename flow (links repointed, tabs and state updated).
@@ -645,10 +804,11 @@ export function mountLayout(root: HTMLElement): void {
 
   // --- Tabs ---
 
-  /** Session snapshot: tabs, modes, panel sizes and right-panel view. */
+  /** Session snapshot: panes, tabs, modes, panel sizes and right view. */
   function snapshotSession() {
+    splitState = withWorkspace(splitState, boundPaneId, tabsState);
     return serializeSession(
-      tabsState,
+      splitState,
       (path) =>
         fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode,
       panelSizes,
@@ -687,7 +847,7 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
-  function renderTabs(): void {
+  function renderPaneTabBar(ui: PaneUi, paneTabs: WorkspaceState): void {
     const plusButton = document.createElement("button");
     plusButton.className = "tab-new-button";
     plusButton.append(createIcon("plus"));
@@ -696,11 +856,11 @@ export function mountLayout(root: HTMLElement): void {
     plusButton.addEventListener("click", () =>
       void applyTabsChange(newEmptyTab(tabsState)),
     );
-    tabBar.replaceChildren(
-      ...tabsState.tabs.map((tab, index) => {
+    ui.tabBar.replaceChildren(
+      ...paneTabs.tabs.map((tab, index) => {
         const el = document.createElement("div");
         el.className = "workspace-tab";
-        el.classList.toggle("is-active", index === tabsState.active);
+        el.classList.toggle("is-active", index === paneTabs.active);
         el.classList.toggle("is-pinned", tab.pinned);
         el.title = tab.path ?? t("tabs.newTab");
         if (tab.pinned) {
@@ -749,7 +909,35 @@ export function mountLayout(root: HTMLElement): void {
       }),
       plusButton,
     );
+  }
+
+  /** Renders every pane's tab bar and repositions the collapse buttons. */
+  function renderTabs(): void {
+    splitState = withWorkspace(splitState, boundPaneId, tabsState);
+    for (const pane of splitState.panes) {
+      const ui = paneUis.get(pane.id);
+      if (ui !== undefined) {
+        renderPaneTabBar(
+          ui,
+          pane.id === boundPaneId ? tabsState : pane.workspace,
+        );
+      }
+    }
+    placeCollapseButtons();
     updateNavButtons();
+  }
+
+  function placeCollapseButtons(): void {
+    const first = paneUis.get(splitState.panes[0]?.id ?? -1);
+    const last = paneUis.get(
+      splitState.panes[splitState.panes.length - 1]?.id ?? -1,
+    );
+    if (first !== undefined) {
+      first.header.prepend(collapseLeftButton);
+    }
+    if (last !== undefined) {
+      last.header.append(collapseRightButton);
+    }
   }
 
   /**
@@ -761,6 +949,13 @@ export function mountLayout(root: HTMLElement): void {
     const nextPath = activeTabPath(next);
     if (nextPath === null) {
       await stashCurrentTabState();
+      if (next.active === -1 && splitState.panes.length > 1) {
+        // The pane emptied and others remain: collapse it.
+        tabsState = next;
+        splitState = withWorkspace(splitState, boundPaneId, next);
+        await applySplitChange(closePane(splitState, boundPaneId));
+        return;
+      }
       tabsState = next;
       if (next.active === -1) {
         clearWorkspaceView();
@@ -806,6 +1001,140 @@ export function mountLayout(root: HTMLElement): void {
     await applyTabsChange(closeTab(tabsState, index));
   }
 
+  function destroyPaneUi(id: number): void {
+    const ui = paneUis.get(id);
+    if (ui === undefined) {
+      return;
+    }
+    ui.editor.destroy();
+    ui.root.remove();
+    paneUis.delete(id);
+  }
+
+  /** Lays panes out in order with their sizes and rebuilds resizers. */
+  function applySplitSizes(): void {
+    for (const resizer of [...panesRow.querySelectorAll(".split-resize")]) {
+      resizer.remove();
+    }
+    splitState.panes.forEach((pane, index) => {
+      const ui = paneUis.get(pane.id);
+      if (ui === undefined) {
+        return;
+      }
+      panesRow.append(ui.root);
+      ui.root.style.flexGrow = String(Math.max(pane.size, 0.05) * 100);
+      if (index < splitState.panes.length - 1) {
+        panesRow.append(createSplitResizer(pane.id));
+      }
+    });
+  }
+
+  function createSplitResizer(leftPaneId: number): HTMLElement {
+    const handle = document.createElement("div");
+    handle.className = "split-resize";
+    handle.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      let lastX = event.clientX;
+      const width = panesRow.getBoundingClientRect().width;
+      const onMove = (move: MouseEvent): void => {
+        const delta = (move.clientX - lastX) / Math.max(1, width);
+        lastX = move.clientX;
+        splitState = resizeBorder(splitState, leftPaneId, delta);
+        applySplitSizes();
+      };
+      const onUp = (): void => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        scheduleSessionSave();
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    });
+    return handle;
+  }
+
+  /**
+   * Reconciles the pane UIs with a new split state: removed panes are
+   * destroyed, new ones mounted, and every pane whose view does not
+   * match its active tab reloads. Ends bound to the active pane.
+   */
+  async function applySplitChange(next: SplitState): Promise<void> {
+    const previousIds = new Set(splitState.panes.map((pane) => pane.id));
+    splitState = next;
+    for (const id of previousIds) {
+      if (paneById(splitState, id) === null) {
+        destroyPaneUi(id);
+      }
+    }
+    for (const pane of splitState.panes) {
+      if (!paneUis.has(pane.id)) {
+        createPaneUi(pane.id);
+      }
+    }
+    applySplitSizes();
+    for (const pane of splitState.panes) {
+      const ui = paneUis.get(pane.id);
+      if (ui === undefined) {
+        continue;
+      }
+      const want =
+        pane.workspace.active === -1
+          ? null
+          : (pane.workspace.tabs[pane.workspace.active]?.path ?? null);
+      const has = pane.id === boundPaneId ? openedPath : ui.openedPath;
+      const wantEmptyView = want === null && pane.workspace.active !== -1;
+      const showsEmptyView = !ui.emptyTabView.classList.contains("is-hidden");
+      if (want === has && wantEmptyView === showsEmptyView) {
+        continue;
+      }
+      bindPaneUi(pane.id);
+      tabsState = pane.workspace;
+      if (want === null) {
+        if (pane.workspace.active === -1) {
+          clearWorkspaceView();
+        } else {
+          showEmptyTabView();
+        }
+      } else {
+        await loadFile(want);
+      }
+      splitState = withWorkspace(splitState, pane.id, tabsState);
+    }
+    bindPaneUi(splitState.activePane);
+    for (const [paneId, ui] of paneUis) {
+      ui.root.classList.toggle(
+        "is-active-pane",
+        paneId === splitState.activePane,
+      );
+    }
+    setCounts(editor.getDoc());
+    modeButton.textContent = t(
+      currentMode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
+    );
+    renderBacklinks();
+    renderTabs();
+    scheduleSessionSave();
+  }
+
+  /** Moves the tab at `index` of the active pane into a new right pane. */
+  async function splitTabRight(index: number): Promise<void> {
+    const tab = tabsState.tabs[index];
+    if (tab === undefined) {
+      return;
+    }
+    hideHoverPreview();
+    await stashCurrentTabState();
+    let source = closeTab(tabsState, index);
+    if (source.tabs.length === 0) {
+      source = { tabs: [makeTab(null)], active: 0 };
+    }
+    tabsState = source;
+    let next = withWorkspace(splitState, boundPaneId, source);
+    next = splitRight(next, boundPaneId, tab);
+    await applySplitChange(next);
+  }
+
   /** Steps the active tab through its own history (-1 back, 1 forward). */
   async function navigateHistory(direction: -1 | 1): Promise<void> {
     const next = direction === -1 ? goBack(tabsState) : goForward(tabsState);
@@ -847,7 +1176,11 @@ export function mountLayout(root: HTMLElement): void {
     void activateTab((tabsState.active + delta + count) % count);
   }
 
-  /** Click activates; dragging past a threshold reorders the tab. */
+  /**
+   * Click activates; dragging reorders within the bar, docks into
+   * another pane's bar, or splits right when dropped on a pane's right
+   * edge.
+   */
   function startTabDrag(
     el: HTMLElement,
     index: number,
@@ -855,10 +1188,20 @@ export function mountLayout(root: HTMLElement): void {
   ): void {
     let dragging = false;
     let target = index;
+    let targetPaneId: number | null = null;
+    let splitPaneId: number | null = null;
     const clearMarkers = (): void => {
-      for (const tabEl of tabBar.children) {
-        tabEl.classList.remove("drop-before", "drop-after");
+      for (const ui of paneUis.values()) {
+        for (const tabEl of ui.tabBar.children) {
+          tabEl.classList.remove("drop-before", "drop-after");
+        }
+        ui.root.classList.remove("split-drop-hint");
       }
+    };
+    const paneIdAt = (element: Element | null): number | null => {
+      const paneEl = element?.closest<HTMLElement>(".pane") ?? null;
+      const id = paneEl === null ? NaN : Number(paneEl.dataset.paneId);
+      return Number.isFinite(id) ? id : null;
     };
     const onMove = (event: MouseEvent): void => {
       if (!dragging && Math.abs(event.clientX - start.clientX) < 5) {
@@ -867,7 +1210,44 @@ export function mountLayout(root: HTMLElement): void {
       dragging = true;
       el.classList.add("is-dragging");
       clearMarkers();
-      const tabs = [...tabBar.children] as HTMLElement[];
+      targetPaneId = null;
+      splitPaneId = null;
+      const under = document.elementFromPoint(event.clientX, event.clientY);
+      const overBar = under?.closest<HTMLElement>(".tab-bar") ?? null;
+      const paneId = paneIdAt(under);
+      if (overBar !== null && paneId !== null && paneId !== boundPaneId) {
+        // Docking into another pane's bar.
+        targetPaneId = paneId;
+        const tabs = [...overBar.children].filter((child) =>
+          child.classList.contains("workspace-tab"),
+        ) as HTMLElement[];
+        target = tabs.length;
+        for (let i = 0; i < tabs.length; i++) {
+          const rect = tabs[i].getBoundingClientRect();
+          if (event.clientX < rect.left + rect.width / 2) {
+            target = i;
+            tabs[i].classList.add("drop-before");
+            return;
+          }
+        }
+        tabs[tabs.length - 1]?.classList.add("drop-after");
+        return;
+      }
+      if (overBar === null && paneId !== null) {
+        const ui = paneUis.get(paneId);
+        const rect = ui?.root.getBoundingClientRect();
+        if (rect !== undefined && event.clientX > rect.right - 60) {
+          // Split right of that pane.
+          splitPaneId = paneId;
+          ui?.root.classList.add("split-drop-hint");
+          return;
+        }
+      }
+      // Reorder within the own bar.
+      const tabs = [...tabBar.children].filter((child) =>
+        child.classList.contains("workspace-tab"),
+      ) as HTMLElement[];
+      target = tabs.length - 1;
       for (let i = 0; i < tabs.length; i++) {
         const rect = tabs[i].getBoundingClientRect();
         if (event.clientX < rect.left + rect.width / 2) {
@@ -876,7 +1256,6 @@ export function mountLayout(root: HTMLElement): void {
           return;
         }
       }
-      target = tabs.length - 1;
       tabs[tabs.length - 1]?.classList.add("drop-after");
     };
     const onUp = (): void => {
@@ -884,14 +1263,51 @@ export function mountLayout(root: HTMLElement): void {
       window.removeEventListener("mouseup", onUp);
       el.classList.remove("is-dragging");
       clearMarkers();
-      if (dragging) {
-        void applyTabsChange(moveTab(tabsState, index, target));
-      } else {
+      if (!dragging) {
         void activateTab(index);
+        return;
       }
+      if (splitPaneId !== null) {
+        void dropSplitRight(index, splitPaneId);
+        return;
+      }
+      if (targetPaneId !== null) {
+        void dropOnPane(index, targetPaneId, target);
+        return;
+      }
+      void applyTabsChange(moveTab(tabsState, index, target));
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }
+
+  /** Docks the active pane's tab `index` into pane `targetId`. */
+  async function dropOnPane(
+    index: number,
+    targetId: number,
+    position: number,
+  ): Promise<void> {
+    await stashCurrentTabState();
+    let next = withWorkspace(splitState, boundPaneId, tabsState);
+    next = moveTabToPane(next, boundPaneId, index, targetId, position);
+    await applySplitChange(next);
+  }
+
+  /** Drops the active pane's tab `index` as a new pane right of `paneId`. */
+  async function dropSplitRight(index: number, paneId: number): Promise<void> {
+    const tab = tabsState.tabs[index];
+    if (tab === undefined) {
+      return;
+    }
+    await stashCurrentTabState();
+    let source = closeTab(tabsState, index);
+    let next = withWorkspace(splitState, boundPaneId, source);
+    next = splitRight(next, paneId, tab);
+    if (source.tabs.length === 0) {
+      next = withWorkspaceOrCollapse(next, boundPaneId, source);
+    }
+    tabsState = paneById(next, boundPaneId)?.workspace ?? source;
+    await applySplitChange(next);
   }
 
   function openTabMenu(x: number, y: number, index: number): void {
@@ -914,6 +1330,11 @@ export function mountLayout(root: HTMLElement): void {
         onClick: () => void applyTabsChange(closeAllTabs(tabsState)),
       },
       "separator",
+      {
+        label: t("tabs.splitRight"),
+        icon: "panel-right",
+        onClick: () => void splitTabRight(index),
+      },
       {
         label: t(tab.pinned ? "tabs.unpin" : "tabs.pin"),
         icon: "pin",
@@ -1650,6 +2071,23 @@ export function mountLayout(root: HTMLElement): void {
     }
     moveFileState(path, target);
     tabsState = renameTabPath(tabsState, path, target);
+    splitState = {
+      ...splitState,
+      panes: splitState.panes.map((pane) => ({
+        ...pane,
+        workspace: renameTabPath(pane.workspace, path, target),
+      })),
+    };
+    for (const ui of paneUis.values()) {
+      if (
+        ui.id !== boundPaneId &&
+        ui.openedPath !== null &&
+        samePath(ui.openedPath, path)
+      ) {
+        ui.openedPath = target;
+        ui.viewTitle.textContent = basename(target).replace(/\.md$/i, "");
+      }
+    }
     // Repoint the wikilinks of every linker to the new name.
     for (const linker of linkers) {
       try {
@@ -1727,14 +2165,30 @@ export function mountLayout(root: HTMLElement): void {
     fileModes.delete(normalizePath(path));
     fileFolds.delete(normalizePath(path));
     fileScroll.delete(normalizePath(path));
-    const tabIndex = findTab(tabsState, path);
-    if (tabIndex !== -1) {
-      if (openedPath !== null && samePath(path, openedPath)) {
-        // The buffer belongs to a deleted file: never save it back.
-        autosave.cancel();
-        openedPath = null;
+    // Close every tab holding the file, in every pane.
+    if (openedPath !== null && samePath(path, openedPath)) {
+      // The buffer belongs to a deleted file: never save it back.
+      autosave.cancel();
+      openedPath = null;
+    }
+    splitState = withWorkspace(splitState, boundPaneId, tabsState);
+    let next = splitState;
+    let touched = false;
+    for (const pane of splitState.panes) {
+      let ws = pane.workspace;
+      let idx = findTab(ws, path);
+      while (idx !== -1) {
+        ws = closeTab(ws, idx);
+        idx = findTab(ws, path);
+        touched = true;
       }
-      await applyTabsChange(closeTab(tabsState, tabIndex));
+      next = withWorkspaceOrCollapse(next, pane.id, ws);
+    }
+    if (touched) {
+      if (boundPaneId === splitState.activePane) {
+        tabsState = paneById(next, boundPaneId)?.workspace ?? tabsState;
+      }
+      await applySplitChange(next);
     }
     if (currentFolder !== null) {
       await refreshFolder(currentFolder);
@@ -1824,6 +2278,11 @@ export function mountLayout(root: HTMLElement): void {
               label: t("menu.addProperty"),
               icon: "plus" as const,
               onClick: () => editor.addProperty(),
+            },
+            {
+              label: t("tabs.splitRight"),
+              icon: "panel-right" as const,
+              onClick: () => void splitTabRight(tabsState.active),
             },
           ]
         : []),
@@ -2227,7 +2686,9 @@ export function mountLayout(root: HTMLElement): void {
         ? basename(openedPath).replace(/\.md$/i, "")
         : null,
     );
-    editor.applyConfig(editorConfigFrom(settings));
+    for (const ui of paneUis.values()) {
+      ui.editor.applyConfig(editorConfigFrom(settings));
+    }
     editor.refreshBlocks();
     refreshTexts();
     // Hot-apply the properties visibility to an open reading view.
@@ -2262,19 +2723,21 @@ export function mountLayout(root: HTMLElement): void {
     charCount.textContent = t("statusBar.characters", {
       count: lastCharCount,
     });
-    welcome.textContent = t("workspace.welcome");
-    modeHeaderButton.title = t("command.toggleReadingMode");
-    moreButton.title = t("workspace.moreOptions");
-    moreButton.setAttribute("aria-label", t("workspace.moreOptions"));
-    navBackButton.title = t("nav.back");
-    navBackButton.setAttribute("aria-label", t("nav.back"));
-    navForwardButton.title = t("nav.forward");
-    navForwardButton.setAttribute("aria-label", t("nav.forward"));
-    for (const action of emptyTabView.querySelectorAll<HTMLElement>(
-      ".empty-tab-action",
-    )) {
-      if (action.dataset.labelKey !== undefined) {
-        action.textContent = t(action.dataset.labelKey);
+    for (const ui of paneUis.values()) {
+      ui.welcome.textContent = t("workspace.welcome");
+      ui.modeHeaderButton.title = t("command.toggleReadingMode");
+      ui.moreButton.title = t("workspace.moreOptions");
+      ui.moreButton.setAttribute("aria-label", t("workspace.moreOptions"));
+      ui.navBackButton.title = t("nav.back");
+      ui.navBackButton.setAttribute("aria-label", t("nav.back"));
+      ui.navForwardButton.title = t("nav.forward");
+      ui.navForwardButton.setAttribute("aria-label", t("nav.forward"));
+      for (const action of ui.emptyTabView.querySelectorAll<HTMLElement>(
+        ".empty-tab-action",
+      )) {
+        if (action.dataset.labelKey !== undefined) {
+          action.textContent = t(action.dataset.labelKey);
+        }
       }
     }
     renderTabs();
@@ -2345,6 +2808,12 @@ export function mountLayout(root: HTMLElement): void {
     void saveSession(snapshotSession());
   });
 
+  // Mount the initial single pane and bind everything to it.
+  createPaneUi(1);
+  bindPaneUi(1);
+  paneUis.get(1)?.root.classList.add("is-active-pane");
+  applySplitSizes();
+
   setListMessage(t("sidebar.noFolder"));
   setCounts("");
   refreshTexts();
@@ -2385,31 +2854,44 @@ export function mountLayout(root: HTMLElement): void {
       rightView = session.rightView;
       renderRightPanel();
     }
-    const tabs: Tab[] = [];
-    for (const tab of session.tabs) {
-      try {
-        await readFile(tab.path);
-      } catch {
-        continue; // gone since last session
+    // Rebuild the split state, probing files and dropping the missing.
+    const paneStates: SplitState["panes"] = [];
+    for (const sessionPane of session.panes) {
+      const tabs: Tab[] = [];
+      for (const tab of sessionPane.tabs) {
+        try {
+          await readFile(tab.path);
+        } catch {
+          continue; // gone since last session
+        }
+        tabs.push({
+          path: tab.path,
+          pinned: tab.pinned,
+          back: tab.back,
+          forward: tab.forward,
+        });
+        fileModes.set(normalizePath(tab.path), tab.mode);
       }
-      tabs.push({
-        path: tab.path,
-        pinned: tab.pinned,
-        back: tab.back,
-        forward: tab.forward,
+      if (tabs.length === 0) {
+        continue;
+      }
+      paneStates.push({
+        id: paneStates.length + 1,
+        workspace: {
+          tabs,
+          active: Math.min(sessionPane.active, tabs.length - 1),
+        },
+        size: sessionPane.size,
       });
-      fileModes.set(normalizePath(tab.path), tab.mode);
     }
-    if (tabs.length === 0) {
+    if (paneStates.length === 0) {
       return;
     }
-    tabsState = {
-      tabs,
-      active: Math.min(session.active, tabs.length - 1),
-    };
-    const activePath = activeTabPath(tabsState);
-    if (activePath !== null) {
-      await loadFile(activePath);
-    }
+    const activeIndex = Math.min(session.activePane, paneStates.length - 1);
+    await applySplitChange({
+      panes: paneStates,
+      activePane: paneStates[activeIndex].id,
+      nextId: paneStates.length + 1,
+    });
   })();
 }

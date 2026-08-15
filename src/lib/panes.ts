@@ -6,6 +6,13 @@ import {
   closeTab,
   emptyWorkspace,
   makeTab,
+  parseSessionExtras,
+  parseTabs,
+  serializeTabs,
+  type PanelSizes,
+  type RightPanelView,
+  type SessionMode,
+  type SessionTabs,
   type Tab,
   type WorkspaceState,
 } from "./workspace";
@@ -217,4 +224,99 @@ export function totalTabs(state: SplitState): number {
 
 export function emptySplit(): SplitState {
   return singlePane(emptyWorkspace());
+}
+
+// --- Session snapshot (v3: multi-pane; older single-pane files load) ---
+
+export interface SessionPane extends SessionTabs {
+  size: number;
+}
+
+export interface SessionData {
+  panes: SessionPane[];
+  /** Index into `panes` of the active one. */
+  activePane: number;
+  panels: PanelSizes | null;
+  rightView: RightPanelView | null;
+}
+
+export function serializeSession(
+  state: SplitState,
+  modeOf: (path: string) => SessionMode,
+  panels: PanelSizes | null = null,
+  rightView: RightPanelView | null = null,
+): SessionData {
+  const panes: SessionPane[] = [];
+  let active = 0;
+  for (const pane of state.panes) {
+    const tabs = serializeTabs(pane.workspace, modeOf);
+    if (tabs.tabs.length === 0) {
+      continue; // panes holding only empty tabs are not persisted
+    }
+    if (pane.id === state.activePane) {
+      active = panes.length;
+    }
+    panes.push({ ...tabs, size: pane.size });
+  }
+  return {
+    panes,
+    activePane: panes.length === 0 ? 0 : Math.min(active, panes.length - 1),
+    panels,
+    rightView,
+  };
+}
+
+/**
+ * Parses a session.json payload — the multi-pane shape or the previous
+ * single-workspace one. Null when nothing valid remains.
+ */
+export function parseSession(json: string): SessionData | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+  const root = raw as Record<string, unknown>;
+  const extras = parseSessionExtras(root);
+  const panes: SessionPane[] = [];
+  if (Array.isArray(root.panes)) {
+    for (const entry of root.panes) {
+      const tabs = parseTabs(entry);
+      if (tabs === null) {
+        continue;
+      }
+      const size =
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as Record<string, unknown>).size === "number" &&
+        Number.isFinite((entry as Record<string, unknown>).size)
+          ? ((entry as Record<string, unknown>).size as number)
+          : 0;
+      panes.push({ ...tabs, size });
+    }
+  } else {
+    // Previous format: one workspace at the top level.
+    const tabs = parseTabs(root);
+    if (tabs !== null) {
+      panes.push({ ...tabs, size: 1 });
+    }
+  }
+  if (panes.length === 0) {
+    return null;
+  }
+  // Renormalize sizes (dropped panes, missing values).
+  const total = panes.reduce((sum, pane) => sum + pane.size, 0);
+  const even = 1 / panes.length;
+  for (const pane of panes) {
+    pane.size = total > 0 ? pane.size / total : even;
+  }
+  const activePane =
+    typeof root.activePane === "number" && Number.isInteger(root.activePane)
+      ? Math.max(0, Math.min(root.activePane, panes.length - 1))
+      : 0;
+  return { panes, activePane, ...extras };
 }

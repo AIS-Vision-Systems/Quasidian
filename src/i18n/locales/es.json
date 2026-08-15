@@ -162,6 +162,7 @@
   "settings.restoreSession.desc": "Al arrancar, reabre los archivos de la última sesión (excepto si la app se abre con un archivo)",
   "tabs.close": "Cerrar la pestaña",
   "tabs.new": "Pestaña nueva",
+  "tabs.splitRight": "Abrir a la derecha",
   "tabs.newTab": "Nueva pestaña",
   "tabs.untitled": "Sin título",
   "tabs.actionNewNote": "Crear una nota nueva (Ctrl + N)",

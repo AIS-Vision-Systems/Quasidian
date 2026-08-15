@@ -5,7 +5,9 @@ import {
   emptySplit,
   moveTabToPane,
   paneById,
+  parseSession,
   resizeBorder,
+  serializeSession,
   setActivePane,
   singlePane,
   splitRight,
@@ -122,5 +124,59 @@ describe("resizeBorder and setActivePane", () => {
   it("ignores activating an unknown pane", () => {
     const state = emptySplit();
     expect(setActivePane(state, 99)).toBe(state);
+  });
+});
+
+describe("session snapshot (multi-pane)", () => {
+  it("round trips panes with sizes, active pane and extras", () => {
+    let state = splitRight(
+      singlePane(workspace(["a.md"])),
+      1,
+      makeTab("b.md"),
+    );
+    state = resizeBorder(state, state.panes[0].id, 0.2);
+    const session = serializeSession(
+      state,
+      () => "edit",
+      { left: 200, right: 260 },
+      "outline",
+    );
+    const parsed = parseSession(JSON.stringify(session));
+    expect(parsed).not.toBeNull();
+    expect(parsed!.panes).toHaveLength(2);
+    expect(parsed!.panes[0].tabs[0].path).toBe("a.md");
+    expect(parsed!.panes[1].tabs[0].path).toBe("b.md");
+    expect(parsed!.panes[0].size).toBeCloseTo(0.7);
+    expect(parsed!.activePane).toBe(1);
+    expect(parsed!.panels).toEqual({ left: 200, right: 260 });
+    expect(parsed!.rightView).toBe("outline");
+  });
+
+  it("drops panes holding only empty tabs", () => {
+    const state = splitRight(singlePane(workspace(["a.md"])), 1); // empty pane
+    const session = serializeSession(state, () => "edit");
+    expect(session.panes).toHaveLength(1);
+    expect(session.activePane).toBe(0);
+  });
+
+  it("loads the previous single-workspace format as one pane", () => {
+    const parsed = parseSession(
+      JSON.stringify({
+        tabs: [{ path: "a.md", pinned: false, mode: "edit" }],
+        active: 0,
+        rightView: "outgoing",
+      }),
+    );
+    expect(parsed).not.toBeNull();
+    expect(parsed!.panes).toHaveLength(1);
+    expect(parsed!.panes[0].tabs[0].path).toBe("a.md");
+    expect(parsed!.panes[0].size).toBe(1);
+    expect(parsed!.rightView).toBe("outgoing");
+  });
+
+  it("returns null on malformed input", () => {
+    expect(parseSession("not json")).toBeNull();
+    expect(parseSession('{"panes": []}')).toBeNull();
+    expect(parseSession('{"panes": [{"tabs": []}]}')).toBeNull();
   });
 });

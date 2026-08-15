@@ -263,25 +263,19 @@ export interface PanelSizes {
 
 export type RightPanelView = "backlinks" | "outgoing" | "outline";
 
-export interface SessionData {
+export interface SessionTabs {
   tabs: SessionTab[];
   active: number;
-  /** Side panel widths in px, or null when never resized. */
-  panels: PanelSizes | null;
-  /** Selected right-panel view, or null for the default. */
-  rightView: RightPanelView | null;
 }
 
 /**
- * Snapshot of the workspace plus each tab's mode, for session.json.
+ * Serializable snapshot of one workspace's tabs with their modes.
  * Empty tabs are not persisted; the active index is remapped.
  */
-export function serializeSession(
+export function serializeTabs(
   state: WorkspaceState,
   modeOf: (path: string) => SessionMode,
-  panels: PanelSizes | null = null,
-  rightView: RightPanelView | null = null,
-): SessionData {
+): SessionTabs {
   const tabs: SessionTab[] = [];
   let active = 0;
   state.tabs.forEach((tab, index) => {
@@ -302,8 +296,6 @@ export function serializeSession(
   return {
     tabs,
     active: tabs.length === 0 ? -1 : Math.min(active, tabs.length - 1),
-    panels,
-    rightView,
   };
 }
 
@@ -316,17 +308,8 @@ function pathList(value: unknown): string[] {
     .slice(-HISTORY_LIMIT);
 }
 
-/**
- * Parses a session.json payload; malformed input or an empty tab list
- * yields null (start fresh). Individual bad entries are dropped.
- */
-export function parseSession(json: string): SessionData | null {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(json);
-  } catch {
-    return null;
-  }
+/** Parses one workspace's serialized tabs; null when nothing valid. */
+export function parseTabs(raw: unknown): SessionTabs | null {
   if (typeof raw !== "object" || raw === null) {
     return null;
   }
@@ -358,6 +341,14 @@ export function parseSession(json: string): SessionData | null {
     typeof root.active === "number" && Number.isInteger(root.active)
       ? Math.max(0, Math.min(root.active, tabs.length - 1))
       : 0;
+  return { tabs, active };
+}
+
+/** Parses the shared session extras (panel widths, right view). */
+export function parseSessionExtras(root: Record<string, unknown>): {
+  panels: PanelSizes | null;
+  rightView: RightPanelView | null;
+} {
   const rawPanels =
     typeof root.panels === "object" && root.panels !== null
       ? (root.panels as Record<string, unknown>)
@@ -376,5 +367,5 @@ export function parseSession(json: string): SessionData | null {
     root.rightView === "outline"
       ? root.rightView
       : null;
-  return { tabs, active, panels, rightView };
+  return { panels, rightView };
 }

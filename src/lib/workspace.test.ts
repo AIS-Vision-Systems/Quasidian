@@ -13,9 +13,9 @@ import {
   moveTab,
   newEmptyTab,
   openPath,
-  parseSession,
+  parseTabs,
   renameTabPath,
-  serializeSession,
+  serializeTabs,
   setPinned,
   type WorkspaceState,
 } from "./workspace";
@@ -200,24 +200,20 @@ describe("empty tabs", () => {
   it("serialization drops empty tabs and remaps the active index", () => {
     let state = workspace(["a.md", "b.md"], 1);
     state = newEmptyTab(state); // a, b, (empty active)
-    const session = serializeSession(state, () => "edit");
+    const session = serializeTabs(state, () => "edit");
     expect(session.tabs.map((tab) => tab.path)).toEqual(["a.md", "b.md"]);
     expect(session.active).toBe(1);
   });
 });
 
-describe("session snapshot", () => {
-  it("serializes tabs with modes, history and panels; round trips", () => {
+describe("tab serialization", () => {
+  it("round trips tabs with modes, pins and history", () => {
     let state = openPath(workspace(["a.md"]), "b.md");
     state = setPinned(state, 0, true);
-    const session = serializeSession(
-      state,
-      (path) => (path === "b.md" ? "read" : "edit"),
-      { left: 220, right: 300 },
-      "outline",
+    const session = serializeTabs(state, (path) =>
+      path === "b.md" ? "read" : "edit",
     );
-    const parsed = parseSession(JSON.stringify(session));
-    expect(parsed).toEqual({
+    expect(parseTabs(JSON.parse(JSON.stringify(session)))).toEqual({
       tabs: [
         {
           path: "b.md",
@@ -228,33 +224,26 @@ describe("session snapshot", () => {
         },
       ],
       active: 0,
-      panels: { left: 220, right: 300 },
-      rightView: "outline",
     });
   });
 
   it("returns null on malformed input", () => {
-    expect(parseSession("not json")).toBeNull();
-    expect(parseSession("42")).toBeNull();
-    expect(parseSession('{"tabs": "nope"}')).toBeNull();
-    expect(parseSession('{"tabs": []}')).toBeNull();
+    expect(parseTabs(42)).toBeNull();
+    expect(parseTabs({ tabs: "nope" })).toBeNull();
+    expect(parseTabs({ tabs: [] })).toBeNull();
   });
 
-  it("drops bad entries, clamps active and tolerates missing fields", () => {
-    const parsed = parseSession(
-      JSON.stringify({
+  it("drops bad entries and clamps the active index", () => {
+    expect(
+      parseTabs({
         tabs: [{ path: "a.md", back: "nope" }, { nope: true }, { path: "" }],
         active: 7,
-        panels: { left: "wide" },
       }),
-    );
-    expect(parsed).toEqual({
+    ).toEqual({
       tabs: [
         { path: "a.md", pinned: false, mode: "edit", back: [], forward: [] },
       ],
       active: 0,
-      panels: null,
-      rightView: null,
     });
   });
 });

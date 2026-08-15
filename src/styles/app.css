@@ -2395,3 +2395,53 @@ span.table-wrap > table {
 .empty-tab-action:hover {
   text-decoration: underline;
 }
+
+/* --- Split panes --- */
+
+.panes-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  min-height: 0;
+  flex-basis: 0;
+  flex-shrink: 1;
+}
+
+.pane + .pane,
+.split-resize + .pane {
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.split-resize {
+  width: 7px;
+  margin: 0 -3px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  z-index: 30;
+}
+
+.split-resize:hover {
+  background: linear-gradient(
+    to right,
+    transparent 2px,
+    var(--interactive-accent) 2px,
+    var(--interactive-accent) 4px,
+    transparent 4px
+  );
+}
+
+.pane.split-drop-hint {
+  box-shadow: inset -4px 0 0 0 var(--interactive-accent);
+}
+
+/* The inactive pane's strip dims a bit so the active one reads. */
+.pane:not(.is-active-pane) .view-header {
+  opacity: 0.85;
+}

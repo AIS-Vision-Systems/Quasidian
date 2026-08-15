@@ -164,6 +164,7 @@
   "settings.restoreSession.desc": "En engegar, reobre els fitxers de l'última sessió (excepte si l'app s'obre amb un fitxer)",
   "tabs.close": "Tanca la pestanya",
   "tabs.new": "Pestanya nova",
+  "tabs.splitRight": "Obre a la dreta",
   "tabs.newTab": "Nova pestanya",
   "tabs.untitled": "Sense títol",
   "tabs.actionNewNote": "Crea una nota nova (Ctrl + N)",
