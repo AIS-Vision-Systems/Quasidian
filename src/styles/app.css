@@ -239,6 +239,17 @@ body {
   display: block;
 }
 
+/* Mouse clicks never leave a focus ring on buttons; keyboard focus
+   stays visible for accessibility. */
+button:focus {
+  outline: none;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -1px;
+}
+
 .search-close {
   display: inline-flex;
   align-items: center;
@@ -1263,7 +1274,7 @@ body.is-readable-line-length .cm-editor .cm-content {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 1px 5px;
+  padding: 3px 6px;
   background: transparent;
   border: none;
   border-radius: 4px;
@@ -1276,9 +1287,10 @@ body.is-readable-line-length .cm-editor .cm-content {
   color: var(--text-normal);
 }
 
+/* Same size as the sidebar and header buttons (the .app-icon default). */
 .status-bar-icon .app-icon {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .status-bar-mode,
