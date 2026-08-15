@@ -2136,3 +2136,51 @@ span.table-wrap > table {
 @page {
   margin: 18mm 16mm;
 }
+
+/* --- Help and credits modal --- */
+
+.help-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 92vw);
+  height: min(640px, 88vh);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  box-shadow: 0 10px 40px var(--shadow-color);
+  overflow: hidden;
+}
+
+.help-credits {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+.help-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+}
+
+.help-name {
+  font-size: 1.4em;
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.help-meta {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.help-guide {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 24px 24px;
+  overflow-y: auto;
+}
