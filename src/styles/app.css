@@ -429,6 +429,13 @@ button:focus-visible {
   overflow: hidden;
 }
 
+/* A small strip left of the text keeps the view menu reachable even
+   with line numbers off and full-width lines (the scroller padding is
+   outside .cm-content, so right-clicking it opens the view menu). */
+.cm-editor .cm-scroller {
+  padding-left: 14px;
+}
+
 /* Drag strips over the panel borders; the workspace never scrolls
    itself, so they stay put. */
 .panel-resize {
@@ -2263,6 +2270,9 @@ span.table-wrap > table {
   cursor: text;
   white-space: pre-wrap;
   word-break: break-word;
+  /* The global user-select: none would block the caret. */
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .cm-editor .cm-inline-title {

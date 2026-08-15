@@ -184,6 +184,7 @@ describe("session snapshot", () => {
       state,
       (path) => (path === "b.md" ? "read" : "edit"),
       { left: 220, right: 300 },
+      "outline",
     );
     const parsed = parseSession(JSON.stringify(session));
     expect(parsed).toEqual({
@@ -198,6 +199,7 @@ describe("session snapshot", () => {
       ],
       active: 0,
       panels: { left: 220, right: 300 },
+      rightView: "outline",
     });
   });
 
@@ -222,6 +224,7 @@ describe("session snapshot", () => {
       ],
       active: 0,
       panels: null,
+      rightView: null,
     });
   });
 });

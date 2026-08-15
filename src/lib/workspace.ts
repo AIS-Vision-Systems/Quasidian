@@ -245,11 +245,15 @@ export interface PanelSizes {
   right: number;
 }
 
+export type RightPanelView = "backlinks" | "outgoing" | "outline";
+
 export interface SessionData {
   tabs: SessionTab[];
   active: number;
   /** Side panel widths in px, or null when never resized. */
   panels: PanelSizes | null;
+  /** Selected right-panel view, or null for the default. */
+  rightView: RightPanelView | null;
 }
 
 /** Snapshot of the workspace plus each tab's mode, for session.json. */
@@ -257,6 +261,7 @@ export function serializeSession(
   state: WorkspaceState,
   modeOf: (path: string) => SessionMode,
   panels: PanelSizes | null = null,
+  rightView: RightPanelView | null = null,
 ): SessionData {
   return {
     tabs: state.tabs.map((tab) => ({
@@ -268,6 +273,7 @@ export function serializeSession(
     })),
     active: state.active,
     panels,
+    rightView,
   };
 }
 
@@ -334,5 +340,11 @@ export function parseSession(json: string): SessionData | null {
     Number.isFinite(rawPanels.right)
       ? { left: rawPanels.left, right: rawPanels.right }
       : null;
-  return { tabs, active, panels };
+  const rightView =
+    root.rightView === "backlinks" ||
+    root.rightView === "outgoing" ||
+    root.rightView === "outline"
+      ? root.rightView
+      : null;
+  return { tabs, active, panels, rightView };
 }

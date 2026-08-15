@@ -61,6 +61,7 @@ import {
   serializeSession,
   setPinned,
   type PanelSizes,
+  type RightPanelView,
   type Tab,
   type WorkspaceState,
 } from "../lib/workspace";
@@ -212,7 +213,7 @@ export function mountLayout(root: HTMLElement): void {
   workspace.append(viewHeader, fileBar, workspaceBody);
 
   // Right panel: one list, three views (backlinks, outgoing, outline).
-  type RightView = "backlinks" | "outgoing" | "outline";
+  type RightView = RightPanelView;
   let rightView: RightView = "backlinks";
   const backlinksPanel = document.createElement("aside");
   backlinksPanel.className = "backlinks-panel";
@@ -232,6 +233,7 @@ export function mountLayout(root: HTMLElement): void {
     button.addEventListener("click", () => {
       rightView = view;
       renderRightPanel();
+      scheduleSessionSave();
     });
     rightViewButtons.set(view, button);
     rightViewsBar.append(button);
@@ -618,13 +620,14 @@ export function mountLayout(root: HTMLElement): void {
 
   // --- Tabs ---
 
-  /** Session snapshot of the current tabs, modes and panel sizes. */
+  /** Session snapshot: tabs, modes, panel sizes and right-panel view. */
   function snapshotSession() {
     return serializeSession(
       tabsState,
       (path) =>
         fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode,
       panelSizes,
+      rightView,
     );
   }
 
@@ -1902,6 +1905,7 @@ export function mountLayout(root: HTMLElement): void {
     } else {
       renderRightPanel();
     }
+    scheduleSessionSave();
   }
 
   function openCommandPalette(): void {
@@ -2207,6 +2211,10 @@ export function mountLayout(root: HTMLElement): void {
     if (session.panels !== null) {
       panelSizes = session.panels;
       applyPanelSizes();
+    }
+    if (session.rightView !== null) {
+      rightView = session.rightView;
+      renderRightPanel();
     }
     const tabs: Tab[] = [];
     for (const tab of session.tabs) {
