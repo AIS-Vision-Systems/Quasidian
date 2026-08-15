@@ -39,6 +39,7 @@
   "menu.formatCode": "Code",
   "menu.table": "Table",
   "menu.insertTable": "Insert table",
+  "menu.exportPdf": "Export to PDF",
   "menu.insert": "Insert",
   "menu.insertFootnote": "Footnote",
   "menu.insertCallout": "Callout",

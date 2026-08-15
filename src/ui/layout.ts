@@ -67,6 +67,7 @@ import { hideHoverPreview } from "./hoverPreview";
 import { createIcon } from "./icons";
 import { copyText } from "./renderedContent";
 import { openPalette } from "./palette";
+import { exportNoteToPdf } from "./printExport";
 import { createReadingView } from "./readingView";
 import { openSettingsModal } from "./settingsModal";
 
@@ -1450,6 +1451,27 @@ export function mountLayout(root: HTMLElement): void {
     renderBacklinks();
   }
 
+  /** Exports a note as the reading view renders it, via the print dialog. */
+  async function exportPdfFromMenu(path: string): Promise<void> {
+    try {
+      const isOpen = openedPath !== null && samePath(path, openedPath);
+      const contents = isOpen ? editor.getDoc() : await readFile(path);
+      await exportNoteToPdf({
+        title: basename(path).replace(/\.md$/i, ""),
+        doc: contents,
+        hooks: {
+          resolveEmbedSrc,
+          renderEmbedNote,
+          isResolved: isResolvedTarget,
+        },
+        showProperties: getSettings().editor.showProperties,
+        path,
+      });
+    } catch (error) {
+      setStatusError(t("error.readFile", { error: String(error) }));
+    }
+  }
+
   function openFileMenu(x: number, y: number, path: string): void {
     const isOpenFile = openedPath !== null && samePath(path, openedPath);
     openContextMenu(x, y, [
@@ -1497,6 +1519,11 @@ export function mountLayout(root: HTMLElement): void {
           void revealItemInDir(path).catch((error) =>
             setStatusError(t("error.openFile", { error: String(error) })),
           ),
+      },
+      {
+        label: t("menu.exportPdf"),
+        icon: "file-down",
+        onClick: () => void exportPdfFromMenu(path),
       },
       "separator",
       {
@@ -1632,6 +1659,15 @@ export function mountLayout(root: HTMLElement): void {
       nameKey: "command.globalSearch",
       hotkey: "Ctrl+Shift+F",
       run: openSearch,
+    },
+    {
+      id: "export-pdf",
+      nameKey: "menu.exportPdf",
+      run: () => {
+        if (openedPath !== null) {
+          void exportPdfFromMenu(openedPath);
+        }
+      },
     },
     {
       id: "close-tab",
