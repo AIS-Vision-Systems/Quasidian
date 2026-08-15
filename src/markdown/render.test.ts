@@ -80,7 +80,17 @@ describe("renderToHtml — blocks", () => {
   it("renders dash setext headings only with 3+ dashes", () => {
     expect(renderToHtml("Títol\n---")).toBe('<h2 data-pos="0">Títol</h2>');
     expect(renderToHtml("Títol\n===")).toBe('<h1 data-pos="0">Títol</h1>');
-    expect(renderToHtml("Text\n- ")).toBe("<p>Text<br>- </p>");
+    // Typing "- " under text starts a list at once — never an H2.
+    const html = renderToHtml("Text\n- ");
+    expect(html).toContain("<p>Text</p>");
+    expect(html).toContain("<ul><li");
+    expect(renderToHtml("Text\n--")).toBe("<p>Text<br>--</p>");
+  });
+
+  it("starts an empty ordered item as soon as its marker is typed", () => {
+    const html = renderToHtml("text\n3. ");
+    expect(html).toContain("<p>text</p>");
+    expect(html).toContain('<ol start="3">');
   });
 
   it("renders soft line breaks as real breaks, Obsidian-style", () => {

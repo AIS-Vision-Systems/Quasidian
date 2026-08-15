@@ -90,12 +90,13 @@ describe("computeEmptyListItemExit", () => {
     );
   });
 
-  it("returns null on a non-empty item and on plain text", () => {
+  it("returns null on a non-empty item, clears a fresh empty marker", () => {
     const list = stateFor("- a\n- b", 7);
     expect(computeEmptyListItemExit(list)).toBeNull();
-    // "- " under a paragraph is paragraph text, not a list item.
+    // "- " under a paragraph is already an empty item (listInterrupt):
+    // Enter clears the marker back to plain text.
     const plain = stateFor("text\n- ", 7);
-    expect(computeEmptyListItemExit(plain)).toBeNull();
+    expect(applied(plain, computeEmptyListItemExit(plain))).toBe("text\n");
   });
 });
 
