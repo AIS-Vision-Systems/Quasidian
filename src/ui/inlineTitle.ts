@@ -60,6 +60,11 @@ export function buildInlineTitleElement(
   }
 
   el.addEventListener("mousedown", (event) => {
+    if (event.target instanceof HTMLInputElement) {
+      // Already editing: native caret placement and mouse selection.
+      event.stopPropagation();
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     startEdit();
