@@ -1020,6 +1020,9 @@ export function mountLayout(root: HTMLElement): void {
     );
   }
 
+  // Collapsed outline headings, per file (in memory only).
+  const outlineCollapsed = new Map<string, Set<number>>();
+
   function renderOutlineView(): void {
     backlinksCount.textContent = "";
     if (openedPath === null) {
@@ -1032,26 +1035,75 @@ export function mountLayout(root: HTMLElement): void {
       backlinksList.replaceChildren(emptyItem("rightPanel.outlineEmpty"));
       return;
     }
-    backlinksList.replaceChildren(
-      ...items.map((heading) => {
-        const item = document.createElement("li");
-        item.className = "file-item outline-item";
-        item.style.paddingLeft = `${(heading.level - 1) * 14 + 8}px`;
-        item.textContent = heading.text;
-        item.addEventListener("click", () => {
-          if (currentMode === "edit") {
-            editor.revealRange(heading.from, heading.from);
+    const key = normalizePath(openedPath);
+    const collapsed = outlineCollapsed.get(key) ?? new Set<number>();
+
+    const goTo = (from: number): void => {
+      if (currentMode === "edit") {
+        editor.revealRange(from, from);
+      } else {
+        // The reading view has no position mapping; approximate.
+        setScrollFraction(
+          readingView.element,
+          from / Math.max(1, doc.length),
+        );
+      }
+    };
+
+    // Nested tree with per-level guide lines and collapse chevrons.
+    const rootList = document.createElement("div");
+    rootList.className = "outline-tree";
+    const stack: { level: number; container: HTMLElement }[] = [
+      { level: 0, container: rootList },
+    ];
+    items.forEach((heading, index) => {
+      const hasChildren =
+        index + 1 < items.length && items[index + 1].level > heading.level;
+      while (
+        stack.length > 1 &&
+        stack[stack.length - 1].level >= heading.level
+      ) {
+        stack.pop();
+      }
+      const parent = stack[stack.length - 1].container;
+      const item = document.createElement("div");
+      item.className = "outline-item";
+      const row = document.createElement("div");
+      row.className = "file-item outline-row";
+      const chevron = document.createElement("span");
+      chevron.className = "outline-chevron";
+      if (hasChildren) {
+        const isCollapsed = collapsed.has(heading.from);
+        chevron.append(
+          createIcon(isCollapsed ? "chevron-right" : "chevron-down"),
+        );
+        chevron.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (isCollapsed) {
+            collapsed.delete(heading.from);
           } else {
-            // The reading view has no position mapping; approximate.
-            setScrollFraction(
-              readingView.element,
-              heading.from / Math.max(1, doc.length),
-            );
+            collapsed.add(heading.from);
           }
+          outlineCollapsed.set(key, collapsed);
+          renderOutlineView();
         });
-        return item;
-      }),
-    );
+      }
+      const text = document.createElement("span");
+      text.className = "outline-text";
+      text.textContent = heading.text;
+      row.append(chevron, text);
+      row.addEventListener("click", () => goTo(heading.from));
+      item.append(row);
+      parent.append(item);
+      if (hasChildren) {
+        const children = document.createElement("div");
+        children.className = "outline-children";
+        children.classList.toggle("is-hidden", collapsed.has(heading.from));
+        item.append(children);
+        stack.push({ level: heading.level, container: children });
+      }
+    });
+    backlinksList.replaceChildren(rootList);
   }
 
   function renderRightPanel(): void {

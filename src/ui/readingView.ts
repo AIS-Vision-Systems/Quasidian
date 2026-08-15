@@ -9,6 +9,7 @@ import {
 } from "../editor/livePreview";
 import { renderToHtml } from "../markdown/render";
 import { createIcon } from "./icons";
+import { buildInlineTitleElement } from "./inlineTitle";
 import {
   scheduleHoverHide,
   scheduleHoverShow,
@@ -234,34 +235,6 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
     }
   });
 
-  /** Editable H1 with the note name; Enter/blur commits as a rename. */
-  function buildInlineTitle(title: string): HTMLElement {
-    const el = document.createElement("h1");
-    el.className = "inline-title";
-    el.textContent = title;
-    el.contentEditable = "true";
-    el.spellcheck = false;
-    el.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        el.blur();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        el.textContent = title;
-        el.blur();
-      }
-    });
-    el.addEventListener("blur", () => {
-      const name = (el.textContent ?? "").trim();
-      if (name !== "" && name !== title) {
-        hooks.onInlineTitleRename(name);
-      } else {
-        el.textContent = title;
-      }
-    });
-    return el;
-  }
-
   return {
     element,
     render(doc: string): void {
@@ -270,7 +243,14 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
       });
       const title = hooks.inlineTitle();
       if (title !== null) {
-        content.prepend(buildInlineTitle(title));
+        content.prepend(
+          buildInlineTitleElement({
+            title,
+            tag: "h1",
+            className: "inline-title",
+            onRename: (name) => hooks.onInlineTitleRename(name),
+          }),
+        );
       }
       fillEmbedImages(content, hooks.resolveEmbedSrc);
       const currentPath = hooks.currentFilePath();

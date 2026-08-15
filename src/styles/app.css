@@ -2284,3 +2284,66 @@ span.table-wrap > table {
   margin-top: 0;
   padding-top: 0;
 }
+
+/* --- Outline tree (right panel) --- */
+
+.outline-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.outline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 3px 4px;
+}
+
+.outline-chevron {
+  display: inline-flex;
+  width: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.outline-chevron .app-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.outline-chevron:hover {
+  color: var(--text-normal);
+}
+
+.outline-text {
+  min-width: 0;
+}
+
+/* Vertical guide line per nesting level, Obsidian-style. */
+.outline-children {
+  margin-left: 11px;
+  padding-left: 6px;
+  border-left: 1px solid var(--indentation-guide);
+}
+
+.outline-children.is-hidden {
+  display: none;
+}
+
+/* The inline-title input mirrors the H1 look while editing. */
+.inline-title-input {
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  -webkit-user-select: text;
+  user-select: text;
+}

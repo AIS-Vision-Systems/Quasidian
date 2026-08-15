@@ -61,11 +61,12 @@ export function openHelpModal(): void {
   credits.append(logo, identity);
 
   // The guide for the UI language, rendered with the shared pipeline.
+  // Raw imports keep the file's CRLF line endings, which the parser
+  // does not treat as line breaks (tables would not parse): normalize.
   const guide = document.createElement("div");
   guide.className = "help-guide markdown-rendered";
-  guide.innerHTML = renderToHtml(GUIDES[getLocale()] ?? guideEn, {
-    properties: false,
-  });
+  const source = (GUIDES[getLocale()] ?? guideEn).replace(/\r\n?/g, "\n");
+  guide.innerHTML = renderToHtml(source, { properties: false });
   highlightCodeBlocks(guide);
   addCodePills(guide);
 

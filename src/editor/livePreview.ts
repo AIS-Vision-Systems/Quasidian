@@ -34,6 +34,7 @@ import {
   serializeFrontmatter,
 } from "../lib/frontmatter";
 import { openContextMenu, type MenuEntry } from "../ui/contextMenu";
+import { buildInlineTitleElement } from "../ui/inlineTitle";
 import {
   calloutColor,
   calloutIcon,
@@ -719,19 +720,13 @@ export function setInlineTitleRename(handler: (name: string) => void): void {
 /** Forces the block-decorations field to rebuild (title/settings changes). */
 export const refreshBlockDecorations = StateEffect.define<null>();
 
-/** Puts the caret inside the inline title, at the end (ArrowUp entry). */
+/** Focuses the inline title (ArrowUp entry); focusing starts the edit. */
 export function focusInlineTitle(view: EditorView): boolean {
   const el = view.dom.querySelector<HTMLElement>(".cm-inline-title");
   if (el === null) {
     return false;
   }
   el.focus();
-  const range = document.createRange();
-  range.selectNodeContents(el);
-  range.collapse(false);
-  const selection = window.getSelection();
-  selection?.removeAllRanges();
-  selection?.addRange(range);
   return true;
 }
 
@@ -745,44 +740,26 @@ class InlineTitleWidget extends WidgetType {
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const el = document.createElement("div");
-    el.className = "cm-inline-title inline-title";
-    el.textContent = this.title;
-    el.contentEditable = "true";
-    el.spellcheck = false;
-    const leave = (): void => {
-      el.blur();
-      view.focus();
-      // Below the title: right after the frontmatter when there is one.
-      let pos = 0;
-      const first = syntaxTree(view.state).topNode.firstChild;
-      if (first !== null && first.name === "Frontmatter" && first.from === 0) {
-        pos = Math.min(first.to + 1, view.state.doc.length);
-      }
-      view.dispatch({ selection: { anchor: pos } });
-    };
-    el.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        leave(); // blur commits
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        el.textContent = this.title;
-        leave();
-      } else if (event.key === "ArrowDown") {
-        event.preventDefault();
-        leave();
-      }
+    return buildInlineTitleElement({
+      title: this.title,
+      tag: "div",
+      className: "cm-inline-title inline-title",
+      onRename: (name) => inlineTitleRename(name),
+      onExitDown: () => {
+        view.focus();
+        // Below the title: right after the frontmatter when present.
+        let pos = 0;
+        const first = syntaxTree(view.state).topNode.firstChild;
+        if (
+          first !== null &&
+          first.name === "Frontmatter" &&
+          first.from === 0
+        ) {
+          pos = Math.min(first.to + 1, view.state.doc.length);
+        }
+        view.dispatch({ selection: { anchor: pos } });
+      },
     });
-    el.addEventListener("blur", () => {
-      const name = (el.textContent ?? "").trim();
-      if (name !== "" && name !== this.title) {
-        inlineTitleRename(name);
-      } else {
-        el.textContent = this.title;
-      }
-    });
-    return el;
   }
 
   override ignoreEvent(): boolean {
