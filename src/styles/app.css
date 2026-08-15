@@ -232,22 +232,19 @@ body {
   letter-spacing: 0.05em;
 }
 
-/* Inline lucide-style icons: size follows the button, color the text. */
+/* Inline lucide-style icons: size follows the button, color the text.
+   The 18px default matches Obsidian's bar buttons; icons embedded in
+   content (chevrons, pills…) set their own smaller sizes. */
 .app-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: block;
 }
 
-/* Mouse clicks never leave a focus ring on buttons; keyboard focus
-   stays visible for accessibility. */
-button:focus {
-  outline: none;
-}
-
+/* Buttons never keep a focus ring after interaction. */
+button:focus,
 button:focus-visible {
-  outline: 2px solid var(--interactive-accent);
-  outline-offset: -1px;
+  outline: none;
 }
 
 .search-close {
@@ -1287,11 +1284,7 @@ body.is-readable-line-length .cm-editor .cm-content {
   color: var(--text-normal);
 }
 
-/* Same size as the sidebar and header buttons (the .app-icon default). */
-.status-bar-icon .app-icon {
-  width: 16px;
-  height: 16px;
-}
+/* Status-bar icons use the same .app-icon default as every other bar. */
 
 .status-bar-mode,
 .status-bar-backlinks {
