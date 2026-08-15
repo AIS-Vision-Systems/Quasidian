@@ -6,6 +6,17 @@ import { normalizePath } from "./paths";
 export interface Tab {
   path: string;
   pinned: boolean;
+  /** Paths visited before the current one (per-tab history). */
+  back: string[];
+  /** Paths undone with "back", replayed by "forward". */
+  forward: string[];
+}
+
+/** Kept per side; older entries fall off the far end. */
+const HISTORY_LIMIT = 50;
+
+export function makeTab(path: string, pinned = false): Tab {
+  return { path, pinned, back: [], forward: [] };
 }
 
 export interface WorkspaceState {
@@ -43,18 +54,70 @@ export function openPath(
   if (existing !== -1) {
     return { ...state, active: existing };
   }
-  const tab: Tab = { path, pinned: false };
   const active = state.tabs[state.active];
   if (newTab || active === undefined || active.pinned) {
     const at = active === undefined ? state.tabs.length : state.active + 1;
     return {
-      tabs: [...state.tabs.slice(0, at), tab, ...state.tabs.slice(at)],
+      tabs: [...state.tabs.slice(0, at), makeTab(path), ...state.tabs.slice(at)],
       active: at,
     };
   }
+  // Navigation replaces the active tab's file: the old one goes into
+  // the tab's history and any undone future is discarded.
   const tabs = [...state.tabs];
-  tabs[state.active] = tab;
+  tabs[state.active] = {
+    ...active,
+    path,
+    back: [...active.back, active.path].slice(-HISTORY_LIMIT),
+    forward: [],
+  };
   return { tabs, active: state.active };
+}
+
+/** Steps the active tab back in its history, or returns null. */
+export function goBack(state: WorkspaceState): WorkspaceState | null {
+  const active = state.tabs[state.active];
+  const previous = active?.back[active.back.length - 1];
+  if (active === undefined || previous === undefined) {
+    return null;
+  }
+  const tabs = [...state.tabs];
+  tabs[state.active] = {
+    ...active,
+    path: previous,
+    back: active.back.slice(0, -1),
+    forward: [...active.forward, active.path].slice(-HISTORY_LIMIT),
+  };
+  return { tabs, active: state.active };
+}
+
+/** Steps the active tab forward in its history, or returns null. */
+export function goForward(state: WorkspaceState): WorkspaceState | null {
+  const active = state.tabs[state.active];
+  const next = active?.forward[active.forward.length - 1];
+  if (active === undefined || next === undefined) {
+    return null;
+  }
+  const tabs = [...state.tabs];
+  tabs[state.active] = {
+    ...active,
+    path: next,
+    back: [...active.back, active.path].slice(-HISTORY_LIMIT),
+    forward: active.forward.slice(0, -1),
+  };
+  return { tabs, active: state.active };
+}
+
+/** Whether back/forward are available for the active tab. */
+export function historyState(state: WorkspaceState): {
+  canBack: boolean;
+  canForward: boolean;
+} {
+  const active = state.tabs[state.active];
+  return {
+    canBack: active !== undefined && active.back.length > 0,
+    canForward: active !== undefined && active.forward.length > 0,
+  };
 }
 
 /** Closes the tab at `index`; the next tab (or previous) activates. */
@@ -135,18 +198,30 @@ export function setPinned(
   return { tabs, active: state.active };
 }
 
-/** Repoints every tab holding `from` to `to` (file renames). */
+/** Repoints every tab (and its history) holding `from` to `to`. */
 export function renameTabPath(
   state: WorkspaceState,
   from: string,
   to: string,
 ): WorkspaceState {
   const key = normalizePath(from);
+  const rename = (path: string): string =>
+    normalizePath(path) === key ? to : path;
   let changed = false;
   const tabs = state.tabs.map((tab) => {
-    if (normalizePath(tab.path) === key) {
+    const next = {
+      ...tab,
+      path: rename(tab.path),
+      back: tab.back.map(rename),
+      forward: tab.forward.map(rename),
+    };
+    if (
+      next.path !== tab.path ||
+      next.back.some((path, i) => path !== tab.back[i]) ||
+      next.forward.some((path, i) => path !== tab.forward[i])
+    ) {
       changed = true;
-      return { ...tab, path: to };
+      return next;
     }
     return tab;
   });
@@ -161,26 +236,54 @@ export interface SessionTab {
   path: string;
   pinned: boolean;
   mode: SessionMode;
+  back: string[];
+  forward: string[];
 }
+
+export interface PanelSizes {
+  left: number;
+  right: number;
+}
+
+export type RightPanelView = "backlinks" | "outgoing" | "outline";
 
 export interface SessionData {
   tabs: SessionTab[];
   active: number;
+  /** Side panel widths in px, or null when never resized. */
+  panels: PanelSizes | null;
+  /** Selected right-panel view, or null for the default. */
+  rightView: RightPanelView | null;
 }
 
 /** Snapshot of the workspace plus each tab's mode, for session.json. */
 export function serializeSession(
   state: WorkspaceState,
   modeOf: (path: string) => SessionMode,
+  panels: PanelSizes | null = null,
+  rightView: RightPanelView | null = null,
 ): SessionData {
   return {
     tabs: state.tabs.map((tab) => ({
       path: tab.path,
       pinned: tab.pinned,
       mode: modeOf(tab.path),
+      back: tab.back.slice(-HISTORY_LIMIT),
+      forward: tab.forward.slice(-HISTORY_LIMIT),
     })),
     active: state.active,
+    panels,
+    rightView,
   };
+}
+
+function pathList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((entry): entry is string => typeof entry === "string" && entry !== "")
+    .slice(-HISTORY_LIMIT);
 }
 
 /**
@@ -214,6 +317,8 @@ export function parseSession(json: string): SessionData | null {
       path: item.path,
       pinned: item.pinned === true,
       mode: item.mode === "read" ? "read" : "edit",
+      back: pathList(item.back),
+      forward: pathList(item.forward),
     });
   }
   if (tabs.length === 0) {
@@ -223,5 +328,23 @@ export function parseSession(json: string): SessionData | null {
     typeof root.active === "number" && Number.isInteger(root.active)
       ? Math.max(0, Math.min(root.active, tabs.length - 1))
       : 0;
-  return { tabs, active };
+  const rawPanels =
+    typeof root.panels === "object" && root.panels !== null
+      ? (root.panels as Record<string, unknown>)
+      : null;
+  const panels =
+    rawPanels !== null &&
+    typeof rawPanels.left === "number" &&
+    Number.isFinite(rawPanels.left) &&
+    typeof rawPanels.right === "number" &&
+    Number.isFinite(rawPanels.right)
+      ? { left: rawPanels.left, right: rawPanels.right }
+      : null;
+  const rightView =
+    root.rightView === "backlinks" ||
+    root.rightView === "outgoing" ||
+    root.rightView === "outline"
+      ? root.rightView
+      : null;
+  return { tabs, active, panels, rightView };
 }

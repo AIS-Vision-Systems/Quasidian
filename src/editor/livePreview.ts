@@ -11,7 +11,13 @@ import {
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
-import { EditorState, Prec, StateField, type Range } from "@codemirror/state";
+import {
+  EditorState,
+  Prec,
+  StateEffect,
+  StateField,
+  type Range,
+} from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -28,6 +34,7 @@ import {
   serializeFrontmatter,
 } from "../lib/frontmatter";
 import { openContextMenu, type MenuEntry } from "../ui/contextMenu";
+import { buildInlineTitleElement } from "../ui/inlineTitle";
 import {
   calloutColor,
   calloutIcon,
@@ -696,6 +703,69 @@ class ImageWidget extends WidgetType {
 
 // Natural sizes of loaded embed images, per resolved src.
 const imageSizeCache = new Map<string, { width: number; height: number }>();
+
+// Inline title: the note name shown as an editable H1 above the
+// document. Module state set by the layout — never part of the doc.
+let inlineTitleText: string | null = null;
+let inlineTitleRename: (name: string) => void = () => undefined;
+
+export function setInlineTitle(text: string | null): void {
+  inlineTitleText = text;
+}
+
+export function setInlineTitleRename(handler: (name: string) => void): void {
+  inlineTitleRename = handler;
+}
+
+/** Forces the block-decorations field to rebuild (title/settings changes). */
+export const refreshBlockDecorations = StateEffect.define<null>();
+
+/** Focuses the inline title (ArrowUp entry); focusing starts the edit. */
+export function focusInlineTitle(view: EditorView): boolean {
+  const el = view.dom.querySelector<HTMLElement>(".cm-inline-title");
+  if (el === null) {
+    return false;
+  }
+  el.focus();
+  return true;
+}
+
+class InlineTitleWidget extends WidgetType {
+  constructor(readonly title: string) {
+    super();
+  }
+
+  override eq(other: InlineTitleWidget): boolean {
+    return other.title === this.title;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    return buildInlineTitleElement({
+      title: this.title,
+      tag: "div",
+      className: "cm-inline-title inline-title",
+      onRename: (name) => inlineTitleRename(name),
+      onExitDown: () => {
+        view.focus();
+        // Below the title: right after the frontmatter when present.
+        let pos = 0;
+        const first = syntaxTree(view.state).topNode.firstChild;
+        if (
+          first !== null &&
+          first.name === "Frontmatter" &&
+          first.from === 0
+        ) {
+          pos = Math.min(first.to + 1, view.state.doc.length);
+        }
+        view.dispatch({ selection: { anchor: pos } });
+      },
+    });
+  }
+
+  override ignoreEvent(): boolean {
+    return true;
+  }
+}
 
 // Bumped when settings that affect embed rendering change, so cached
 // note-embed widgets rebuild instead of showing stale content.
@@ -2206,6 +2276,15 @@ function buildDecorations(
 function buildBlockDecorations(state: EditorState): DecorationSet {
   ensureSyntaxTree(state, state.doc.length, 50);
   const ranges: Range<Decoration>[] = [];
+  if (inlineTitleText !== null) {
+    ranges.push(
+      Decoration.widget({
+        widget: new InlineTitleWidget(inlineTitleText),
+        side: -2,
+        block: true,
+      }).range(0),
+    );
+  }
   syntaxTree(state).iterate({
     enter(node) {
       if (node.name === "Frontmatter") {
@@ -2280,7 +2359,11 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 const blockDecorations = StateField.define<DecorationSet>({
   create: buildBlockDecorations,
   update(value, tr) {
-    if (tr.docChanged || tr.selection !== undefined) {
+    if (
+      tr.docChanged ||
+      tr.selection !== undefined ||
+      tr.effects.some((effect) => effect.is(refreshBlockDecorations))
+    ) {
       return buildBlockDecorations(tr.state);
     }
     return value;

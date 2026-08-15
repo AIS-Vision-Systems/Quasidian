@@ -9,6 +9,7 @@ import {
 } from "../editor/livePreview";
 import { renderToHtml } from "../markdown/render";
 import { createIcon } from "./icons";
+import { buildInlineTitleElement } from "./inlineTitle";
 import {
   scheduleHoverHide,
   scheduleHoverShow,
@@ -45,6 +46,10 @@ export interface ReadingViewHooks {
   onCalloutToggle(pos: number, fold: boolean): void;
   /** Whether reading mode shows the properties box (settings). */
   showProperties(): boolean;
+  /** Note name for the inline title, or null when hidden. */
+  inlineTitle(): string | null;
+  /** Commits an inline-title edit as a file rename. */
+  onInlineTitleRename(name: string): void;
 }
 
 export interface ReadingViewHandle {
@@ -236,6 +241,17 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
       content.innerHTML = renderToHtml(doc, {
         properties: hooks.showProperties(),
       });
+      const title = hooks.inlineTitle();
+      if (title !== null) {
+        content.prepend(
+          buildInlineTitleElement({
+            title,
+            tag: "h1",
+            className: "inline-title",
+            onRename: (name) => hooks.onInlineTitleRename(name),
+          }),
+        );
+      }
       fillEmbedImages(content, hooks.resolveEmbedSrc);
       const currentPath = hooks.currentFilePath();
       fillEmbedNotes(

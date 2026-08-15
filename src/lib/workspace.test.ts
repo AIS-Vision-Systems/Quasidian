@@ -6,6 +6,10 @@ import {
   closeTab,
   emptyWorkspace,
   findTab,
+  goBack,
+  goForward,
+  historyState,
+  makeTab,
   moveTab,
   openPath,
   parseSession,
@@ -17,7 +21,7 @@ import {
 
 function workspace(paths: string[], active = 0): WorkspaceState {
   return {
-    tabs: paths.map((path) => ({ path, pinned: false })),
+    tabs: paths.map((path) => makeTab(path)),
     active: paths.length === 0 ? -1 : active,
   };
 }
@@ -132,19 +136,70 @@ describe("renameTabPath", () => {
   });
 });
 
+describe("per-tab navigation history", () => {
+  it("records the replaced path and discards the undone future", () => {
+    let state = workspace(["a.md"]);
+    state = openPath(state, "b.md");
+    state = openPath(state, "c.md");
+    expect(state.tabs[0].back).toEqual(["a.md", "b.md"]);
+    expect(historyState(state)).toEqual({ canBack: true, canForward: false });
+    state = goBack(state)!;
+    expect(activeTabPath(state)).toBe("b.md");
+    state = openPath(state, "d.md");
+    expect(state.tabs[0].forward).toEqual([]);
+    expect(state.tabs[0].back).toEqual(["a.md", "b.md"]);
+  });
+
+  it("goes back and forward symmetrically", () => {
+    let state = openPath(openPath(workspace(["a.md"]), "b.md"), "c.md");
+    state = goBack(state)!;
+    state = goBack(state)!;
+    expect(activeTabPath(state)).toBe("a.md");
+    expect(goBack(state)).toBeNull();
+    state = goForward(state)!;
+    state = goForward(state)!;
+    expect(activeTabPath(state)).toBe("c.md");
+    expect(goForward(state)).toBeNull();
+  });
+
+  it("keeps history per tab: new tabs start clean", () => {
+    let state = openPath(workspace(["a.md"]), "b.md");
+    state = openPath(state, "c.md", true);
+    expect(state.tabs[1].back).toEqual([]);
+    expect(historyState(state).canBack).toBe(false);
+  });
+
+  it("renames paths inside the history stacks too", () => {
+    let state = openPath(workspace(["a.md"]), "b.md");
+    state = renameTabPath(state, "a.md", "z.md");
+    expect(state.tabs[0].back).toEqual(["z.md"]);
+  });
+});
+
 describe("session snapshot", () => {
-  it("serializes tabs with their modes and survives a round trip", () => {
-    const pinned = setPinned(workspace(["a.md", "b.md"], 1), 0, true);
-    const session = serializeSession(pinned, (path) =>
-      path === "a.md" ? "read" : "edit",
+  it("serializes tabs with modes, history and panels; round trips", () => {
+    let state = openPath(workspace(["a.md"]), "b.md");
+    state = setPinned(state, 0, true);
+    const session = serializeSession(
+      state,
+      (path) => (path === "b.md" ? "read" : "edit"),
+      { left: 220, right: 300 },
+      "outline",
     );
     const parsed = parseSession(JSON.stringify(session));
     expect(parsed).toEqual({
       tabs: [
-        { path: "a.md", pinned: true, mode: "read" },
-        { path: "b.md", pinned: false, mode: "edit" },
+        {
+          path: "b.md",
+          pinned: true,
+          mode: "read",
+          back: ["a.md"],
+          forward: [],
+        },
       ],
-      active: 1,
+      active: 0,
+      panels: { left: 220, right: 300 },
+      rightView: "outline",
     });
   });
 
@@ -155,16 +210,21 @@ describe("session snapshot", () => {
     expect(parseSession('{"tabs": []}')).toBeNull();
   });
 
-  it("drops bad entries and clamps the active index", () => {
+  it("drops bad entries, clamps active and tolerates missing fields", () => {
     const parsed = parseSession(
       JSON.stringify({
-        tabs: [{ path: "a.md" }, { nope: true }, { path: "" }],
+        tabs: [{ path: "a.md", back: "nope" }, { nope: true }, { path: "" }],
         active: 7,
+        panels: { left: "wide" },
       }),
     );
     expect(parsed).toEqual({
-      tabs: [{ path: "a.md", pinned: false, mode: "edit" }],
+      tabs: [
+        { path: "a.md", pinned: false, mode: "edit", back: [], forward: [] },
+      ],
       active: 0,
+      panels: null,
+      rightView: null,
     });
   });
 });
