@@ -11,6 +11,7 @@ import {
   historyState,
   makeTab,
   moveTab,
+  newEmptyTab,
   openPath,
   parseSession,
   renameTabPath,
@@ -173,6 +174,35 @@ describe("per-tab navigation history", () => {
     let state = openPath(workspace(["a.md"]), "b.md");
     state = renameTabPath(state, "a.md", "z.md");
     expect(state.tabs[0].back).toEqual(["z.md"]);
+  });
+});
+
+describe("empty tabs", () => {
+  it("newEmptyTab inserts after the active tab and activates it", () => {
+    const state = newEmptyTab(workspace(["a.md", "b.md"], 0));
+    expect(state.tabs.map((tab) => tab.path)).toEqual(["a.md", null, "b.md"]);
+    expect(state.active).toBe(1);
+    expect(activeTabPath(state)).toBeNull();
+  });
+
+  it("navigating an empty tab records no history", () => {
+    let state = newEmptyTab(workspace(["a.md"]));
+    state = openPath(state, "b.md");
+    expect(activeTabPath(state)).toBe("b.md");
+    expect(state.tabs[1].back).toEqual([]);
+    expect(goBack(state)).toBeNull();
+  });
+
+  it("empty tabs never match a path lookup", () => {
+    expect(findTab(newEmptyTab(emptyWorkspace()), "a.md")).toBe(-1);
+  });
+
+  it("serialization drops empty tabs and remaps the active index", () => {
+    let state = workspace(["a.md", "b.md"], 1);
+    state = newEmptyTab(state); // a, b, (empty active)
+    const session = serializeSession(state, () => "edit");
+    expect(session.tabs.map((tab) => tab.path)).toEqual(["a.md", "b.md"]);
+    expect(session.active).toBe(1);
   });
 });
 

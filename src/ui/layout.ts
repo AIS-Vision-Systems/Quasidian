@@ -56,6 +56,7 @@ import {
   goForward,
   historyState,
   moveTab,
+  newEmptyTab,
   openPath as openTabPath,
   renameTabPath,
   serializeSession,
@@ -209,7 +210,31 @@ export function mountLayout(root: HTMLElement): void {
   const editorHost = document.createElement("div");
   editorHost.className = "editor-host is-hidden";
 
-  workspaceBody.append(welcome, editorHost);
+  // Empty ("new") tab: three centered accent actions.
+  const emptyTabView = document.createElement("div");
+  emptyTabView.className = "empty-tab-view is-hidden";
+  const emptyTabAction = (
+    labelKey: string,
+    onClick: () => void,
+  ): HTMLButtonElement => {
+    const action = document.createElement("button");
+    action.className = "empty-tab-action";
+    action.dataset.labelKey = labelKey;
+    action.textContent = t(labelKey);
+    action.addEventListener("click", onClick);
+    return action;
+  };
+  emptyTabView.append(
+    emptyTabAction("tabs.actionNewNote", () => void createNewNote()),
+    emptyTabAction("tabs.actionOpenFile", () => openQuickSwitcher()),
+    emptyTabAction("tabs.actionClose", () => {
+      if (tabsState.active !== -1) {
+        void closeTabAt(tabsState.active);
+      }
+    }),
+  );
+
+  workspaceBody.append(welcome, editorHost, emptyTabView);
   workspace.append(viewHeader, fileBar, workspaceBody);
 
   // Right panel: one list, three views (backlinks, outgoing, outline).
@@ -663,13 +688,21 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   function renderTabs(): void {
+    const plusButton = document.createElement("button");
+    plusButton.className = "tab-new-button";
+    plusButton.append(createIcon("plus"));
+    plusButton.title = t("tabs.new");
+    plusButton.setAttribute("aria-label", t("tabs.new"));
+    plusButton.addEventListener("click", () =>
+      void applyTabsChange(newEmptyTab(tabsState)),
+    );
     tabBar.replaceChildren(
       ...tabsState.tabs.map((tab, index) => {
         const el = document.createElement("div");
         el.className = "workspace-tab";
         el.classList.toggle("is-active", index === tabsState.active);
         el.classList.toggle("is-pinned", tab.pinned);
-        el.title = tab.path;
+        el.title = tab.path ?? t("tabs.newTab");
         if (tab.pinned) {
           const pin = document.createElement("span");
           pin.className = "workspace-tab-pin";
@@ -678,7 +711,10 @@ export function mountLayout(root: HTMLElement): void {
         }
         const name = document.createElement("span");
         name.className = "workspace-tab-name";
-        name.textContent = basename(tab.path).replace(/\.md$/i, "");
+        name.textContent =
+          tab.path === null
+            ? t("tabs.newTab")
+            : basename(tab.path).replace(/\.md$/i, "");
         el.append(name);
         if (!tab.pinned) {
           const close = document.createElement("button");
@@ -711,6 +747,7 @@ export function mountLayout(root: HTMLElement): void {
         });
         return el;
       }),
+      plusButton,
     );
     updateNavButtons();
   }
@@ -725,7 +762,11 @@ export function mountLayout(root: HTMLElement): void {
     if (nextPath === null) {
       await stashCurrentTabState();
       tabsState = next;
-      clearWorkspaceView();
+      if (next.active === -1) {
+        clearWorkspaceView();
+      } else {
+        showEmptyTabView();
+      }
       renderTabs();
       scheduleSessionSave();
       return;
@@ -739,6 +780,26 @@ export function mountLayout(root: HTMLElement): void {
     tabsState = next;
     renderTabs();
     scheduleSessionSave();
+  }
+
+  /** The active tab is empty: show its three actions. */
+  function showEmptyTabView(): void {
+    autosave.cancel();
+    openedPath = null;
+    editor.setDoc("");
+    editorHost.classList.add("is-hidden");
+    readingView.element.classList.add("is-hidden");
+    welcome.remove();
+    emptyTabView.classList.remove("is-hidden");
+    fileBar.classList.remove("is-hidden");
+    viewTitle.textContent = t("tabs.newTab");
+    setInlineTitle(null);
+    setCounts("");
+    if (currentFolder !== null) {
+      void getCurrentWindow()
+        .setTitle(basename(currentFolder))
+        .catch(() => undefined);
+    }
   }
 
   async function closeTabAt(index: number): Promise<void> {
@@ -771,7 +832,11 @@ export function mountLayout(root: HTMLElement): void {
     if (tab === undefined || index === tabsState.active) {
       return;
     }
-    await openFile(tab.path);
+    if (tab.path === null) {
+      await applyTabsChange({ ...tabsState, active: index });
+    } else {
+      await openFile(tab.path);
+    }
   }
 
   function cycleTab(delta: number): void {
@@ -1409,6 +1474,7 @@ export function mountLayout(root: HTMLElement): void {
     openedPath = path;
     setStatusError(null);
     welcome.remove();
+    emptyTabView.classList.add("is-hidden");
     fileBar.classList.remove("is-hidden");
     const noteName = basename(path).replace(/\.md$/i, "");
     viewTitle.textContent = noteName;
@@ -1462,6 +1528,35 @@ export function mountLayout(root: HTMLElement): void {
     return true;
   }
 
+  /** Creates "Sense títol[ N].md" in the current folder and opens it. */
+  async function createNewNote(): Promise<void> {
+    if (currentFolder === null) {
+      await openFolderFromDialog();
+      if (currentFolder === null) {
+        return;
+      }
+    }
+    const base = t("tabs.untitled");
+    let name = base;
+    let counter = 1;
+    const taken = (candidate: string): boolean =>
+      folderFiles.some(
+        (file) => file.name.toLowerCase() === `${candidate.toLowerCase()}.md`,
+      );
+    while (taken(name)) {
+      name = `${base} ${counter++}`;
+    }
+    const path = joinPath(currentFolder, `${name}.md`);
+    try {
+      await writeFile(path, "");
+    } catch (error) {
+      setStatusError(t("error.createFile", { error: String(error) }));
+      return;
+    }
+    await refreshFolder(currentFolder);
+    await openFile(path);
+  }
+
   async function openFileFromDialog(): Promise<void> {
     const path = await openMarkdownFileDialog({
       title: t("dialog.openFile.title"),
@@ -1479,6 +1574,7 @@ export function mountLayout(root: HTMLElement): void {
     editor.setDoc("");
     editorHost.classList.add("is-hidden");
     readingView.element.classList.add("is-hidden");
+    emptyTabView.classList.add("is-hidden");
     if (!welcome.isConnected) {
       workspaceBody.prepend(welcome);
     }
@@ -1912,6 +2008,17 @@ export function mountLayout(root: HTMLElement): void {
       },
     },
     {
+      id: "new-note",
+      nameKey: "command.newNote",
+      hotkey: "Ctrl+N",
+      run: () => void createNewNote(),
+    },
+    {
+      id: "new-tab",
+      nameKey: "tabs.new",
+      run: () => void applyTabsChange(newEmptyTab(tabsState)),
+    },
+    {
       id: "close-tab",
       nameKey: "command.closeTab",
       hotkey: "Ctrl+W",
@@ -2090,7 +2197,10 @@ export function mountLayout(root: HTMLElement): void {
       return;
     }
     const key = event.key.toLowerCase();
-    if (key === "o") {
+    if (key === "n") {
+      event.preventDefault();
+      void createNewNote();
+    } else if (key === "o") {
       event.preventDefault();
       openQuickSwitcher();
     } else if (key === "p") {
@@ -2160,6 +2270,13 @@ export function mountLayout(root: HTMLElement): void {
     navBackButton.setAttribute("aria-label", t("nav.back"));
     navForwardButton.title = t("nav.forward");
     navForwardButton.setAttribute("aria-label", t("nav.forward"));
+    for (const action of emptyTabView.querySelectorAll<HTMLElement>(
+      ".empty-tab-action",
+    )) {
+      if (action.dataset.labelKey !== undefined) {
+        action.textContent = t(action.dataset.labelKey);
+      }
+    }
     renderTabs();
     searchTitle.textContent = t("search.title");
     searchInput.placeholder = t("search.placeholder");
@@ -2290,6 +2407,9 @@ export function mountLayout(root: HTMLElement): void {
       tabs,
       active: Math.min(session.active, tabs.length - 1),
     };
-    await loadFile(activeTabPath(tabsState) ?? tabs[0].path);
+    const activePath = activeTabPath(tabsState);
+    if (activePath !== null) {
+      await loadFile(activePath);
+    }
   })();
 }
