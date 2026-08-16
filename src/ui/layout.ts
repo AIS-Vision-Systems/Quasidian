@@ -48,6 +48,7 @@ import {
 } from "../lib/wikilinks";
 import {
   activeTabPath,
+  cloneTab,
   closeAllTabs,
   closeOtherTabs,
   closeTab,
@@ -842,17 +843,25 @@ export function mountLayout(root: HTMLElement): void {
     }
   });
 
-  const fileModes = new Map<string, EditorModeSetting>();
+  // Mode and scroll are per tab instance (two tabs of the same file
+  // stay independent); folds are shared per file.
+  const tabModes = new Map<number, EditorModeSetting>();
+  const tabScroll = new Map<number, number>();
+  // Mode requested for a path before its tab exists (?open=...&mode=).
+  const pendingModes = new Map<string, EditorModeSetting>();
   // Fold state per file, in memory only (never written to the folder).
   const fileFolds = new Map<string, { from: number; to: number }[]>();
-  // Scroll fraction per file, for the mode it was left in.
-  const fileScroll = new Map<string, number>();
   let currentMode: EditorModeSetting = "edit";
+
+  function activeTabId(): number | null {
+    return tabsState.tabs[tabsState.active]?.id ?? null;
+  }
 
   function applyMode(mode: EditorModeSetting): void {
     currentMode = mode;
-    if (openedPath !== null) {
-      fileModes.set(normalizePath(openedPath), mode);
+    const id = activeTabId();
+    if (openedPath !== null && id !== null) {
+      tabModes.set(id, mode);
     }
     const editing = mode === "edit";
     editorHost.classList.toggle("is-hidden", !editing);
@@ -871,13 +880,33 @@ export function mountLayout(root: HTMLElement): void {
   /** Session snapshot: panes, tabs, modes, panel sizes and right view. */
   function snapshotSession() {
     splitState = withWorkspace(splitState, boundPaneId, tabsState);
+    pruneTabState();
     return serializeSession(
       splitState,
-      (path) =>
-        fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode,
+      (tab) => tabModes.get(tab.id) ?? getSettings().editor.defaultMode,
       panelSizes,
       rightView,
     );
+  }
+
+  /** Drops per-tab state whose tab no longer exists in any pane. */
+  function pruneTabState(): void {
+    const alive = new Set<number>();
+    for (const pane of splitState.panes) {
+      for (const tab of pane.workspace.tabs) {
+        alive.add(tab.id);
+      }
+    }
+    for (const id of [...tabModes.keys()]) {
+      if (!alive.has(id)) {
+        tabModes.delete(id);
+      }
+    }
+    for (const id of [...tabScroll.keys()]) {
+      if (!alive.has(id)) {
+        tabScroll.delete(id);
+      }
+    }
   }
 
   let sessionSaveDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -896,16 +925,18 @@ export function mountLayout(root: HTMLElement): void {
     if (openedPath === null) {
       return;
     }
-    const key = normalizePath(openedPath);
-    fileFolds.set(key, editor.getFolds());
-    fileScroll.set(
-      key,
-      scrollFraction(
-        currentMode === "edit"
-          ? editorHost.querySelector(".cm-scroller")
-          : readingView.element,
-      ),
-    );
+    fileFolds.set(normalizePath(openedPath), editor.getFolds());
+    const id = activeTabId();
+    if (id !== null) {
+      tabScroll.set(
+        id,
+        scrollFraction(
+          currentMode === "edit"
+            ? editorHost.querySelector(".cm-scroller")
+            : readingView.element,
+        ),
+      );
+    }
     if (autosave.isDirty()) {
       await saveNow();
     }
@@ -1030,15 +1061,50 @@ export function mountLayout(root: HTMLElement): void {
       scheduleSessionSave();
       return;
     }
+    const prevId = activeTabId();
     if (prevPath === null || !samePath(prevPath, nextPath)) {
       await stashCurrentTabState();
       tabsState = next;
       await loadFile(nextPath);
       return;
     }
+    if (prevId !== (next.tabs[next.active]?.id ?? null)) {
+      // Another instance of the same file: shared buffer, own view
+      // state — no reload, just this tab's mode and scroll.
+      await stashCurrentTabState();
+      tabsState = next;
+      applyActiveTabView();
+      renderTabs();
+      scheduleSessionSave();
+      return;
+    }
     tabsState = next;
     renderTabs();
     scheduleSessionSave();
+  }
+
+  /** Applies the active tab's own mode and scroll to the shared buffer. */
+  function applyActiveTabView(): void {
+    const id = activeTabId();
+    const mode =
+      (id !== null ? tabModes.get(id) : undefined) ??
+      getSettings().editor.defaultMode;
+    if (mode === "read") {
+      readingView.render(editor.getDoc());
+    }
+    applyMode(mode);
+    const saved = id !== null ? tabScroll.get(id) : undefined;
+    if (saved !== undefined) {
+      setScrollFraction(
+        mode === "edit"
+          ? editorHost.querySelector(".cm-scroller")
+          : readingView.element,
+        saved,
+      );
+    }
+    if (mode === "edit") {
+      editor.focus();
+    }
   }
 
   /** The active tab is empty: show its three actions. */
@@ -1198,14 +1264,33 @@ export function mountLayout(root: HTMLElement): void {
       height: 750,
       visible: false,
       theme: "dark",
+      backgroundColor: "#000000",
     });
     void spawned.once("tauri://error", (event) => {
       setStatusError(t("error.openFile", { error: String(event.payload) }));
     });
   }
 
-  /** Moves the tab at `index` into a brand-new window. */
-  async function moveTabToNewWindow(index: number): Promise<void> {
+  /** Copies one tab instance's view state onto another. */
+  function copyTabState(fromId: number, toId: number): void {
+    const mode = tabModes.get(fromId);
+    if (mode !== undefined) {
+      tabModes.set(toId, mode);
+    }
+    const scroll = tabScroll.get(fromId);
+    if (scroll !== undefined) {
+      tabScroll.set(toId, scroll);
+    }
+  }
+
+  /**
+   * Moves the tab at `index` into a brand-new window; `duplicate`
+   * keeps the original where it is (a second instance).
+   */
+  async function moveTabToNewWindow(
+    index: number,
+    options?: { duplicate?: boolean },
+  ): Promise<void> {
     const tab = tabsState.tabs[index];
     if (tab === undefined || tab.path === null) {
       return;
@@ -1213,8 +1298,10 @@ export function mountLayout(root: HTMLElement): void {
     // Flush pending edits so the new window reads the fresh contents.
     await stashCurrentTabState();
     const label = `w${Date.now().toString(36)}`;
-    spawnWindow(label, tab.path, fileModes.get(normalizePath(tab.path)));
-    await closeTabAt(index);
+    spawnWindow(label, tab.path, tabModes.get(tab.id));
+    if (options?.duplicate !== true) {
+      await closeTabAt(index);
+    }
   }
 
   /**
@@ -1231,9 +1318,10 @@ export function mountLayout(root: HTMLElement): void {
     }
     hideHoverPreview();
     await stashCurrentTabState();
-    const moved: Tab = options?.duplicate
-      ? { ...tab, back: [...tab.back], forward: [...tab.forward] }
-      : tab;
+    const moved: Tab = options?.duplicate ? cloneTab(tab) : tab;
+    if (options?.duplicate) {
+      copyTabState(tab.id, moved.id);
+    }
     let source = options?.duplicate ? tabsState : closeTab(tabsState, index);
     if (source.tabs.length === 0) {
       source = { tabs: [makeTab(null)], active: 0 };
@@ -1450,7 +1538,11 @@ export function mountLayout(root: HTMLElement): void {
             {
               label: t("tabs.moveToWindow"),
               icon: "external-link" as const,
-              onClick: () => void moveTabToNewWindow(index),
+              // Ctrl+click duplicates: the original stays in this pane.
+              onClick: (event: MouseEvent) =>
+                void moveTabToNewWindow(index, {
+                  duplicate: event.ctrlKey || event.metaKey,
+                }),
             },
           ]
         : []),
@@ -1517,30 +1609,50 @@ export function mountLayout(root: HTMLElement): void {
       const fraction = scrollFraction(scroller);
       readingView.render(editor.getDoc());
       applyMode("read");
-      // Last block starting at or before the editor's top line.
-      let target: HTMLElement | null = null;
+      // Last block starting at or before the editor's top line, plus
+      // how far into the block that line falls (document offsets map
+      // roughly linearly onto rendered height within one block).
+      let target: { pos: number; el: HTMLElement } | null = null;
+      let nextPos = editor.getDoc().length;
       for (const anchor of readingAnchors()) {
         if (anchor.pos > topPos) {
+          nextPos = anchor.pos;
           break;
         }
-        target = anchor.el;
+        target = anchor;
       }
       if (target === null) {
         setScrollFraction(readingView.element, fraction);
       } else {
         const container = readingView.element;
+        const rect = target.el.getBoundingClientRect();
+        const within =
+          nextPos > target.pos
+            ? Math.min((topPos - target.pos) / (nextPos - target.pos), 1)
+            : 0;
         container.scrollTop +=
-          target.getBoundingClientRect().top -
-          container.getBoundingClientRect().top;
+          rect.top -
+          container.getBoundingClientRect().top +
+          within * rect.height;
       }
     } else {
-      // First block still visible at the top of the reading view.
+      // First block still visible at the top of the reading view, plus
+      // the visible fraction already scrolled past inside it.
       const containerTop =
         readingView.element.getBoundingClientRect().top;
       let topPos: number | null = null;
-      for (const anchor of readingAnchors()) {
-        if (anchor.el.getBoundingClientRect().bottom > containerTop + 1) {
-          topPos = anchor.pos;
+      const anchors = readingAnchors();
+      for (let i = 0; i < anchors.length; i++) {
+        const rect = anchors[i].el.getBoundingClientRect();
+        if (rect.bottom > containerTop + 1) {
+          const pos = anchors[i].pos;
+          const nextPos =
+            anchors[i + 1]?.pos ?? editor.getDoc().length;
+          const within =
+            rect.height > 0 && rect.top < containerTop
+              ? Math.min((containerTop - rect.top) / rect.height, 1)
+              : 0;
+          topPos = Math.round(pos + within * (nextPos - pos));
           break;
         }
       }
@@ -2096,13 +2208,18 @@ export function mountLayout(root: HTMLElement): void {
         editor.revealRange(pos, pos);
       }
       setCounts(contents);
+      const id = activeTabId();
+      const pending = pendingModes.get(normalizePath(path));
+      pendingModes.delete(normalizePath(path));
       const mode =
-        fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode;
+        (id !== null ? tabModes.get(id) : undefined) ??
+        pending ??
+        getSettings().editor.defaultMode;
       if (mode === "read") {
         readingView.render(contents);
       }
       applyMode(mode);
-      const savedScroll = fileScroll.get(normalizePath(path));
+      const savedScroll = id !== null ? tabScroll.get(id) : undefined;
       if (savedScroll !== undefined) {
         setScrollFraction(
           mode === "edit"
@@ -2185,24 +2302,17 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
-  /** Moves per-file in-memory state (mode, folds, scroll) to a new path. */
+  /**
+   * Moves per-file in-memory state (folds) to a new path. Per-tab
+   * state (mode, scroll) keys off tab ids and survives renames as-is.
+   */
   function moveFileState(from: string, to: string): void {
     const oldKey = normalizePath(from);
     const newKey = normalizePath(to);
-    const mode = fileModes.get(oldKey);
-    if (mode !== undefined) {
-      fileModes.delete(oldKey);
-      fileModes.set(newKey, mode);
-    }
     const folds = fileFolds.get(oldKey);
     if (folds !== undefined) {
       fileFolds.delete(oldKey);
       fileFolds.set(newKey, folds);
-    }
-    const scroll = fileScroll.get(oldKey);
-    if (scroll !== undefined) {
-      fileScroll.delete(oldKey);
-      fileScroll.set(newKey, scroll);
     }
   }
 
@@ -2337,9 +2447,8 @@ export function mountLayout(root: HTMLElement): void {
       setStatusError(t("error.deleteFile", { error: String(error) }));
       return;
     }
-    fileModes.delete(normalizePath(path));
     fileFolds.delete(normalizePath(path));
-    fileScroll.delete(normalizePath(path));
+    pendingModes.delete(normalizePath(path));
     // Close every tab holding the file, in every pane.
     if (openedPath !== null && samePath(path, openedPath)) {
       // The buffer belongs to a deleted file: never save it back.
@@ -3017,7 +3126,7 @@ export function mountLayout(root: HTMLElement): void {
     if (openParam !== null) {
       const mode = params.get("mode");
       if (mode === "edit" || mode === "read") {
-        fileModes.set(normalizePath(openParam), mode);
+        pendingModes.set(normalizePath(openParam), mode);
       }
       await openFile(openParam);
       return;
@@ -3063,13 +3172,13 @@ export function mountLayout(root: HTMLElement): void {
         } catch {
           continue; // gone since last session
         }
-        tabs.push({
-          path: tab.path,
-          pinned: tab.pinned,
+        const restored: Tab = {
+          ...makeTab(tab.path, tab.pinned),
           back: tab.back,
           forward: tab.forward,
-        });
-        fileModes.set(normalizePath(tab.path), tab.mode);
+        };
+        tabs.push(restored);
+        tabModes.set(restored.id, tab.mode);
       }
       if (tabs.length === 0) {
         continue;
