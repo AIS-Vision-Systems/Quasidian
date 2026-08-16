@@ -49,6 +49,7 @@
   "menu.insert": "Insert",
   "menu.insertFootnote": "Footnote",
   "menu.insertCallout": "Callout",
+  "menu.insertMarkdownLink": "Markdown link",
   "menu.insertHr": "Horizontal rule",
   "menu.insertCodeBlock": "Code block",
   "menu.insertMathBlock": "Math block",

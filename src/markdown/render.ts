@@ -13,7 +13,7 @@ import {
 import { iconMarkup } from "../ui/icons";
 import { calloutColor, calloutIcon, parseCalloutHeader } from "./callouts";
 import { markdownParser } from "./parser";
-import { isImageTarget } from "./wikilinks";
+import { isExternalTarget, isImageTarget } from "./wikilinks";
 
 function escapeHtml(text: string): string {
   return text
@@ -553,12 +553,21 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
       const marks = node.getChildren("LinkMark");
       const from = marks[0]?.to ?? node.from;
       const to = marks[1]?.from ?? node.to;
-      const isExternal = /^[a-z][a-z0-9+.-]*:/i.test(url);
-      out.push(
-        isExternal
-          ? `<a class="external-link" href="${escapeHtml(url)}">`
-          : `<a class="internal-link" data-target="${escapeHtml(url)}">`,
-      );
+      if (isExternalTarget(url)) {
+        out.push(`<a class="external-link" href="${escapeHtml(url)}">`);
+      } else {
+        // Internal note link: percent-decode so "La%20nota.md" resolves
+        // like any other target.
+        let target = url;
+        try {
+          target = decodeURIComponent(url);
+        } catch {
+          // Malformed escapes: keep the raw text.
+        }
+        out.push(
+          `<a class="internal-link" data-target="${escapeHtml(target)}">`,
+        );
+      }
       renderInline(node, from, to, doc, out);
       out.push("</a>");
       return;

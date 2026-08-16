@@ -4,6 +4,7 @@ import {
   autocompletion,
   closeBrackets,
   closeBracketsKeymap,
+  startCompletion,
   type CompletionContext,
   type CompletionResult,
 } from "@codemirror/autocomplete";
@@ -38,13 +39,14 @@ import {
 // Marks reload/mirror transactions: no autosave, no re-mirroring.
 const quietReload = Annotation.define<boolean>();
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { gutterLineStyles, widgetLineNumbers } from "./gutterLines";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import { t } from "../i18n/i18n";
 import { footnoteTag } from "../markdown/footnotes";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
-import { highlightTag } from "../markdown/wikilinks";
+import { highlightTag, isExternalTarget } from "../markdown/wikilinks";
 import { openContextMenu } from "../ui/contextMenu";
 import { renderFootnoteContent } from "../markdown/render";
 import {
@@ -174,16 +176,25 @@ function applyFormat(view: EditorView, open: string, close: string): void {
 
 /** `[text](|)` around the selection, cursor between the parens. */
 function insertLink(view: EditorView): void {
+  const hadSelection = !view.state.selection.main.empty;
   view.dispatch(
     view.state.changeByRange((range) => ({
       changes: [
         { from: range.from, insert: "[" },
         { from: range.to, insert: "]()" },
       ],
-      range: EditorSelection.cursor(range.to + 3),
+      // Selected text becomes the label and the cursor lands in the
+      // URL; with nothing selected, the label is typed first.
+      range: range.empty
+        ? EditorSelection.cursor(range.from + 1)
+        : EditorSelection.cursor(range.to + 3),
     })),
   );
   view.focus();
+  if (hadSelection) {
+    // The cursor sits in "](|)": pop the file path completions.
+    startCompletion(view);
+  }
 }
 
 async function cutOrCopySelection(view: EditorView, cut: boolean): Promise<void> {
@@ -325,6 +336,11 @@ function openEditorMenu(view: EditorView, x: number, y: number): void {
           onClick: () => insertBlockSnippet(view, "> [!note] \n> \n", 10),
         },
         {
+          label: t("menu.insertMarkdownLink"),
+          icon: "link",
+          onClick: () => insertLink(view),
+        },
+        {
           label: t("menu.insertHr"),
           icon: "minus",
           onClick: () => insertBlockSnippet(view, "---\n", 4),
@@ -401,17 +417,34 @@ function footnoteHoverAt(
   return html === null ? null : { key: `fn-${id}`, html };
 }
 
-/** Wikilink (target + range) at `pos`, or null when not inside one. */
+/**
+ * Link target (plus range) at `pos` — a wikilink or a markdown link —
+ * or null when not inside one. Markdown URLs are percent-decoded, so
+ * "docs/La%20nota.md" resolves like any other target.
+ */
 function wikilinkAt(
   state: EditorState,
   pos: number,
 ): { target: string; from: number; to: number } | null {
   let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 0);
-  while (node !== null && node.name !== "Wikilink") {
+  while (node !== null && node.name !== "Wikilink" && node.name !== "Link") {
     node = node.parent;
   }
   if (node === null) {
     return null;
+  }
+  if (node.name === "Link") {
+    const url = node.getChild("URL");
+    if (url === null) {
+      return null;
+    }
+    let target = state.sliceDoc(url.from, url.to);
+    try {
+      target = decodeURIComponent(target);
+    } catch {
+      // Malformed escapes: keep the raw text.
+    }
+    return { target, from: node.from, to: node.to };
   }
   const path = node.getChild("WikilinkPath");
   if (path === null) {
@@ -423,6 +456,7 @@ function wikilinkAt(
     to: node.to,
   };
 }
+
 
 export interface EditorHooks {
   /**
@@ -436,6 +470,8 @@ export interface EditorHooks {
   onWikilinkClick(target: string, newTab?: boolean): void;
   /** File names offered after `[[`: markdown basenames and image files. */
   getWikilinkCompletions(): string[];
+  /** Paths (with extension) offered inside a markdown link's `](...)`. */
+  getLinkPathCompletions(): string[];
   /** Heading texts of a note, offered after `#` inside a wikilink. */
   getHeadingCompletions(note: string): Promise<string[]>;
   /** Resolves an embed target to a loadable URL, or null if unknown. */
@@ -481,6 +517,42 @@ function wikilinkCompletionSource(hooks: EditorHooks) {
       })),
       validFor: /^[^\][|#]*$/,
     };
+  };
+}
+
+/**
+ * Inside a markdown link's `](...)`: offer note and image paths. The
+ * typed fragment matches anywhere in the path ("guid" finds
+ * "src/help/guide.ca.md"), earliest occurrence first.
+ */
+function markdownLinkCompletionSource(hooks: EditorHooks) {
+  return (context: CompletionContext): CompletionResult | null => {
+    const match = context.matchBefore(/\]\([^)\s]*$/);
+    if (match === null) {
+      return null;
+    }
+    const alreadyClosed =
+      context.state.sliceDoc(context.pos, context.pos + 1) === ")";
+    let typed = match.text.slice(2).toLowerCase();
+    try {
+      typed = decodeURIComponent(typed);
+    } catch {
+      // Malformed escapes: match the raw text.
+    }
+    const options = hooks
+      .getLinkPathCompletions()
+      .map((path) => ({ path, at: path.toLowerCase().indexOf(typed) }))
+      .filter((entry) => entry.at !== -1)
+      .sort((a, b) => a.at - b.at || a.path.localeCompare(b.path))
+      .map((entry) => {
+        // Spaces are percent-encoded, as markdown URLs require.
+        const encoded = encodeURI(entry.path);
+        return {
+          label: entry.path,
+          apply: alreadyClosed ? encoded : encoded + ")",
+        };
+      });
+    return { from: match.from + 2, options, filter: false };
   };
 }
 
@@ -549,7 +621,9 @@ export function createEditor(
   const autoPairCompartment = new Compartment();
 
   function lineNumbersExtension(c: EditorConfig) {
-    return c.showLineNumbers ? lineNumbers() : [];
+    return c.showLineNumbers
+      ? [lineNumbers(), gutterLineStyles, widgetLineNumbers]
+      : [];
   }
   function autoPairExtension(c: EditorConfig) {
     return c.autoPairBrackets
@@ -706,7 +780,10 @@ export function createEditor(
         indentCompartment.of(indentExtension(config)),
         spellcheckCompartment.of(spellcheckExtension(config)),
         autocompletion({
-          override: [wikilinkCompletionSource(hooks)],
+          override: [
+            wikilinkCompletionSource(hooks),
+            markdownLinkCompletionSource(hooks),
+          ],
           icons: false,
         }),
         EditorView.domEventHandlers({
@@ -725,8 +802,16 @@ export function createEditor(
               x: event.clientX,
               y: event.clientY,
             });
+            const overLink =
+              event.target instanceof Element &&
+              event.target.closest(".cm-link") !== null;
+            const found =
+              pos === null || !overLink
+                ? null
+                : (wikilinkAt(view.state, pos)?.target ?? null);
+            // External URLs have no note to preview.
             const target =
-              pos === null ? null : (wikilinkAt(view.state, pos)?.target ?? null);
+              found !== null && isExternalTarget(found) ? null : found;
             if (target === null) {
               const note =
                 pos === null ? null : footnoteHoverAt(view.state, pos);
@@ -759,6 +844,14 @@ export function createEditor(
             if (event.button !== 0) {
               return false;
             }
+            // Only the visible link text navigates: clicking beside it
+            // (hidden syntax, margins) just places the cursor to edit.
+            if (
+              !(event.target instanceof Element) ||
+              event.target.closest(".cm-link") === null
+            ) {
+              return false;
+            }
             const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
             if (pos === null) {
               return false;
@@ -780,6 +873,12 @@ export function createEditor(
           // Middle-click on a wikilink: new tab, like rendered views.
           auxclick(event, view) {
             if (event.button !== 1) {
+              return false;
+            }
+            if (
+              !(event.target instanceof Element) ||
+              event.target.closest(".cm-link") === null
+            ) {
               return false;
             }
             const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });

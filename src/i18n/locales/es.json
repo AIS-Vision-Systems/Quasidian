@@ -49,6 +49,7 @@
   "menu.insert": "Insertar",
   "menu.insertFootnote": "Nota al pie",
   "menu.insertCallout": "Callout",
+  "menu.insertMarkdownLink": "Enlace markdown",
   "menu.insertHr": "Línea horizontal",
   "menu.insertCodeBlock": "Bloque de código",
   "menu.insertMathBlock": "Bloque de fórmula",

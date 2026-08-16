@@ -204,6 +204,26 @@ describe("computeHiddenRanges — wikilinks", () => {
   });
 });
 
+describe("computeHiddenRanges — markdown links", () => {
+  const doc = "see [Spec](docs/SPEC.md) end";
+
+  it("hides brackets and URL when outside: only the label shows", () => {
+    expect(hiddenRanges(doc, doc.length)).toEqual([
+      { from: 4, to: 5 },
+      { from: 9, to: 10 },
+      { from: 10, to: 11 },
+      { from: 11, to: 23 },
+      { from: 23, to: 24 },
+    ]);
+  });
+
+  it("reveals the raw syntax when the selection touches the link", () => {
+    expect(hiddenRanges(doc, 7)).toEqual([]);
+    expect(hiddenRanges(doc, 4)).toEqual([]);
+    expect(hiddenRanges(doc, 24)).toEqual([]);
+  });
+});
+
 describe("computeImageEmbeds and computeTaskMarkers", () => {
   function stateFor(doc: string, anchor: number) {
     const state = EditorState.create({

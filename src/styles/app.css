@@ -34,6 +34,7 @@ body {
 
 /* --- Sidebar --- */
 
+/* The header row stays put; the views below scroll on their own. */
 .sidebar {
   grid-area: sidebar;
   display: flex;
@@ -42,7 +43,7 @@ body {
   padding: 12px;
   background-color: var(--background-secondary);
   border-right: 1px solid var(--background-modifier-border);
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
 .sidebar-header {
@@ -214,6 +215,7 @@ body {
   gap: 12px;
   min-height: 0;
   flex: 1;
+  overflow-y: auto;
 }
 
 .sidebar-view.is-hidden {
@@ -353,8 +355,56 @@ button:focus-visible {
   color: var(--text-normal);
 }
 
+/* --- Vault folder tree (multi-folder modes) --- */
+
+.tree-folder {
+  list-style: none;
+}
+
+.tree-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tree-folder-row:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.tree-folder-row svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.tree-folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-children {
+  margin: 0;
+  padding: 0 0 0 14px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 1px solid var(--background-modifier-border);
+  margin-left: 14px;
+}
+
 /* --- Backlinks panel --- */
 
+/* The header row stays put; only the list below scrolls. */
 .backlinks-panel {
   grid-area: backlinks;
   display: flex;
@@ -364,7 +414,7 @@ button:focus-visible {
   padding: 12px;
   background-color: var(--background-secondary);
   border-left: 1px solid var(--background-modifier-border);
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
 .backlinks-panel.is-hidden {
@@ -412,6 +462,9 @@ button:focus-visible {
   margin: 0;
   padding: 0;
   list-style: none;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .backlinks-empty {
@@ -704,6 +757,52 @@ body.is-readable-line-length .cm-editor .cm-content {
   background-color: transparent;
   border-right: none;
   color: var(--text-faint);
+}
+
+/*
+ * Line numbers follow their line's text. Heading lines carry top
+ * padding on the content side; the gutter element replicates it (plus
+ * half the extra height of the bigger heading row, so the number sits
+ * centered on the heading text). CodeMirror sets each element's height
+ * explicitly, so border-box keeps the columns in sync.
+ */
+.cm-editor .cm-lineNumbers .cm-gutterElement {
+  box-sizing: border-box;
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h1 {
+  padding-top: calc(var(--font-text-size) * 2.24);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h2 {
+  padding-top: calc(var(--font-text-size) * 1.88);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h3 {
+  padding-top: calc(var(--font-text-size) * 1.54);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h4 {
+  padding-top: calc(var(--font-text-size) * 1.21);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h5 {
+  padding-top: calc(var(--font-text-size) * 1);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h6 {
+  padding-top: calc(var(--font-text-size) * 0.9);
+}
+
+/* Innards of code blocks and quotes only number themselves while the
+   cursor is inside; transparent (not hidden) keeps the gutter width. */
+.cm-editor .cm-lineNumbers .cm-gutterline-quiet {
+  color: transparent;
+}
+
+/* The callout box pads its first line; its number follows suit. */
+.cm-editor .cm-lineNumbers .cm-gutterline-callout {
+  padding-top: 10px;
 }
 
 /* Room for the inline fold chevrons hanging left of the text. */
@@ -1786,8 +1885,15 @@ span.table-wrap > table {
   font-size: var(--font-ui-small);
 }
 
+/* Spacing on the widget root as padding, never margin on the child:
+   child margins collapse out of the root and CodeMirror's height
+   measurement misses them, shifting the gutter and cursor mapping. */
+.cm-frontmatter-widget {
+  padding: 4px 0 12px;
+}
+
 .cm-frontmatter-widget .frontmatter-props {
-  margin: 4px 0 12px;
+  margin: 0;
   cursor: pointer;
 }
 
@@ -2285,7 +2391,10 @@ span.table-wrap > table {
 
 .cm-editor .cm-inline-title {
   font-family: inherit;
-  padding: 2px 0 6px;
+  /* The .inline-title bottom margin as padding: CodeMirror measures
+     offsetHeight and an unmeasured margin desyncs gutter and cursor. */
+  margin: 0;
+  padding: 2px 0 calc(6px + 0.4em);
 }
 
 .markdown-rendered h1.inline-title {
