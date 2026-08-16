@@ -1874,8 +1874,15 @@ span.table-wrap > table {
   font-size: var(--font-ui-small);
 }
 
+/* Spacing on the widget root as padding, never margin on the child:
+   child margins collapse out of the root and CodeMirror's height
+   measurement misses them, shifting the gutter and cursor mapping. */
+.cm-frontmatter-widget {
+  padding: 4px 0 12px;
+}
+
 .cm-frontmatter-widget .frontmatter-props {
-  margin: 4px 0 12px;
+  margin: 0;
   cursor: pointer;
 }
 
@@ -2373,7 +2380,10 @@ span.table-wrap > table {
 
 .cm-editor .cm-inline-title {
   font-family: inherit;
-  padding: 2px 0 6px;
+  /* The .inline-title bottom margin as padding: CodeMirror measures
+     offsetHeight and an unmeasured margin desyncs gutter and cursor. */
+  margin: 0;
+  padding: 2px 0 calc(6px + 0.4em);
 }
 
 .markdown-rendered h1.inline-title {
