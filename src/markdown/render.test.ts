@@ -15,6 +15,23 @@ describe("renderToHtml — blocks", () => {
     expect(renderToHtml("`codi`")).toBe("<p><code>codi</code></p>");
   });
 
+  it("renders markdown links like wikilinks: internal unless a scheme", () => {
+    expect(renderToHtml("[Spec](docs/SPEC.md)")).toBe(
+      '<p><a class="internal-link" data-target="docs/SPEC.md">Spec</a></p>',
+    );
+    expect(renderToHtml("[web](https://exemple.cat)")).toBe(
+      '<p><a class="external-link" href="https://exemple.cat">web</a></p>',
+    );
+    // A drive letter is a Windows path, not a URL scheme.
+    expect(renderToHtml("[n](C:/notes/a.md)")).toContain(
+      'class="internal-link" data-target="C:/notes/a.md"',
+    );
+    // Percent-escapes decode so the target resolves like any other.
+    expect(renderToHtml("[n](La%20nota.md)")).toContain(
+      'data-target="La nota.md"',
+    );
+  });
+
   it("anchors top-level blocks with their document position on demand", () => {
     expect(renderToHtml("hola\n\nadeu", { anchors: true })).toBe(
       '<p data-pos="0">hola</p><p data-pos="6">adeu</p>',

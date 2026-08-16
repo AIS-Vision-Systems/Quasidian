@@ -184,6 +184,27 @@ export function computeHiddenRanges(
         }
         return false;
       }
+      if (node.name === "Link") {
+        // Markdown links behave like wikilinks: outside the active
+        // selection only the label shows — brackets, URL and title hide.
+        if (!selectionTouches(state, node.from, node.to)) {
+          for (
+            let child = node.node.firstChild;
+            child !== null;
+            child = child.nextSibling
+          ) {
+            if (
+              child.name === "LinkMark" ||
+              child.name === "URL" ||
+              child.name === "LinkTitle" ||
+              child.name === "LinkLabel"
+            ) {
+              hidden.push({ from: child.from, to: child.to });
+            }
+          }
+        }
+        return false;
+      }
       const revealedBy = INLINE_MARKS[node.name];
       if (revealedBy !== undefined && revealedBy.includes(parent.name)) {
         if (!selectionTouches(state, parent.from, parent.to)) {

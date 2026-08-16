@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n/i18n";
 import {
   deleteFile,
@@ -103,7 +103,7 @@ import {
 import type { EditorHandle } from "../editor/editor";
 import type { ReadingViewHandle } from "./readingView";
 import { renderToHtml } from "../markdown/render";
-import { isImageTarget } from "../markdown/wikilinks";
+import { isExternalTarget, isImageTarget } from "../markdown/wikilinks";
 import {
   getSettings,
   subscribeSettings,
@@ -778,6 +778,16 @@ export function mountLayout(root: HTMLElement): void {
       return [
         ...folderFiles.map((file) => file.name.replace(/\.md$/i, "")),
         ...folderImages.map((file) => file.name),
+      ];
+    },
+    getLinkPathCompletions() {
+      // Markdown links carry the extension; in a vault, the path from
+      // the vault root (the suffix resolver finds it from anywhere).
+      const label = (path: string, name: string): string =>
+        vaultRoot === null ? name : relativePath(vaultRoot, path);
+      return [
+        ...folderFiles.map((file) => label(file.path, file.name)),
+        ...folderImages.map((file) => label(file.path, file.name)),
       ];
     },
     async getHeadingCompletions(note) {
@@ -2341,6 +2351,12 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   async function openWikilink(target: string, newTab = false): Promise<void> {
+    // Markdown links may point outside the vault: external URLs open in
+    // the system browser (wikilink targets never carry a scheme).
+    if (isExternalTarget(target)) {
+      void openUrl(target).catch(() => undefined);
+      return;
+    }
     const { note, anchor } = splitAnchor(target);
     // Same-file anchor: just scroll to the heading.
     if (note === "") {

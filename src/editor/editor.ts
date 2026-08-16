@@ -45,7 +45,7 @@ import { t } from "../i18n/i18n";
 import { footnoteTag } from "../markdown/footnotes";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
-import { highlightTag } from "../markdown/wikilinks";
+import { highlightTag, isExternalTarget } from "../markdown/wikilinks";
 import { openContextMenu } from "../ui/contextMenu";
 import { renderFootnoteContent } from "../markdown/render";
 import {
@@ -402,17 +402,34 @@ function footnoteHoverAt(
   return html === null ? null : { key: `fn-${id}`, html };
 }
 
-/** Wikilink (target + range) at `pos`, or null when not inside one. */
+/**
+ * Link target (plus range) at `pos` — a wikilink or a markdown link —
+ * or null when not inside one. Markdown URLs are percent-decoded, so
+ * "docs/La%20nota.md" resolves like any other target.
+ */
 function wikilinkAt(
   state: EditorState,
   pos: number,
 ): { target: string; from: number; to: number } | null {
   let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 0);
-  while (node !== null && node.name !== "Wikilink") {
+  while (node !== null && node.name !== "Wikilink" && node.name !== "Link") {
     node = node.parent;
   }
   if (node === null) {
     return null;
+  }
+  if (node.name === "Link") {
+    const url = node.getChild("URL");
+    if (url === null) {
+      return null;
+    }
+    let target = state.sliceDoc(url.from, url.to);
+    try {
+      target = decodeURIComponent(target);
+    } catch {
+      // Malformed escapes: keep the raw text.
+    }
+    return { target, from: node.from, to: node.to };
   }
   const path = node.getChild("WikilinkPath");
   if (path === null) {
@@ -424,6 +441,7 @@ function wikilinkAt(
     to: node.to,
   };
 }
+
 
 export interface EditorHooks {
   /**
@@ -437,6 +455,8 @@ export interface EditorHooks {
   onWikilinkClick(target: string, newTab?: boolean): void;
   /** File names offered after `[[`: markdown basenames and image files. */
   getWikilinkCompletions(): string[];
+  /** Paths (with extension) offered inside a markdown link's `](...)`. */
+  getLinkPathCompletions(): string[];
   /** Heading texts of a note, offered after `#` inside a wikilink. */
   getHeadingCompletions(note: string): Promise<string[]>;
   /** Resolves an embed target to a loadable URL, or null if unknown. */
@@ -481,6 +501,30 @@ function wikilinkCompletionSource(hooks: EditorHooks) {
         apply: alreadyClosed ? name : name + "]]",
       })),
       validFor: /^[^\][|#]*$/,
+    };
+  };
+}
+
+/** Inside a markdown link's `](...)`: offer note and image paths. */
+function markdownLinkCompletionSource(hooks: EditorHooks) {
+  return (context: CompletionContext): CompletionResult | null => {
+    const match = context.matchBefore(/\]\([^)\s]*$/);
+    if (match === null) {
+      return null;
+    }
+    const alreadyClosed =
+      context.state.sliceDoc(context.pos, context.pos + 1) === ")";
+    return {
+      from: match.from + 2,
+      options: hooks.getLinkPathCompletions().map((path) => {
+        // Spaces are percent-encoded, as markdown URLs require.
+        const encoded = encodeURI(path);
+        return {
+          label: path,
+          apply: alreadyClosed ? encoded : encoded + ")",
+        };
+      }),
+      validFor: /^[^)\s]*$/,
     };
   };
 }
@@ -709,7 +753,10 @@ export function createEditor(
         indentCompartment.of(indentExtension(config)),
         spellcheckCompartment.of(spellcheckExtension(config)),
         autocompletion({
-          override: [wikilinkCompletionSource(hooks)],
+          override: [
+            wikilinkCompletionSource(hooks),
+            markdownLinkCompletionSource(hooks),
+          ],
           icons: false,
         }),
         EditorView.domEventHandlers({
@@ -728,8 +775,11 @@ export function createEditor(
               x: event.clientX,
               y: event.clientY,
             });
-            const target =
+            const found =
               pos === null ? null : (wikilinkAt(view.state, pos)?.target ?? null);
+            // External URLs have no note to preview.
+            const target =
+              found !== null && isExternalTarget(found) ? null : found;
             if (target === null) {
               const note =
                 pos === null ? null : footnoteHoverAt(view.state, pos);

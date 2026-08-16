@@ -20,6 +20,14 @@ export function isImageTarget(target: string): boolean {
 }
 
 /**
+ * Whether a link target is an external URL (scheme:), not a note. A
+ * single letter before the colon is a Windows drive, not a scheme.
+ */
+export function isExternalTarget(target: string): boolean {
+  return /^[a-z][a-z0-9+.-]+:/i.test(target);
+}
+
+/**
  * Parses the shared `[[path|alias]]` body. `start` is where the element
  * (and its first mark) begins; `contentStart` is right after the `[[`.
  */
