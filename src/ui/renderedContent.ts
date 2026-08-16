@@ -5,6 +5,7 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { classHighlighter, highlightCode } from "@lezer/highlight";
 import katex from "katex";
+import { cacheImageSize, cachedImageSize } from "../editor/livePreview";
 import { t } from "../i18n/i18n";
 import { createIcon } from "./icons";
 
@@ -22,8 +23,33 @@ export function fillEmbedImages(
       missing.className = "embed-missing";
       missing.textContent = target;
       image.replaceWith(missing);
-    } else {
-      image.src = src;
+      continue;
+    }
+    image.addEventListener(
+      "load",
+      () => {
+        cacheImageSize(src, {
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        });
+      },
+      { once: true },
+    );
+    image.src = src;
+    // Known natural sizes give the image its final box synchronously —
+    // same rules as the editor's embed widget, so layouts match and
+    // scroll anchoring measures a stable page.
+    const cached = cachedImageSize(src);
+    if (cached === undefined) {
+      continue;
+    }
+    if (!image.hasAttribute("width")) {
+      image.width = cached.width;
+      image.height = cached.height;
+    } else if (!image.hasAttribute("height") && cached.width > 0) {
+      image.height = Math.round(
+        (image.width * cached.height) / cached.width,
+      );
     }
   }
 }
@@ -191,15 +217,17 @@ const MAX_EMBED_DEPTH = 4;
  * MAX_EMBED_DEPTH or when a note already appears in the chain (cycle).
  * Stopped placeholders keep their target text, dimmed.
  */
+/** Resolves once every embed (recursively) has been filled in. */
 export function fillEmbedNotes(
   root: HTMLElement,
   hooks: EmbedFillHooks,
   visited: ReadonlySet<string>,
   depth = 0,
-): void {
+): Promise<void> {
+  const jobs: Promise<void>[] = [];
   for (const embed of root.querySelectorAll<HTMLElement>("span.embed-note")) {
     const target = embed.dataset.target ?? "";
-    void hooks.renderEmbedNote(target).then((result) => {
+    const job = hooks.renderEmbedNote(target).then((result) => {
       if (result === null || !embed.isConnected) {
         return;
       }
@@ -228,10 +256,18 @@ export function fillEmbedNotes(
         }
       }
       embed.append(title, body);
-      fillEmbedNotes(body, hooks, new Set([...visited, key]), depth + 1);
+      const nested = fillEmbedNotes(
+        body,
+        hooks,
+        new Set([...visited, key]),
+        depth + 1,
+      );
       hooks.onRendered?.();
+      return nested;
     });
+    jobs.push(job);
   }
+  return Promise.all(jobs).then(() => undefined);
 }
 
 /** Local collapse toggling for properties boxes (embedded notes). */

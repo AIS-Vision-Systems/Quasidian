@@ -28,11 +28,15 @@ import {
   unfoldEffect,
 } from "@codemirror/language";
 import {
+  Annotation,
   Compartment,
   EditorSelection,
   EditorState,
   Prec,
 } from "@codemirror/state";
+
+// Marks reload/mirror transactions: no autosave, no re-mirroring.
+const quietReload = Annotation.define<boolean>();
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
@@ -421,7 +425,11 @@ function wikilinkAt(
 }
 
 export interface EditorHooks {
-  onDocChanged(doc: string): void;
+  /**
+   * `quiet` marks reloads (disk, mirrors from a twin pane): no autosave
+   * and no re-mirroring must follow them.
+   */
+  onDocChanged(doc: string, quiet: boolean): void;
   onSaveRequested(): void;
   onToggleModeRequested(): void;
   /** `newTab` is set on Ctrl+Shift+click (edit) / Ctrl+click (read). */
@@ -501,6 +509,14 @@ export interface EditorHandle {
   reloadDoc(contents: string): void;
   /** Selects [from, to], scrolls it into view centered, and focuses. */
   revealRange(from: number, to: number): void;
+  /** Document position of the first visible line (mode-switch anchor). */
+  topVisiblePos(): number;
+  /** Scrolls so the line holding `pos` sits at the top of the view. */
+  scrollPosToTop(pos: number): void;
+  /** Current main selection, for remembering it per tab. */
+  getSelection(): { anchor: number; head: number };
+  /** Restores a remembered selection (clamped), without scrolling. */
+  setSelection(anchor: number, head: number): void;
   focus(): void;
   /** Hot-applies configurable options without recreating the editor. */
   applyConfig(config: EditorConfig): void;
@@ -782,7 +798,10 @@ export function createEditor(
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
-            hooks.onDocChanged(update.state.doc.toString());
+            const quiet = update.transactions.some(
+              (tr) => tr.annotation(quietReload) === true,
+            );
+            hooks.onDocChanged(update.state.doc.toString(), quiet);
           }
         }),
       ],
@@ -816,6 +835,7 @@ export function createEditor(
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: contents },
         selection: { anchor: head },
+        annotations: quietReload.of(true),
       });
     },
     revealRange(from: number, to: number): void {
@@ -827,6 +847,52 @@ export function createEditor(
         effects: EditorView.scrollIntoView(anchor, { y: "center" }),
       });
       view.focus();
+    },
+    topVisiblePos(): number {
+      // Height-based, not coordinate-based: posAtCoords needs a point
+      // over the content column, which readable line length margins
+      // break. The pixel fraction inside the top block is folded into
+      // the returned offset, so tall single-line blocks (note embeds,
+      // wrapped paragraphs) keep the point, not just the block start.
+      const rect = view.scrollDOM.getBoundingClientRect();
+      const y = rect.top + 1 - view.documentTop;
+      const block = view.lineBlockAtHeight(y);
+      const within =
+        block.height > 0
+          ? Math.max(0, Math.min((y - block.top) / block.height, 1))
+          : 0;
+      return Math.round(block.from + within * (block.to - block.from));
+    },
+    scrollPosToTop(pos: number): void {
+      // Mirror of topVisiblePos: the intra-line offset maps back to a
+      // pixel fraction of the block's height. Recomputing from current
+      // geometry keeps this idempotent, so callers may re-apply it
+      // while CodeMirror refines estimated heights.
+      const clamped = Math.min(pos, view.state.doc.length);
+      const block = view.lineBlockAt(clamped);
+      const within =
+        block.to > block.from
+          ? Math.max(
+              0,
+              Math.min((clamped - block.from) / (block.to - block.from), 1),
+            )
+          : 0;
+      const rect = view.scrollDOM.getBoundingClientRect();
+      view.scrollDOM.scrollTop +=
+        view.documentTop + block.top + within * block.height - rect.top - 1;
+    },
+    getSelection(): { anchor: number; head: number } {
+      const { anchor, head } = view.state.selection.main;
+      return { anchor, head };
+    },
+    setSelection(anchor: number, head: number): void {
+      const length = view.state.doc.length;
+      view.dispatch({
+        selection: {
+          anchor: Math.min(anchor, length),
+          head: Math.min(head, length),
+        },
+      });
     },
     focus(): void {
       view.focus();

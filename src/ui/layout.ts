@@ -1,6 +1,7 @@
 // App shell: sidebar with folder listing, CM6 editor, status bar.
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -47,6 +48,7 @@ import {
 } from "../lib/wikilinks";
 import {
   activeTabPath,
+  cloneTab,
   closeAllTabs,
   closeOtherTabs,
   closeTab,
@@ -79,7 +81,13 @@ import {
   withWorkspaceOrCollapse,
   type SplitState,
 } from "../lib/panes";
-import { loadSession, saveSession } from "../ipc/sessionStore";
+import {
+  cleanupSecondarySessions,
+  loadLastWindow,
+  loadSession,
+  saveLastWindow,
+  saveSession,
+} from "../ipc/sessionStore";
 import type { EditorHandle } from "../editor/editor";
 import type { ReadingViewHandle } from "./readingView";
 import { renderToHtml } from "../markdown/render";
@@ -542,6 +550,10 @@ export function mountLayout(root: HTMLElement): void {
   let tabsState: WorkspaceState = emptyWorkspace();
   let splitState: SplitState = singlePane(emptyWorkspace());
   let currentFolder: string | null = null;
+  // Multi-window: each window keeps its own session file; the next
+  // launch opens a single window restoring the last-focused one's.
+  const windowLabel = getCurrentWindow().label;
+  const isMainWindow = windowLabel === "main";
   let folderFiles: FolderFile[] = [];
   let folderImages: FolderFile[] = [];
   let lastWordCount = 0;
@@ -684,12 +696,48 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
+  // Re-render timers for read-mode twins while typing in another pane.
+  const twinRenderTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+  /**
+   * Same note open in more than one pane: every other pane showing
+   * `path` mirrors the buffer (reading views re-render, debounced).
+   */
+  function mirrorToTwins(path: string, doc: string): void {
+    for (const ui of paneUis.values()) {
+      if (
+        ui.id === boundPaneId ||
+        ui.openedPath === null ||
+        !samePath(ui.openedPath, path)
+      ) {
+        continue;
+      }
+      ui.editor.reloadDoc(doc);
+      if (ui.mode === "read") {
+        const pending = twinRenderTimers.get(ui.id);
+        if (pending !== undefined) {
+          clearTimeout(pending);
+        }
+        twinRenderTimers.set(
+          ui.id,
+          setTimeout(() => {
+            twinRenderTimers.delete(ui.id);
+            const scroll = ui.readingView.element.scrollTop;
+            ui.readingView.render(ui.editor.getDoc());
+            ui.readingView.element.scrollTop = scroll;
+          }, 250),
+        );
+      }
+    }
+  }
+
   function createPaneEditor(host: HTMLElement): EditorHandle {
     return createEditor(host, {
-    onDocChanged(doc) {
+    onDocChanged(doc, quiet) {
       setCounts(doc);
-      if (openedPath !== null && !reloadingFromDisk) {
+      if (openedPath !== null && !reloadingFromDisk && !quiet) {
         autosave.notifyChange();
+        mirrorToTwins(openedPath, doc);
       }
       scheduleRightPanelRefresh();
     },
@@ -795,17 +843,29 @@ export function mountLayout(root: HTMLElement): void {
     }
   });
 
-  const fileModes = new Map<string, EditorModeSetting>();
+  // Mode, scroll and cursor are per tab instance (two tabs of the same
+  // file stay independent); folds are shared per file. Scroll is a
+  // document offset (top visible block + intra-block fraction), never
+  // pixels or fractions: those break whenever async content (embeds,
+  // images) changes the page height between save and restore.
+  const tabModes = new Map<number, EditorModeSetting>();
+  const tabScroll = new Map<number, number>();
+  const tabSelection = new Map<number, { anchor: number; head: number }>();
+  // Mode requested for a path before its tab exists (?open=...&mode=).
+  const pendingModes = new Map<string, EditorModeSetting>();
   // Fold state per file, in memory only (never written to the folder).
   const fileFolds = new Map<string, { from: number; to: number }[]>();
-  // Scroll fraction per file, for the mode it was left in.
-  const fileScroll = new Map<string, number>();
   let currentMode: EditorModeSetting = "edit";
+
+  function activeTabId(): number | null {
+    return tabsState.tabs[tabsState.active]?.id ?? null;
+  }
 
   function applyMode(mode: EditorModeSetting): void {
     currentMode = mode;
-    if (openedPath !== null) {
-      fileModes.set(normalizePath(openedPath), mode);
+    const id = activeTabId();
+    if (openedPath !== null && id !== null) {
+      tabModes.set(id, mode);
     }
     const editing = mode === "edit";
     editorHost.classList.toggle("is-hidden", !editing);
@@ -824,13 +884,38 @@ export function mountLayout(root: HTMLElement): void {
   /** Session snapshot: panes, tabs, modes, panel sizes and right view. */
   function snapshotSession() {
     splitState = withWorkspace(splitState, boundPaneId, tabsState);
+    pruneTabState();
     return serializeSession(
       splitState,
-      (path) =>
-        fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode,
+      (tab) => tabModes.get(tab.id) ?? getSettings().editor.defaultMode,
       panelSizes,
       rightView,
     );
+  }
+
+  /** Drops per-tab state whose tab no longer exists in any pane. */
+  function pruneTabState(): void {
+    const alive = new Set<number>();
+    for (const pane of splitState.panes) {
+      for (const tab of pane.workspace.tabs) {
+        alive.add(tab.id);
+      }
+    }
+    for (const id of [...tabModes.keys()]) {
+      if (!alive.has(id)) {
+        tabModes.delete(id);
+      }
+    }
+    for (const id of [...tabScroll.keys()]) {
+      if (!alive.has(id)) {
+        tabScroll.delete(id);
+      }
+    }
+    for (const id of [...tabSelection.keys()]) {
+      if (!alive.has(id)) {
+        tabSelection.delete(id);
+      }
+    }
   }
 
   let sessionSaveDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -840,7 +925,7 @@ export function mountLayout(root: HTMLElement): void {
     }
     sessionSaveDebounce = setTimeout(() => {
       sessionSaveDebounce = null;
-      void saveSession(snapshotSession());
+      void saveSession(snapshotSession(), windowLabel);
     }, 300);
   }
 
@@ -849,16 +934,17 @@ export function mountLayout(root: HTMLElement): void {
     if (openedPath === null) {
       return;
     }
-    const key = normalizePath(openedPath);
-    fileFolds.set(key, editor.getFolds());
-    fileScroll.set(
-      key,
-      scrollFraction(
+    fileFolds.set(normalizePath(openedPath), editor.getFolds());
+    const id = activeTabId();
+    if (id !== null) {
+      tabScroll.set(
+        id,
         currentMode === "edit"
-          ? editorHost.querySelector(".cm-scroller")
-          : readingView.element,
-      ),
-    );
+          ? editor.topVisiblePos()
+          : (readingTopAnchor() ?? 0),
+      );
+      tabSelection.set(id, editor.getSelection());
+    }
     if (autosave.isDirty()) {
       await saveNow();
     }
@@ -983,15 +1069,59 @@ export function mountLayout(root: HTMLElement): void {
       scheduleSessionSave();
       return;
     }
+    const prevId = activeTabId();
     if (prevPath === null || !samePath(prevPath, nextPath)) {
       await stashCurrentTabState();
       tabsState = next;
       await loadFile(nextPath);
       return;
     }
+    if (prevId !== (next.tabs[next.active]?.id ?? null)) {
+      // Another instance of the same file: shared buffer, own view
+      // state — no reload, just this tab's mode and scroll.
+      await stashCurrentTabState();
+      tabsState = next;
+      await applyActiveTabView();
+      renderTabs();
+      scheduleSessionSave();
+      return;
+    }
     tabsState = next;
     renderTabs();
     scheduleSessionSave();
+  }
+
+  /** Applies the active tab's own mode, cursor and scroll. */
+  async function applyActiveTabView(): Promise<void> {
+    const id = activeTabId();
+    const mode =
+      (id !== null ? tabModes.get(id) : undefined) ??
+      getSettings().editor.defaultMode;
+    if (mode === "read" && currentMode !== "read") {
+      // Entering reading: render and let embeds settle before showing,
+      // so the anchor below measures the final layout. When the twin
+      // was already reading the same buffer, the settled view is
+      // reused as-is.
+      await readingView.render(editor.getDoc());
+    }
+    applyMode(mode);
+    const selection = id !== null ? tabSelection.get(id) : undefined;
+    if (selection !== undefined) {
+      editor.setSelection(selection.anchor, selection.head);
+    }
+    if (mode === "edit") {
+      editor.focus();
+    }
+    // Scroll goes last, so a focus-induced jump to the (shared-buffer)
+    // cursor never wins over this tab's own position.
+    const saved = id !== null ? tabScroll.get(id) : undefined;
+    if (saved !== undefined) {
+      if (mode === "edit") {
+        scrollEditorToAnchor(saved);
+      } else if (!scrollReadingToAnchor(saved)) {
+        readingView.element.scrollTop = 0;
+      }
+    }
   }
 
   /** The active tab is empty: show its three actions. */
@@ -1134,21 +1264,92 @@ export function mountLayout(root: HTMLElement): void {
     scheduleSessionSave();
   }
 
-  /** Moves the tab at `index` of the active pane into a new right pane. */
-  async function splitTabRight(index: number): Promise<void> {
+  /** Opens a new app window; `path` (with `mode`) preloads a file. */
+  function spawnWindow(
+    label: string,
+    path: string | null,
+    mode?: EditorModeSetting,
+  ): void {
+    const query =
+      path === null
+        ? ""
+        : `?open=${encodeURIComponent(path)}${mode !== undefined ? `&mode=${mode}` : ""}`;
+    const spawned = new WebviewWindow(label, {
+      url: `index.html${query}`,
+      title: "Quasidian",
+      width: 1100,
+      height: 750,
+      visible: false,
+      theme: "dark",
+      backgroundColor: "#000000",
+    });
+    void spawned.once("tauri://error", (event) => {
+      setStatusError(t("error.openFile", { error: String(event.payload) }));
+    });
+  }
+
+  /** Copies one tab instance's view state onto another. */
+  function copyTabState(fromId: number, toId: number): void {
+    const mode = tabModes.get(fromId);
+    if (mode !== undefined) {
+      tabModes.set(toId, mode);
+    }
+    const scroll = tabScroll.get(fromId);
+    if (scroll !== undefined) {
+      tabScroll.set(toId, scroll);
+    }
+    const selection = tabSelection.get(fromId);
+    if (selection !== undefined) {
+      tabSelection.set(toId, { ...selection });
+    }
+  }
+
+  /**
+   * Moves the tab at `index` into a brand-new window; `duplicate`
+   * keeps the original where it is (a second instance).
+   */
+  async function moveTabToNewWindow(
+    index: number,
+    options?: { duplicate?: boolean },
+  ): Promise<void> {
+    const tab = tabsState.tabs[index];
+    if (tab === undefined || tab.path === null) {
+      return;
+    }
+    // Flush pending edits so the new window reads the fresh contents.
+    await stashCurrentTabState();
+    const label = `w${Date.now().toString(36)}`;
+    spawnWindow(label, tab.path, tabModes.get(tab.id));
+    if (options?.duplicate !== true) {
+      await closeTabAt(index);
+    }
+  }
+
+  /**
+   * Moves the tab at `index` of the active pane into a new right pane;
+   * `duplicate` keeps the original where it is (a second instance).
+   */
+  async function splitTabRight(
+    index: number,
+    options?: { duplicate?: boolean },
+  ): Promise<void> {
     const tab = tabsState.tabs[index];
     if (tab === undefined) {
       return;
     }
     hideHoverPreview();
     await stashCurrentTabState();
-    let source = closeTab(tabsState, index);
+    const moved: Tab = options?.duplicate ? cloneTab(tab) : tab;
+    if (options?.duplicate) {
+      copyTabState(tab.id, moved.id);
+    }
+    let source = options?.duplicate ? tabsState : closeTab(tabsState, index);
     if (source.tabs.length === 0) {
       source = { tabs: [makeTab(null)], active: 0 };
     }
     tabsState = source;
     let next = withWorkspace(splitState, boundPaneId, source);
-    next = splitRight(next, boundPaneId, tab);
+    next = splitRight(next, boundPaneId, moved);
     await applySplitChange(next);
   }
 
@@ -1178,11 +1379,8 @@ export function mountLayout(root: HTMLElement): void {
     if (tab === undefined || index === tabsState.active) {
       return;
     }
-    if (tab.path === null) {
-      await applyTabsChange({ ...tabsState, active: index });
-    } else {
-      await openFile(tab.path);
-    }
+    // By index, never by path: two tabs may hold the same file.
+    await applyTabsChange({ ...tabsState, active: index });
   }
 
   function cycleTab(delta: number): void {
@@ -1350,8 +1548,25 @@ export function mountLayout(root: HTMLElement): void {
       {
         label: t("tabs.splitRight"),
         icon: "separator-vertical",
-        onClick: () => void splitTabRight(index),
+        // Ctrl+click duplicates: the original stays in this pane.
+        onClick: (event) =>
+          void splitTabRight(index, {
+            duplicate: event.ctrlKey || event.metaKey,
+          }),
       },
+      ...(tab.path !== null
+        ? [
+            {
+              label: t("tabs.moveToWindow"),
+              icon: "external-link" as const,
+              // Ctrl+click duplicates: the original stays in this pane.
+              onClick: (event: MouseEvent) =>
+                void moveTabToNewWindow(index, {
+                  duplicate: event.ctrlKey || event.metaKey,
+                }),
+            },
+          ]
+        : []),
       {
         label: t(tab.pinned ? "tabs.unpin" : "tabs.pin"),
         icon: "pin",
@@ -1375,6 +1590,128 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
+  /**
+   * Reading-view elements carrying a document offset, in document
+   * order. Embedded notes are skipped (their offsets belong to another
+   * document), as are elements hidden by folds.
+   */
+  function readingAnchors(): { pos: number; el: HTMLElement }[] {
+    const anchors: { pos: number; el: HTMLElement }[] = [];
+    for (const el of readingView.element.querySelectorAll<HTMLElement>(
+      "[data-pos]",
+    )) {
+      const pos = Number(el.dataset.pos);
+      if (
+        Number.isFinite(pos) &&
+        el.closest(".embed-note") === null &&
+        el.getClientRects().length > 0
+      ) {
+        anchors.push({ pos, el });
+      }
+    }
+    return anchors;
+  }
+
+  /**
+   * Re-applies an idempotent scroll anchor while late-loading content
+   * (images, embeds, math fonts) is still reflowing the page. Stops as
+   * soon as the user scrolls on their own.
+   */
+  function keepAnchoredWhileLoading(
+    container: HTMLElement,
+    applyAnchor: () => void,
+  ): void {
+    let expected = container.scrollTop;
+    const reapply = (): void => {
+      if (Math.abs(container.scrollTop - expected) > 2) {
+        return; // the user has scrolled; never fight them
+      }
+      applyAnchor();
+      expected = container.scrollTop;
+    };
+    requestAnimationFrame(reapply);
+    window.setTimeout(reapply, 150);
+    window.setTimeout(reapply, 400);
+    for (const image of container.querySelectorAll("img")) {
+      if (!image.complete) {
+        image.addEventListener("load", reapply, { once: true });
+      }
+    }
+  }
+
+  /**
+   * Document offset at the top of the reading view: the first visible
+   * block plus the fraction already scrolled past inside it. Null when
+   * the view has no anchors (empty or unrendered).
+   */
+  function readingTopAnchor(): number | null {
+    const containerTop = readingView.element.getBoundingClientRect().top;
+    const anchors = readingAnchors();
+    for (let i = 0; i < anchors.length; i++) {
+      const rect = anchors[i].el.getBoundingClientRect();
+      if (rect.bottom > containerTop + 1) {
+        const pos = anchors[i].pos;
+        const nextPos = anchors[i + 1]?.pos ?? editor.getDoc().length;
+        const within =
+          rect.height > 0 && rect.top < containerTop
+            ? Math.min((containerTop - rect.top) / rect.height, 1)
+            : 0;
+        return Math.round(pos + within * (nextPos - pos));
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Scrolls the reading view so the block holding `topPos` sits at the
+   * top, offset by the intra-block fraction, and keeps it anchored
+   * while late content loads. False when the view has no usable anchor.
+   */
+  function scrollReadingToAnchor(topPos: number): boolean {
+    let target: { pos: number; el: HTMLElement } | null = null;
+    let nextPos = editor.getDoc().length;
+    for (const anchor of readingAnchors()) {
+      if (anchor.pos > topPos) {
+        nextPos = anchor.pos;
+        break;
+      }
+      target = anchor;
+    }
+    if (target === null) {
+      return false;
+    }
+    const container = readingView.element;
+    const el = target.el;
+    const from = target.pos;
+    const within =
+      nextPos > from
+        ? Math.min((topPos - from) / (nextPos - from), 1)
+        : 0;
+    const applyAnchor = (): void => {
+      const rect = el.getBoundingClientRect();
+      container.scrollTop +=
+        rect.top -
+        container.getBoundingClientRect().top +
+        within * rect.height;
+    };
+    applyAnchor();
+    keepAnchoredWhileLoading(container, applyAnchor);
+    return true;
+  }
+
+  /** Editor twin of scrollReadingToAnchor (heights settle async). */
+  function scrollEditorToAnchor(pos: number): void {
+    editor.scrollPosToTop(pos);
+    const scrollerEl = editorHost.querySelector(".cm-scroller");
+    if (scrollerEl instanceof HTMLElement) {
+      keepAnchoredWhileLoading(scrollerEl, () => editor.scrollPosToTop(pos));
+    }
+  }
+
+  /**
+   * Switches between editing and reading keeping the same block at the
+   * top of the view, mapped through the shared document offsets.
+   */
   async function toggleMode(): Promise<void> {
     hideHoverPreview();
     if (openedPath === null) {
@@ -1385,14 +1722,25 @@ export function mountLayout(root: HTMLElement): void {
       if (autosave.isDirty()) {
         await saveNow();
       }
-      readingView.render(editor.getDoc());
+      const topPos = editor.topVisiblePos();
       const fraction = scrollFraction(scroller);
+      // The editor stays on screen until embeds have been filled in:
+      // anchoring against the placeholder layout and correcting later
+      // would paint a visible double jump.
+      await readingView.render(editor.getDoc());
       applyMode("read");
-      setScrollFraction(readingView.element, fraction);
+      if (!scrollReadingToAnchor(topPos)) {
+        setScrollFraction(readingView.element, fraction);
+      }
     } else {
+      const topPos = readingTopAnchor();
       const fraction = scrollFraction(readingView.element);
       applyMode("edit");
-      setScrollFraction(scroller, fraction);
+      if (topPos === null) {
+        setScrollFraction(scroller, fraction);
+      } else {
+        scrollEditorToAnchor(topPos);
+      }
       editor.focus();
     }
   }
@@ -1938,23 +2286,35 @@ export function mountLayout(root: HTMLElement): void {
         editor.revealRange(pos, pos);
       }
       setCounts(contents);
+      const id = activeTabId();
+      const pending = pendingModes.get(normalizePath(path));
+      pendingModes.delete(normalizePath(path));
       const mode =
-        fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode;
+        (id !== null ? tabModes.get(id) : undefined) ??
+        pending ??
+        getSettings().editor.defaultMode;
       if (mode === "read") {
-        readingView.render(contents);
+        // Let embeds settle so the scroll anchor measures the final
+        // layout in one go.
+        await readingView.render(contents);
       }
       applyMode(mode);
-      const savedScroll = fileScroll.get(normalizePath(path));
-      if (savedScroll !== undefined) {
-        setScrollFraction(
-          mode === "edit"
-            ? editorHost.querySelector(".cm-scroller")
-            : readingView.element,
-          savedScroll,
-        );
+      const selection = id !== null ? tabSelection.get(id) : undefined;
+      if (selection !== undefined) {
+        editor.setSelection(selection.anchor, selection.head);
       }
       if (mode === "edit") {
         editor.focus();
+      }
+      // Scroll goes last, so a focus-induced jump to the cursor never
+      // wins over this tab's own position.
+      const savedScroll = id !== null ? tabScroll.get(id) : undefined;
+      if (savedScroll !== undefined) {
+        if (mode === "edit") {
+          scrollEditorToAnchor(savedScroll);
+        } else if (!scrollReadingToAnchor(savedScroll)) {
+          readingView.element.scrollTop = 0;
+        }
       }
     } catch (error) {
       // A rendering failure must never leave the view half-open.
@@ -2027,24 +2387,17 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
-  /** Moves per-file in-memory state (mode, folds, scroll) to a new path. */
+  /**
+   * Moves per-file in-memory state (folds) to a new path. Per-tab
+   * state (mode, scroll) keys off tab ids and survives renames as-is.
+   */
   function moveFileState(from: string, to: string): void {
     const oldKey = normalizePath(from);
     const newKey = normalizePath(to);
-    const mode = fileModes.get(oldKey);
-    if (mode !== undefined) {
-      fileModes.delete(oldKey);
-      fileModes.set(newKey, mode);
-    }
     const folds = fileFolds.get(oldKey);
     if (folds !== undefined) {
       fileFolds.delete(oldKey);
       fileFolds.set(newKey, folds);
-    }
-    const scroll = fileScroll.get(oldKey);
-    if (scroll !== undefined) {
-      fileScroll.delete(oldKey);
-      fileScroll.set(newKey, scroll);
     }
   }
 
@@ -2179,9 +2532,8 @@ export function mountLayout(root: HTMLElement): void {
       setStatusError(t("error.deleteFile", { error: String(error) }));
       return;
     }
-    fileModes.delete(normalizePath(path));
     fileFolds.delete(normalizePath(path));
-    fileScroll.delete(normalizePath(path));
+    pendingModes.delete(normalizePath(path));
     // Close every tab holding the file, in every pane.
     if (openedPath !== null && samePath(path, openedPath)) {
       // The buffer belongs to a deleted file: never save it back.
@@ -2784,6 +3136,7 @@ export function mountLayout(root: HTMLElement): void {
     if (currentMode === "read") {
       readingView.render(contents);
     }
+    mirrorToTwins(openedPath, contents);
   }
 
   // The watcher fires in bursts (editors write several times); coalesce
@@ -2810,7 +3163,7 @@ export function mountLayout(root: HTMLElement): void {
   // Best-effort save of pending changes when the window closes.
   window.addEventListener("beforeunload", () => {
     autosave.flush();
-    void saveSession(snapshotSession());
+    void saveSession(snapshotSession(), windowLabel);
   });
 
   // Mount the initial single pane and bind everything to it.
@@ -2825,29 +3178,64 @@ export function mountLayout(root: HTMLElement): void {
   renderBacklinks();
 
   // A second app instance forwards its command line here (single
-  // instance): open the file in a new tab of this window.
-  void listen<string[]>("single-instance", (event) => {
-    const file = event.payload.find((arg) =>
-      arg.toLowerCase().endsWith(".md"),
-    );
-    if (file !== undefined) {
-      void openFile(file, { newTab: true });
-    }
-  });
+  // instance): the main window opens the file in a new tab.
+  if (isMainWindow) {
+    void listen<string[]>("single-instance", (event) => {
+      const file = event.payload.find((arg) =>
+        arg.toLowerCase().endsWith(".md"),
+      );
+      if (file !== undefined) {
+        void openFile(file, { newTab: true });
+      }
+    });
+  }
 
-  // Double-clicking an associated .md passes its path on the command
-  // line and takes precedence; otherwise the last session is restored
-  // (when the setting allows it).
+  // Startup precedence: a file passed via the URL (tab moved to this
+  // window), then the command line (main window), then the restored
+  // session of the last-focused window (when the setting allows it).
   void (async () => {
-    const file = await startupFile();
-    if (file !== null) {
-      await openFile(file);
+    await restoreStartup();
+    // From here on, remember the focused window: the next launch opens
+    // a single window restoring the session the user last worked in.
+    void getCurrentWindow().onFocusChanged(({ payload }) => {
+      if (payload) {
+        void saveLastWindow(windowLabel);
+      }
+    });
+    void saveLastWindow(windowLabel);
+  })();
+
+  async function restoreStartup(): Promise<void> {
+    const params = new URLSearchParams(window.location.search);
+    const openParam = params.get("open");
+    if (openParam !== null) {
+      const mode = params.get("mode");
+      if (mode === "edit" || mode === "read") {
+        pendingModes.set(normalizePath(openParam), mode);
+      }
+      await openFile(openParam);
       return;
+    }
+    if (isMainWindow) {
+      const file = await startupFile();
+      if (file !== null) {
+        await openFile(file);
+        return;
+      }
     }
     if (!getSettings().files.restoreSession) {
       return;
     }
-    const session = await loadSession();
+    let session = await loadSession(windowLabel);
+    if (isMainWindow) {
+      // Only one window reopens: when the user last worked in a
+      // secondary one, the main window adopts its workspace.
+      const last = await loadLastWindow();
+      if (last !== null && last !== "main") {
+        session = (await loadSession(last)) ?? session;
+      }
+      void cleanupSecondarySessions();
+    }
     if (session === null) {
       return;
     }
@@ -2869,13 +3257,13 @@ export function mountLayout(root: HTMLElement): void {
         } catch {
           continue; // gone since last session
         }
-        tabs.push({
-          path: tab.path,
-          pinned: tab.pinned,
+        const restored: Tab = {
+          ...makeTab(tab.path, tab.pinned),
           back: tab.back,
           forward: tab.forward,
-        });
-        fileModes.set(normalizePath(tab.path), tab.mode);
+        };
+        tabs.push(restored);
+        tabModes.set(restored.id, tab.mode);
       }
       if (tabs.length === 0) {
         continue;
@@ -2898,5 +3286,5 @@ export function mountLayout(root: HTMLElement): void {
       activePane: paneStates[activeIndex].id,
       nextId: paneStates.length + 1,
     });
-  })();
+  }
 }

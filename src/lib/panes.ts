@@ -242,7 +242,7 @@ export interface SessionData {
 
 export function serializeSession(
   state: SplitState,
-  modeOf: (path: string) => SessionMode,
+  modeOf: (tab: Tab) => SessionMode,
   panels: PanelSizes | null = null,
   rightView: RightPanelView | null = null,
 ): SessionData {

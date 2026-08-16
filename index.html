@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Quasidian</title>
+    <style>
+      /* First paint before the bundled styles arrive: match the dark
+         theme so startup never flashes white. */
+      html {
+        background-color: #000000;
+      }
+    </style>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
 

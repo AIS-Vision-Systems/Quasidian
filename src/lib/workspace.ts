@@ -4,6 +4,12 @@
 import { normalizePath } from "./paths";
 
 export interface Tab {
+  /**
+   * Stable identity of this tab instance across every workspace
+   * operation — per-tab view state (mode, scroll) keys off it. Not
+   * persisted; sessions assign fresh ids on load.
+   */
+  id: number;
   /** Open file, or null for an empty ("new") tab. */
   path: string | null;
   pinned: boolean;
@@ -16,8 +22,20 @@ export interface Tab {
 /** Kept per side; older entries fall off the far end. */
 const HISTORY_LIMIT = 50;
 
+let nextTabId = 1;
+
 export function makeTab(path: string | null, pinned = false): Tab {
-  return { path, pinned, back: [], forward: [] };
+  return { id: nextTabId++, path, pinned, back: [], forward: [] };
+}
+
+/** A second instance of `tab`: same file and history, own identity. */
+export function cloneTab(tab: Tab): Tab {
+  return {
+    ...tab,
+    id: nextTabId++,
+    back: [...tab.back],
+    forward: [...tab.forward],
+  };
 }
 
 /** Inserts an empty tab after the active one and activates it. */
@@ -274,7 +292,7 @@ export interface SessionTabs {
  */
 export function serializeTabs(
   state: WorkspaceState,
-  modeOf: (path: string) => SessionMode,
+  modeOf: (tab: Tab) => SessionMode,
 ): SessionTabs {
   const tabs: SessionTab[] = [];
   let active = 0;
@@ -288,7 +306,7 @@ export function serializeTabs(
     tabs.push({
       path: tab.path,
       pinned: tab.pinned,
-      mode: modeOf(tab.path),
+      mode: modeOf(tab),
       back: tab.back.slice(-HISTORY_LIMIT),
       forward: tab.forward.slice(-HISTORY_LIMIT),
     });

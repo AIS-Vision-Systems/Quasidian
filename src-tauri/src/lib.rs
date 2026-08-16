@@ -131,7 +131,16 @@ pub fn run() {
             let _ = app.emit("single-instance", args);
         }))
         // Remembers window position, size, screen and maximized state.
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Visibility is excluded: windows start hidden and the frontend
+        // shows them once painted, so restore never flashes a blank one.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        .difference(tauri_plugin_window_state::StateFlags::VISIBLE),
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(WatcherState::default())

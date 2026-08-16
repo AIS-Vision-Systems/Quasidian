@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activeTabPath,
+  cloneTab,
   closeAllTabs,
   closeOtherTabs,
   closeTab,
@@ -197,6 +198,18 @@ describe("empty tabs", () => {
     expect(findTab(newEmptyTab(emptyWorkspace()), "a.md")).toBe(-1);
   });
 
+  it("tabs keep their identity through operations; clones get a new one", () => {
+    const a = makeTab("a.md");
+    expect(makeTab("a.md").id).not.toBe(a.id);
+    const copy = cloneTab(a);
+    expect(copy.id).not.toBe(a.id);
+    expect(copy.path).toBe("a.md");
+    // Navigation mutates the tab but preserves its identity.
+    const state = openPath({ tabs: [a], active: 0 }, "b.md");
+    expect(state.tabs[0].id).toBe(a.id);
+    expect(renameTabPath(state, "b.md", "c.md").tabs[0].id).toBe(a.id);
+  });
+
   it("serialization drops empty tabs and remaps the active index", () => {
     let state = workspace(["a.md", "b.md"], 1);
     state = newEmptyTab(state); // a, b, (empty active)
@@ -210,8 +223,8 @@ describe("tab serialization", () => {
   it("round trips tabs with modes, pins and history", () => {
     let state = openPath(workspace(["a.md"]), "b.md");
     state = setPinned(state, 0, true);
-    const session = serializeTabs(state, (path) =>
-      path === "b.md" ? "read" : "edit",
+    const session = serializeTabs(state, (tab) =>
+      tab.path === "b.md" ? "read" : "edit",
     );
     expect(parseTabs(JSON.parse(JSON.stringify(session)))).toEqual({
       tabs: [

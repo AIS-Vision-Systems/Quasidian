@@ -11,7 +11,8 @@ export interface MenuItem {
   disabled?: boolean;
   /** Shows a check mark on the right (toggle items). */
   checked?: boolean;
-  onClick?: () => void;
+  /** Receives the click, so items can branch on modifier keys. */
+  onClick?: (event: MouseEvent) => void;
   submenu?: MenuEntry[];
 }
 
@@ -67,7 +68,7 @@ function buildItem(
     element.addEventListener("click", (event) => {
       event.stopPropagation();
       close();
-      item.onClick?.();
+      item.onClick?.(event);
     });
   }
   return element;

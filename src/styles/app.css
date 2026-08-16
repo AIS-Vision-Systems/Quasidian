@@ -711,6 +711,15 @@ body.is-readable-line-length .cm-editor .cm-content {
   padding-left: 28px;
 }
 
+/* Scroll past end: the last line can reach the middle of the view. */
+.cm-editor .cm-content {
+  padding-bottom: 50vh;
+}
+
+.reading-view-content {
+  padding-bottom: 50vh;
+}
+
 /* Fold chevrons ride inside the line, so they sit at the text's height
    and reveal on per-line hover; folded ones stay visible. */
 .cm-editor .cm-fold-chevron {
