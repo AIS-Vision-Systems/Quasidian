@@ -5,6 +5,7 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { classHighlighter, highlightCode } from "@lezer/highlight";
 import katex from "katex";
+import { cacheImageSize, cachedImageSize } from "../editor/livePreview";
 import { t } from "../i18n/i18n";
 import { createIcon } from "./icons";
 
@@ -22,8 +23,33 @@ export function fillEmbedImages(
       missing.className = "embed-missing";
       missing.textContent = target;
       image.replaceWith(missing);
-    } else {
-      image.src = src;
+      continue;
+    }
+    image.addEventListener(
+      "load",
+      () => {
+        cacheImageSize(src, {
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        });
+      },
+      { once: true },
+    );
+    image.src = src;
+    // Known natural sizes give the image its final box synchronously —
+    // same rules as the editor's embed widget, so layouts match and
+    // scroll anchoring measures a stable page.
+    const cached = cachedImageSize(src);
+    if (cached === undefined) {
+      continue;
+    }
+    if (!image.hasAttribute("width")) {
+      image.width = cached.width;
+      image.height = cached.height;
+    } else if (!image.hasAttribute("height") && cached.width > 0) {
+      image.height = Math.round(
+        (image.width * cached.height) / cached.width,
+      );
     }
   }
 }

@@ -701,8 +701,25 @@ class ImageWidget extends WidgetType {
   }
 }
 
-// Natural sizes of loaded embed images, per resolved src.
+// Natural sizes of loaded embed images, per resolved src. Shared with
+// reading mode so both modes take the final box synchronously and
+// scroll anchoring measures a stable layout.
 const imageSizeCache = new Map<string, { width: number; height: number }>();
+
+export function cachedImageSize(
+  src: string,
+): { width: number; height: number } | undefined {
+  return imageSizeCache.get(src);
+}
+
+export function cacheImageSize(
+  src: string,
+  size: { width: number; height: number },
+): void {
+  if (!imageSizeCache.has(src)) {
+    imageSizeCache.set(src, size);
+  }
+}
 
 // Inline title: the note name shown as an editable H1 above the
 // document. Module state set by the layout — never part of the doc.

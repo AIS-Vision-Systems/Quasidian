@@ -1609,6 +1609,33 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   /**
+   * Re-applies an idempotent scroll anchor while late-loading content
+   * (images, embeds, math fonts) is still reflowing the page. Stops as
+   * soon as the user scrolls on their own.
+   */
+  function keepAnchoredWhileLoading(
+    container: HTMLElement,
+    applyAnchor: () => void,
+  ): void {
+    let expected = container.scrollTop;
+    const reapply = (): void => {
+      if (Math.abs(container.scrollTop - expected) > 2) {
+        return; // the user has scrolled; never fight them
+      }
+      applyAnchor();
+      expected = container.scrollTop;
+    };
+    requestAnimationFrame(reapply);
+    window.setTimeout(reapply, 150);
+    window.setTimeout(reapply, 400);
+    for (const image of container.querySelectorAll("img")) {
+      if (!image.complete) {
+        image.addEventListener("load", reapply, { once: true });
+      }
+    }
+  }
+
+  /**
    * Switches between editing and reading keeping the same block at the
    * top of the view, mapped through the shared document offsets.
    */
@@ -1642,15 +1669,20 @@ export function mountLayout(root: HTMLElement): void {
         setScrollFraction(readingView.element, fraction);
       } else {
         const container = readingView.element;
-        const rect = target.el.getBoundingClientRect();
+        const el = target.el;
         const within =
           nextPos > target.pos
             ? Math.min((topPos - target.pos) / (nextPos - target.pos), 1)
             : 0;
-        container.scrollTop +=
-          rect.top -
-          container.getBoundingClientRect().top +
-          within * rect.height;
+        const applyAnchor = (): void => {
+          const rect = el.getBoundingClientRect();
+          container.scrollTop +=
+            rect.top -
+            container.getBoundingClientRect().top +
+            within * rect.height;
+        };
+        applyAnchor();
+        keepAnchoredWhileLoading(container, applyAnchor);
       }
     } else {
       // First block still visible at the top of the reading view, plus
