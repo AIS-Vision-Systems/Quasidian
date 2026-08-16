@@ -844,7 +844,10 @@ export function mountLayout(root: HTMLElement): void {
   });
 
   // Mode, scroll and cursor are per tab instance (two tabs of the same
-  // file stay independent); folds are shared per file.
+  // file stay independent); folds are shared per file. Scroll is a
+  // document offset (top visible block + intra-block fraction), never
+  // pixels or fractions: those break whenever async content (embeds,
+  // images) changes the page height between save and restore.
   const tabModes = new Map<number, EditorModeSetting>();
   const tabScroll = new Map<number, number>();
   const tabSelection = new Map<number, { anchor: number; head: number }>();
@@ -936,11 +939,9 @@ export function mountLayout(root: HTMLElement): void {
     if (id !== null) {
       tabScroll.set(
         id,
-        scrollFraction(
-          currentMode === "edit"
-            ? editorHost.querySelector(".cm-scroller")
-            : readingView.element,
-        ),
+        currentMode === "edit"
+          ? editor.topVisiblePos()
+          : (readingTopAnchor() ?? 0),
       );
       tabSelection.set(id, editor.getSelection());
     }
@@ -1080,7 +1081,7 @@ export function mountLayout(root: HTMLElement): void {
       // state — no reload, just this tab's mode and scroll.
       await stashCurrentTabState();
       tabsState = next;
-      applyActiveTabView();
+      await applyActiveTabView();
       renderTabs();
       scheduleSessionSave();
       return;
@@ -1091,13 +1092,17 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   /** Applies the active tab's own mode, cursor and scroll. */
-  function applyActiveTabView(): void {
+  async function applyActiveTabView(): Promise<void> {
     const id = activeTabId();
     const mode =
       (id !== null ? tabModes.get(id) : undefined) ??
       getSettings().editor.defaultMode;
-    if (mode === "read") {
-      readingView.render(editor.getDoc());
+    if (mode === "read" && currentMode !== "read") {
+      // Entering reading: render and let embeds settle before showing,
+      // so the anchor below measures the final layout. When the twin
+      // was already reading the same buffer, the settled view is
+      // reused as-is.
+      await readingView.render(editor.getDoc());
     }
     applyMode(mode);
     const selection = id !== null ? tabSelection.get(id) : undefined;
@@ -1111,12 +1116,11 @@ export function mountLayout(root: HTMLElement): void {
     // cursor never wins over this tab's own position.
     const saved = id !== null ? tabScroll.get(id) : undefined;
     if (saved !== undefined) {
-      setScrollFraction(
-        mode === "edit"
-          ? editorHost.querySelector(".cm-scroller")
-          : readingView.element,
-        saved,
-      );
+      if (mode === "edit") {
+        scrollEditorToAnchor(saved);
+      } else if (!scrollReadingToAnchor(saved)) {
+        readingView.element.scrollTop = 0;
+      }
     }
   }
 
@@ -1636,6 +1640,75 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   /**
+   * Document offset at the top of the reading view: the first visible
+   * block plus the fraction already scrolled past inside it. Null when
+   * the view has no anchors (empty or unrendered).
+   */
+  function readingTopAnchor(): number | null {
+    const containerTop = readingView.element.getBoundingClientRect().top;
+    const anchors = readingAnchors();
+    for (let i = 0; i < anchors.length; i++) {
+      const rect = anchors[i].el.getBoundingClientRect();
+      if (rect.bottom > containerTop + 1) {
+        const pos = anchors[i].pos;
+        const nextPos = anchors[i + 1]?.pos ?? editor.getDoc().length;
+        const within =
+          rect.height > 0 && rect.top < containerTop
+            ? Math.min((containerTop - rect.top) / rect.height, 1)
+            : 0;
+        return Math.round(pos + within * (nextPos - pos));
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Scrolls the reading view so the block holding `topPos` sits at the
+   * top, offset by the intra-block fraction, and keeps it anchored
+   * while late content loads. False when the view has no usable anchor.
+   */
+  function scrollReadingToAnchor(topPos: number): boolean {
+    let target: { pos: number; el: HTMLElement } | null = null;
+    let nextPos = editor.getDoc().length;
+    for (const anchor of readingAnchors()) {
+      if (anchor.pos > topPos) {
+        nextPos = anchor.pos;
+        break;
+      }
+      target = anchor;
+    }
+    if (target === null) {
+      return false;
+    }
+    const container = readingView.element;
+    const el = target.el;
+    const from = target.pos;
+    const within =
+      nextPos > from
+        ? Math.min((topPos - from) / (nextPos - from), 1)
+        : 0;
+    const applyAnchor = (): void => {
+      const rect = el.getBoundingClientRect();
+      container.scrollTop +=
+        rect.top -
+        container.getBoundingClientRect().top +
+        within * rect.height;
+    };
+    applyAnchor();
+    keepAnchoredWhileLoading(container, applyAnchor);
+    return true;
+  }
+
+  /** Editor twin of scrollReadingToAnchor (heights settle async). */
+  function scrollEditorToAnchor(pos: number): void {
+    editor.scrollPosToTop(pos);
+    const scrollerEl = editorHost.querySelector(".cm-scroller");
+    if (scrollerEl instanceof HTMLElement) {
+      keepAnchoredWhileLoading(scrollerEl, () => editor.scrollPosToTop(pos));
+    }
+  }
+
+  /**
    * Switches between editing and reading keeping the same block at the
    * top of the view, mapped through the shared document offsets.
    */
@@ -1656,72 +1729,17 @@ export function mountLayout(root: HTMLElement): void {
       // would paint a visible double jump.
       await readingView.render(editor.getDoc());
       applyMode("read");
-      // Last block starting at or before the editor's top line, plus
-      // how far into the block that line falls (document offsets map
-      // roughly linearly onto rendered height within one block).
-      let target: { pos: number; el: HTMLElement } | null = null;
-      let nextPos = editor.getDoc().length;
-      for (const anchor of readingAnchors()) {
-        if (anchor.pos > topPos) {
-          nextPos = anchor.pos;
-          break;
-        }
-        target = anchor;
-      }
-      if (target === null) {
+      if (!scrollReadingToAnchor(topPos)) {
         setScrollFraction(readingView.element, fraction);
-      } else {
-        const container = readingView.element;
-        const el = target.el;
-        const within =
-          nextPos > target.pos
-            ? Math.min((topPos - target.pos) / (nextPos - target.pos), 1)
-            : 0;
-        const applyAnchor = (): void => {
-          const rect = el.getBoundingClientRect();
-          container.scrollTop +=
-            rect.top -
-            container.getBoundingClientRect().top +
-            within * rect.height;
-        };
-        applyAnchor();
-        keepAnchoredWhileLoading(container, applyAnchor);
       }
     } else {
-      // First block still visible at the top of the reading view, plus
-      // the visible fraction already scrolled past inside it.
-      const containerTop =
-        readingView.element.getBoundingClientRect().top;
-      let topPos: number | null = null;
-      const anchors = readingAnchors();
-      for (let i = 0; i < anchors.length; i++) {
-        const rect = anchors[i].el.getBoundingClientRect();
-        if (rect.bottom > containerTop + 1) {
-          const pos = anchors[i].pos;
-          const nextPos =
-            anchors[i + 1]?.pos ?? editor.getDoc().length;
-          const within =
-            rect.height > 0 && rect.top < containerTop
-              ? Math.min((containerTop - rect.top) / rect.height, 1)
-              : 0;
-          topPos = Math.round(pos + within * (nextPos - pos));
-          break;
-        }
-      }
+      const topPos = readingTopAnchor();
       const fraction = scrollFraction(readingView.element);
       applyMode("edit");
       if (topPos === null) {
         setScrollFraction(scroller, fraction);
       } else {
-        const pos = topPos;
-        editor.scrollPosToTop(pos);
-        if (scroller instanceof HTMLElement) {
-          // Re-apply while CodeMirror measures real block heights
-          // (embed widgets start with estimates).
-          keepAnchoredWhileLoading(scroller, () =>
-            editor.scrollPosToTop(pos),
-          );
-        }
+        scrollEditorToAnchor(topPos);
       }
       editor.focus();
     }
@@ -2276,7 +2294,9 @@ export function mountLayout(root: HTMLElement): void {
         pending ??
         getSettings().editor.defaultMode;
       if (mode === "read") {
-        readingView.render(contents);
+        // Let embeds settle so the scroll anchor measures the final
+        // layout in one go.
+        await readingView.render(contents);
       }
       applyMode(mode);
       const selection = id !== null ? tabSelection.get(id) : undefined;
@@ -2290,12 +2310,11 @@ export function mountLayout(root: HTMLElement): void {
       // wins over this tab's own position.
       const savedScroll = id !== null ? tabScroll.get(id) : undefined;
       if (savedScroll !== undefined) {
-        setScrollFraction(
-          mode === "edit"
-            ? editorHost.querySelector(".cm-scroller")
-            : readingView.element,
-          savedScroll,
-        );
+        if (mode === "edit") {
+          scrollEditorToAnchor(savedScroll);
+        } else if (!scrollReadingToAnchor(savedScroll)) {
+          readingView.element.scrollTop = 0;
+        }
       }
     } catch (error) {
       // A rendering failure must never leave the view half-open.
