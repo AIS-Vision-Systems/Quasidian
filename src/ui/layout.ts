@@ -843,10 +843,11 @@ export function mountLayout(root: HTMLElement): void {
     }
   });
 
-  // Mode and scroll are per tab instance (two tabs of the same file
-  // stay independent); folds are shared per file.
+  // Mode, scroll and cursor are per tab instance (two tabs of the same
+  // file stay independent); folds are shared per file.
   const tabModes = new Map<number, EditorModeSetting>();
   const tabScroll = new Map<number, number>();
+  const tabSelection = new Map<number, { anchor: number; head: number }>();
   // Mode requested for a path before its tab exists (?open=...&mode=).
   const pendingModes = new Map<string, EditorModeSetting>();
   // Fold state per file, in memory only (never written to the folder).
@@ -907,6 +908,11 @@ export function mountLayout(root: HTMLElement): void {
         tabScroll.delete(id);
       }
     }
+    for (const id of [...tabSelection.keys()]) {
+      if (!alive.has(id)) {
+        tabSelection.delete(id);
+      }
+    }
   }
 
   let sessionSaveDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -936,6 +942,7 @@ export function mountLayout(root: HTMLElement): void {
             : readingView.element,
         ),
       );
+      tabSelection.set(id, editor.getSelection());
     }
     if (autosave.isDirty()) {
       await saveNow();
@@ -1083,7 +1090,7 @@ export function mountLayout(root: HTMLElement): void {
     scheduleSessionSave();
   }
 
-  /** Applies the active tab's own mode and scroll to the shared buffer. */
+  /** Applies the active tab's own mode, cursor and scroll. */
   function applyActiveTabView(): void {
     const id = activeTabId();
     const mode =
@@ -1093,6 +1100,15 @@ export function mountLayout(root: HTMLElement): void {
       readingView.render(editor.getDoc());
     }
     applyMode(mode);
+    const selection = id !== null ? tabSelection.get(id) : undefined;
+    if (selection !== undefined) {
+      editor.setSelection(selection.anchor, selection.head);
+    }
+    if (mode === "edit") {
+      editor.focus();
+    }
+    // Scroll goes last, so a focus-induced jump to the (shared-buffer)
+    // cursor never wins over this tab's own position.
     const saved = id !== null ? tabScroll.get(id) : undefined;
     if (saved !== undefined) {
       setScrollFraction(
@@ -1101,9 +1117,6 @@ export function mountLayout(root: HTMLElement): void {
           : readingView.element,
         saved,
       );
-    }
-    if (mode === "edit") {
-      editor.focus();
     }
   }
 
@@ -1280,6 +1293,10 @@ export function mountLayout(root: HTMLElement): void {
     const scroll = tabScroll.get(fromId);
     if (scroll !== undefined) {
       tabScroll.set(toId, scroll);
+    }
+    const selection = tabSelection.get(fromId);
+    if (selection !== undefined) {
+      tabSelection.set(toId, { ...selection });
     }
   }
 
@@ -2219,6 +2236,15 @@ export function mountLayout(root: HTMLElement): void {
         readingView.render(contents);
       }
       applyMode(mode);
+      const selection = id !== null ? tabSelection.get(id) : undefined;
+      if (selection !== undefined) {
+        editor.setSelection(selection.anchor, selection.head);
+      }
+      if (mode === "edit") {
+        editor.focus();
+      }
+      // Scroll goes last, so a focus-induced jump to the cursor never
+      // wins over this tab's own position.
       const savedScroll = id !== null ? tabScroll.get(id) : undefined;
       if (savedScroll !== undefined) {
         setScrollFraction(
@@ -2227,9 +2253,6 @@ export function mountLayout(root: HTMLElement): void {
             : readingView.element,
           savedScroll,
         );
-      }
-      if (mode === "edit") {
-        editor.focus();
       }
     } catch (error) {
       // A rendering failure must never leave the view half-open.

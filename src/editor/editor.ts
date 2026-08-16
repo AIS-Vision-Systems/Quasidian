@@ -513,6 +513,10 @@ export interface EditorHandle {
   topVisiblePos(): number;
   /** Scrolls so the line holding `pos` sits at the top of the view. */
   scrollPosToTop(pos: number): void;
+  /** Current main selection, for remembering it per tab. */
+  getSelection(): { anchor: number; head: number };
+  /** Restores a remembered selection (clamped), without scrolling. */
+  setSelection(anchor: number, head: number): void;
   focus(): void;
   /** Hot-applies configurable options without recreating the editor. */
   applyConfig(config: EditorConfig): void;
@@ -845,8 +849,11 @@ export function createEditor(
       view.focus();
     },
     topVisiblePos(): number {
+      // Height-based, not coordinate-based: posAtCoords needs a point
+      // over the content column, which readable line length margins
+      // break. lineBlockAtHeight is exact for any layout.
       const rect = view.scrollDOM.getBoundingClientRect();
-      return view.posAtCoords({ x: rect.left + 1, y: rect.top + 1 }, false);
+      return view.lineBlockAtHeight(rect.top + 1 - view.documentTop).from;
     },
     scrollPosToTop(pos: number): void {
       view.dispatch({
@@ -854,6 +861,19 @@ export function createEditor(
           Math.min(pos, view.state.doc.length),
           { y: "start" },
         ),
+      });
+    },
+    getSelection(): { anchor: number; head: number } {
+      const { anchor, head } = view.state.selection.main;
+      return { anchor, head };
+    },
+    setSelection(anchor: number, head: number): void {
+      const length = view.state.doc.length;
+      view.dispatch({
+        selection: {
+          anchor: Math.min(anchor, length),
+          head: Math.min(head, length),
+        },
       });
     },
     focus(): void {
