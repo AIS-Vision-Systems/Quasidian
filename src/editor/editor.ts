@@ -4,6 +4,7 @@ import {
   autocompletion,
   closeBrackets,
   closeBracketsKeymap,
+  startCompletion,
   type CompletionContext,
   type CompletionResult,
 } from "@codemirror/autocomplete";
@@ -175,16 +176,25 @@ function applyFormat(view: EditorView, open: string, close: string): void {
 
 /** `[text](|)` around the selection, cursor between the parens. */
 function insertLink(view: EditorView): void {
+  const hadSelection = !view.state.selection.main.empty;
   view.dispatch(
     view.state.changeByRange((range) => ({
       changes: [
         { from: range.from, insert: "[" },
         { from: range.to, insert: "]()" },
       ],
-      range: EditorSelection.cursor(range.to + 3),
+      // Selected text becomes the label and the cursor lands in the
+      // URL; with nothing selected, the label is typed first.
+      range: range.empty
+        ? EditorSelection.cursor(range.from + 1)
+        : EditorSelection.cursor(range.to + 3),
     })),
   );
   view.focus();
+  if (hadSelection) {
+    // The cursor sits in "](|)": pop the file path completions.
+    startCompletion(view);
+  }
 }
 
 async function cutOrCopySelection(view: EditorView, cut: boolean): Promise<void> {
@@ -324,6 +334,11 @@ function openEditorMenu(view: EditorView, x: number, y: number): void {
           label: t("menu.insertCallout"),
           icon: "quote",
           onClick: () => insertBlockSnippet(view, "> [!note] \n> \n", 10),
+        },
+        {
+          label: t("menu.insertMarkdownLink"),
+          icon: "link",
+          onClick: () => insertLink(view),
         },
         {
           label: t("menu.insertHr"),
@@ -505,7 +520,11 @@ function wikilinkCompletionSource(hooks: EditorHooks) {
   };
 }
 
-/** Inside a markdown link's `](...)`: offer note and image paths. */
+/**
+ * Inside a markdown link's `](...)`: offer note and image paths. The
+ * typed fragment matches anywhere in the path ("guid" finds
+ * "src/help/guide.ca.md"), earliest occurrence first.
+ */
 function markdownLinkCompletionSource(hooks: EditorHooks) {
   return (context: CompletionContext): CompletionResult | null => {
     const match = context.matchBefore(/\]\([^)\s]*$/);
@@ -514,18 +533,26 @@ function markdownLinkCompletionSource(hooks: EditorHooks) {
     }
     const alreadyClosed =
       context.state.sliceDoc(context.pos, context.pos + 1) === ")";
-    return {
-      from: match.from + 2,
-      options: hooks.getLinkPathCompletions().map((path) => {
+    let typed = match.text.slice(2).toLowerCase();
+    try {
+      typed = decodeURIComponent(typed);
+    } catch {
+      // Malformed escapes: match the raw text.
+    }
+    const options = hooks
+      .getLinkPathCompletions()
+      .map((path) => ({ path, at: path.toLowerCase().indexOf(typed) }))
+      .filter((entry) => entry.at !== -1)
+      .sort((a, b) => a.at - b.at || a.path.localeCompare(b.path))
+      .map((entry) => {
         // Spaces are percent-encoded, as markdown URLs require.
-        const encoded = encodeURI(path);
+        const encoded = encodeURI(entry.path);
         return {
-          label: path,
+          label: entry.path,
           apply: alreadyClosed ? encoded : encoded + ")",
         };
-      }),
-      validFor: /^[^)\s]*$/,
-    };
+      });
+    return { from: match.from + 2, options, filter: false };
   };
 }
 

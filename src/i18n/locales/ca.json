@@ -49,6 +49,7 @@
   "menu.insert": "Insereix",
   "menu.insertFootnote": "Nota al peu",
   "menu.insertCallout": "Callout",
+  "menu.insertMarkdownLink": "Enllaç markdown",
   "menu.insertHr": "Línia horitzontal",
   "menu.insertCodeBlock": "Bloc de codi",
   "menu.insertMathBlock": "Bloc de fórmula",

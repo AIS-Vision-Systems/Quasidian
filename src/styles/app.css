@@ -34,6 +34,7 @@ body {
 
 /* --- Sidebar --- */
 
+/* The header row stays put; the views below scroll on their own. */
 .sidebar {
   grid-area: sidebar;
   display: flex;
@@ -42,7 +43,7 @@ body {
   padding: 12px;
   background-color: var(--background-secondary);
   border-right: 1px solid var(--background-modifier-border);
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
 .sidebar-header {
@@ -214,6 +215,7 @@ body {
   gap: 12px;
   min-height: 0;
   flex: 1;
+  overflow-y: auto;
 }
 
 .sidebar-view.is-hidden {
@@ -402,6 +404,7 @@ button:focus-visible {
 
 /* --- Backlinks panel --- */
 
+/* The header row stays put; only the list below scrolls. */
 .backlinks-panel {
   grid-area: backlinks;
   display: flex;
@@ -411,7 +414,7 @@ button:focus-visible {
   padding: 12px;
   background-color: var(--background-secondary);
   border-left: 1px solid var(--background-modifier-border);
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
 .backlinks-panel.is-hidden {
@@ -459,6 +462,9 @@ button:focus-visible {
   margin: 0;
   padding: 0;
   list-style: none;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .backlinks-empty {
