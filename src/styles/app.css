@@ -794,6 +794,11 @@ body.is-readable-line-length .cm-editor .cm-content {
   color: transparent;
 }
 
+/* The callout box pads its first line; its number follows suit. */
+.cm-editor .cm-lineNumbers .cm-gutterline-callout {
+  padding-top: 10px;
+}
+
 /* Room for the inline fold chevrons hanging left of the text. */
 .cm-editor .cm-content {
   padding-left: 28px;

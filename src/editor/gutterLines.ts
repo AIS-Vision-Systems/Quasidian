@@ -11,8 +11,12 @@ import {
   type EditorState,
   type RangeSet,
 } from "@codemirror/state";
-import { gutterLineClass, GutterMarker } from "@codemirror/view";
-import { computeHeadingLines } from "./livePreview";
+import {
+  gutterLineClass,
+  GutterMarker,
+  lineNumberWidgetMarker,
+} from "@codemirror/view";
+import { calloutForQuote, computeHeadingLines } from "./livePreview";
 
 class LineClass extends GutterMarker {
   constructor(cls: string) {
@@ -55,12 +59,23 @@ function computeMarkers(state: EditorState): RangeSet<GutterMarker> {
       if (!QUIET_BLOCKS.has(node.name)) {
         return;
       }
+      const firstLine = state.doc.lineAt(node.from);
+      if (
+        node.name === "Blockquote" &&
+        calloutForQuote(state, node.node) !== null
+      ) {
+        // The callout box pads its first line; the number follows.
+        add(firstLine.from, "cm-gutterline-callout");
+      }
       if (head >= node.from && head <= node.to) {
         return false; // being edited: keep its numbers visible
       }
+      // The first line keeps its number: it locates the whole block.
       for (let pos = node.from; pos <= node.to; ) {
         const line = state.doc.lineAt(pos);
-        add(line.from, "cm-gutterline-quiet");
+        if (line.from !== firstLine.from) {
+          add(line.from, "cm-gutterline-quiet");
+        }
         pos = line.to + 1;
       }
       return false;
@@ -83,3 +98,29 @@ export const gutterLineStyles = StateField.define<RangeSet<GutterMarker>>({
   },
   provide: (field) => gutterLineClass.from(field),
 });
+
+class WidgetNumber extends GutterMarker {
+  constructor(readonly line: number) {
+    super();
+  }
+
+  override eq(other: WidgetNumber): boolean {
+    return other.line === this.line;
+  }
+
+  override toDOM(): Node {
+    return document.createTextNode(String(this.line));
+  }
+}
+
+/**
+ * Blocks replaced by widgets (tables, math blocks, the properties box)
+ * show their first line's number too; the line-number gutter skips
+ * widget blocks by default.
+ */
+export const widgetLineNumbers = lineNumberWidgetMarker.of(
+  (view, _widget, block) =>
+    block.to > block.from
+      ? new WidgetNumber(view.state.doc.lineAt(block.from).number)
+      : null,
+);
