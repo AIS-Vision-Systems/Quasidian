@@ -753,6 +753,47 @@ body.is-readable-line-length .cm-editor .cm-content {
   color: var(--text-faint);
 }
 
+/*
+ * Line numbers follow their line's text. Heading lines carry top
+ * padding on the content side; the gutter element replicates it (plus
+ * half the extra height of the bigger heading row, so the number sits
+ * centered on the heading text). CodeMirror sets each element's height
+ * explicitly, so border-box keeps the columns in sync.
+ */
+.cm-editor .cm-lineNumbers .cm-gutterElement {
+  box-sizing: border-box;
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h1 {
+  padding-top: calc(var(--font-text-size) * 2.24);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h2 {
+  padding-top: calc(var(--font-text-size) * 1.88);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h3 {
+  padding-top: calc(var(--font-text-size) * 1.54);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h4 {
+  padding-top: calc(var(--font-text-size) * 1.21);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h5 {
+  padding-top: calc(var(--font-text-size) * 1);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h6 {
+  padding-top: calc(var(--font-text-size) * 0.9);
+}
+
+/* Innards of code blocks and quotes only number themselves while the
+   cursor is inside; transparent (not hidden) keeps the gutter width. */
+.cm-editor .cm-lineNumbers .cm-gutterline-quiet {
+  color: transparent;
+}
+
 /* Room for the inline fold chevrons hanging left of the text. */
 .cm-editor .cm-content {
   padding-left: 28px;

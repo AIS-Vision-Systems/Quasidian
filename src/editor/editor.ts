@@ -38,6 +38,7 @@ import {
 // Marks reload/mirror transactions: no autosave, no re-mirroring.
 const quietReload = Annotation.define<boolean>();
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { gutterLineStyles } from "./gutterLines";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import { t } from "../i18n/i18n";
@@ -549,7 +550,7 @@ export function createEditor(
   const autoPairCompartment = new Compartment();
 
   function lineNumbersExtension(c: EditorConfig) {
-    return c.showLineNumbers ? lineNumbers() : [];
+    return c.showLineNumbers ? [lineNumbers(), gutterLineStyles] : [];
   }
   function autoPairExtension(c: EditorConfig) {
     return c.autoPairBrackets

@@ -629,10 +629,13 @@ export function mountLayout(root: HTMLElement): void {
     if (currentFolder === null) {
       return null;
     }
+    // Images resolve by name vault-wide too: without folderImages in
+    // the listing, a recursive vault would fall back to joining the
+    // target onto the vault root and break every embedded image.
     const resolution = resolveWikilink(
       target,
       currentFolder,
-      folderFiles,
+      [...folderFiles, ...folderImages],
       getSettings().files.defaultExtension,
     );
     return resolution === null ? null : convertFileSrc(resolution.path);
