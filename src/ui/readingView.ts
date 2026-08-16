@@ -54,7 +54,8 @@ export interface ReadingViewHooks {
 
 export interface ReadingViewHandle {
   element: HTMLElement;
-  render(doc: string): void;
+  /** Resolves once embedded notes have been filled in (layout settled). */
+  render(doc: string): Promise<void>;
 }
 
 /** Hides a folded heading's section: siblings up to the next peer. */
@@ -237,7 +238,7 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
 
   return {
     element,
-    render(doc: string): void {
+    render(doc: string): Promise<void> {
       content.innerHTML = renderToHtml(doc, {
         properties: hooks.showProperties(),
         anchors: true,
@@ -255,7 +256,7 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
       }
       fillEmbedImages(content, hooks.resolveEmbedSrc);
       const currentPath = hooks.currentFilePath();
-      fillEmbedNotes(
+      const settled = fillEmbedNotes(
         content,
         {
           resolveEmbedSrc: hooks.resolveEmbedSrc,
@@ -284,6 +285,7 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
             props.classList.toggle("is-collapsed", collapsed);
           });
       }
+      return settled;
     },
   };
 }

@@ -1651,7 +1651,10 @@ export function mountLayout(root: HTMLElement): void {
       }
       const topPos = editor.topVisiblePos();
       const fraction = scrollFraction(scroller);
-      readingView.render(editor.getDoc());
+      // The editor stays on screen until embeds have been filled in:
+      // anchoring against the placeholder layout and correcting later
+      // would paint a visible double jump.
+      await readingView.render(editor.getDoc());
       applyMode("read");
       // Last block starting at or before the editor's top line, plus
       // how far into the block that line falls (document offsets map

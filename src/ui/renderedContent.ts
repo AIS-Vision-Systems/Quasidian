@@ -217,15 +217,17 @@ const MAX_EMBED_DEPTH = 4;
  * MAX_EMBED_DEPTH or when a note already appears in the chain (cycle).
  * Stopped placeholders keep their target text, dimmed.
  */
+/** Resolves once every embed (recursively) has been filled in. */
 export function fillEmbedNotes(
   root: HTMLElement,
   hooks: EmbedFillHooks,
   visited: ReadonlySet<string>,
   depth = 0,
-): void {
+): Promise<void> {
+  const jobs: Promise<void>[] = [];
   for (const embed of root.querySelectorAll<HTMLElement>("span.embed-note")) {
     const target = embed.dataset.target ?? "";
-    void hooks.renderEmbedNote(target).then((result) => {
+    const job = hooks.renderEmbedNote(target).then((result) => {
       if (result === null || !embed.isConnected) {
         return;
       }
@@ -254,10 +256,18 @@ export function fillEmbedNotes(
         }
       }
       embed.append(title, body);
-      fillEmbedNotes(body, hooks, new Set([...visited, key]), depth + 1);
+      const nested = fillEmbedNotes(
+        body,
+        hooks,
+        new Set([...visited, key]),
+        depth + 1,
+      );
       hooks.onRendered?.();
+      return nested;
     });
+    jobs.push(job);
   }
+  return Promise.all(jobs).then(() => undefined);
 }
 
 /** Local collapse toggling for properties boxes (embedded notes). */
