@@ -1,6 +1,7 @@
 // Pure module: no Tauri, no DOM. Resolves wikilink targets against the
-// implicit vault (the open file's immediate folder), whose listing is
-// passed in by the caller.
+// implicit vault — the open file's immediate folder, or the whole
+// recursive vault when a multi-folder mode is active. The caller passes
+// the corresponding file listing; the logic is the same for both.
 import { joinPath, normalizePath } from "./paths";
 
 const MARKDOWN_EXTENSION = ".md";
@@ -44,6 +45,19 @@ export function splitAnchor(target: string): {
   };
 }
 
+/** Among files matching a name, the shallowest path (then alphabetical)
+ * wins — deterministic, Obsidian-style resolution for duplicates. */
+function bestCandidate(candidates: FolderFile[]): FolderFile | undefined {
+  return [...candidates].sort((a, b) => {
+    const depthA = normalizePath(a.path).split("/").length;
+    const depthB = normalizePath(b.path).split("/").length;
+    if (depthA !== depthB) {
+      return depthA - depthB;
+    }
+    return a.path.localeCompare(b.path);
+  })[0];
+}
+
 export function resolveWikilink(
   target: string,
   folder: string,
@@ -58,19 +72,23 @@ export function resolveWikilink(
   }
 
   if (!/[/\\]/.test(trimmed)) {
-    // Bare name: case-insensitive match against the folder's markdown
-    // files, with or without the extension spelled out.
+    // Bare name: case-insensitive match against the vault's markdown
+    // files, with or without the extension spelled out. Duplicate names
+    // in a recursive vault resolve to the shallowest path.
     const lower = trimmed.toLowerCase();
-    const match = folderFiles.find((file) => {
+    const matches = folderFiles.filter((file) => {
       const name = file.name.toLowerCase();
       return name === lower || name === lower + MARKDOWN_EXTENSION;
     });
+    const match = bestCandidate(matches);
     if (match !== undefined) {
       return { path: match.path, exists: true };
     }
     // Frontmatter aliases resolve after real names, case-insensitively.
-    const aliasMatch = folderFiles.find((file) =>
-      (file.aliases ?? []).some((alias) => alias.toLowerCase() === lower),
+    const aliasMatch = bestCandidate(
+      folderFiles.filter((file) =>
+        (file.aliases ?? []).some((alias) => alias.toLowerCase() === lower),
+      ),
     );
     if (aliasMatch !== undefined) {
       return { path: aliasMatch.path, exists: true };
@@ -81,11 +99,24 @@ export function resolveWikilink(
     return { path: normalizePath(joinPath(folder, fileName)), exists: false };
   }
 
-  // Relative or full path (cross-folder link).
   const withExtension = hasExtension(trimmed)
     ? trimmed
     : trimmed + defaultExtension;
   const isAbsolute = /^([a-zA-Z]:[/\\]|[/\\])/.test(withExtension);
+  // Plain subpaths ("dir/nota") disambiguate duplicates Obsidian-style:
+  // a case-insensitive path-suffix match against the vault listing.
+  if (!isAbsolute && !/^\.\.?[/\\]/.test(withExtension)) {
+    const suffix = "/" + normalizePath(withExtension).toLowerCase();
+    const match = bestCandidate(
+      folderFiles.filter((file) =>
+        normalizePath(file.path).toLowerCase().endsWith(suffix),
+      ),
+    );
+    if (match !== undefined) {
+      return { path: match.path, exists: true };
+    }
+  }
+  // Relative or full path (cross-folder link).
   const combined = isAbsolute ? withExtension : joinPath(folder, withExtension);
   return { path: normalizePath(combined), exists: false };
 }

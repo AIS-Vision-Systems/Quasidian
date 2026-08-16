@@ -16,6 +16,7 @@ import {
   startupFile,
   watchFolder,
   writeFile,
+  type FileEntry,
 } from "../ipc/fs";
 import { createEditor } from "../editor/editor";
 import {
@@ -46,6 +47,17 @@ import {
   splitAnchor,
   type FolderFile,
 } from "../lib/wikilinks";
+import {
+  detectVault,
+  isIgnoredDir,
+  MAX_VAULT_DEPTH,
+  type VaultMode,
+} from "../lib/vault";
+import {
+  buildFolderTree,
+  relativePath,
+  type TreeNode,
+} from "../lib/folderTree";
 import {
   activeTabPath,
   cloneTab,
@@ -550,6 +562,15 @@ export function mountLayout(root: HTMLElement): void {
   let tabsState: WorkspaceState = emptyWorkspace();
   let splitState: SplitState = singlePane(emptyWorkspace());
   let currentFolder: string | null = null;
+  // Multi-folder vault modes (CLAUDE/GPT): a marker file roots a
+  // recursive vault; currentFolder then holds the vault root.
+  let vaultRoot: string | null = null;
+  let vaultMode: VaultMode | null = null;
+  let vaultTree: TreeNode[] = [];
+  // Last folder probed for markers, so flat folders are not re-probed
+  // on every file open (markers are picked up on folder changes).
+  let vaultProbeBase: string | null = null;
+  const collapsedDirs = new Set<string>();
   // Multi-window: each window keeps its own session file; the next
   // launch opens a single window restoring the last-focused one's.
   const windowLabel = getCurrentWindow().label;
@@ -2132,10 +2153,83 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
-  async function refreshFolder(folderPath: string): Promise<void> {
-    let entries;
+  /** Whether `folderPath` lies inside the active vault root. */
+  function insideVault(folderPath: string): boolean {
+    if (vaultRoot === null) {
+      return false;
+    }
+    const rootKey = normalizePath(vaultRoot).toLowerCase();
+    const key = normalizePath(folderPath).toLowerCase();
+    return key === rootKey || key.startsWith(rootKey + "/");
+  }
+
+  /** Marker probe for vault detection, backed by the folder listing. */
+  async function folderContains(dir: string, name: string): Promise<boolean> {
     try {
-      entries = await listFolder(folderPath);
+      const entries = await listFolder(dir);
+      const lower = name.toLowerCase();
+      return entries.some((entry) => entry.name.toLowerCase() === lower);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Breadth-first vault scan honoring the ignore rules and depth cap. */
+  async function scanVault(root: string): Promise<FileEntry[]> {
+    const collected: FileEntry[] = [];
+    const queue: { path: string; depth: number }[] = [
+      { path: root, depth: 0 },
+    ];
+    while (queue.length > 0) {
+      const { path, depth } = queue.shift() as {
+        path: string;
+        depth: number;
+      };
+      let entries: FileEntry[];
+      try {
+        entries = await listFolder(path);
+      } catch {
+        continue; // unreadable subfolder: skip, never fail the vault
+      }
+      for (const entry of entries) {
+        if (entry.isDir) {
+          if (depth < MAX_VAULT_DEPTH && !isIgnoredDir(entry.name)) {
+            collected.push(entry);
+            queue.push({ path: entry.path, depth: depth + 1 });
+          }
+        } else {
+          collected.push(entry);
+        }
+      }
+    }
+    return collected;
+  }
+
+  async function refreshFolder(
+    folderPath: string,
+    options?: { redetect?: boolean },
+  ): Promise<void> {
+    // Multi-folder modes: a marker in the folder or an ancestor roots a
+    // recursive vault there. Detection reruns when leaving the current
+    // vault or when a folder is opened explicitly.
+    const probed =
+      vaultProbeBase !== null && samePath(vaultProbeBase, folderPath);
+    if (
+      options?.redetect === true ||
+      (!insideVault(folderPath) && !probed)
+    ) {
+      const info = await detectVault(folderPath, folderContains);
+      vaultRoot = info?.root ?? null;
+      vaultMode = info?.mode ?? null;
+      vaultProbeBase = folderPath;
+      // Styling/debug hook: which mode (if any) the sidebar reflects.
+      fileList.dataset.vaultMode = vaultMode ?? "";
+    }
+    const scope = vaultRoot ?? folderPath;
+    let entries: FileEntry[];
+    try {
+      entries =
+        vaultRoot === null ? await listFolder(scope) : await scanVault(scope);
     } catch (error) {
       setListMessage(t("error.listFolder", { error: String(error) }));
       return;
@@ -2143,15 +2237,15 @@ export function mountLayout(root: HTMLElement): void {
     const markdownFiles = entries
       .filter((entry) => !entry.isDir && entry.name.toLowerCase().endsWith(".md"))
       .sort((a, b) => a.name.localeCompare(b.name));
-    currentFolder = folderPath;
+    currentFolder = scope;
     folderFiles = markdownFiles.map(({ name, path }) => ({ name, path }));
     folderImages = entries
       .filter((entry) => !entry.isDir && isImageTarget(entry.name))
       .map(({ name, path }) => ({ name, path }))
       .sort((a, b) => a.name.localeCompare(b.name));
-    if (watchedFolder === null || !samePath(watchedFolder, folderPath)) {
-      watchedFolder = folderPath;
-      watchFolder(folderPath).catch(() => undefined);
+    if (watchedFolder === null || !samePath(watchedFolder, scope)) {
+      watchedFolder = scope;
+      watchFolder(scope, vaultRoot !== null).catch(() => undefined);
       void rebuildIndex();
     } else {
       renderBacklinks();
@@ -2160,33 +2254,87 @@ export function mountLayout(root: HTMLElement): void {
       setListMessage(t("sidebar.emptyFolder"));
       return;
     }
-    fileList.replaceChildren(
-      ...markdownFiles.map((entry) => {
-        const item = document.createElement("li");
-        item.className = "file-item";
-        item.classList.toggle(
-          "is-active",
-          openedPath !== null && samePath(entry.path, openedPath),
-        );
-        item.textContent = entry.name.replace(/\.md$/i, "");
-        item.addEventListener("click", (event) =>
-          void openFile(entry.path, {
-            newTab: event.ctrlKey || event.metaKey,
-          }),
-        );
-        item.addEventListener("auxclick", (event) => {
-          if (event.button === 1) {
-            event.preventDefault();
-            void openFile(entry.path, { newTab: true });
-          }
-        });
-        item.addEventListener("contextmenu", (event) => {
-          event.preventDefault();
-          openFileMenu(event.clientX, event.clientY, entry.path);
-        });
-        return item;
+    if (vaultRoot === null) {
+      fileList.replaceChildren(
+        ...markdownFiles.map((entry) => fileListItem(entry.path, entry.name)),
+      );
+    } else {
+      vaultTree = buildFolderTree(
+        vaultRoot,
+        entries.filter(
+          (entry) =>
+            entry.isDir || entry.name.toLowerCase().endsWith(".md"),
+        ),
+      );
+      renderVaultTree();
+    }
+  }
+
+  /** Sidebar entry for one note (flat list and vault tree share it). */
+  function fileListItem(path: string, name: string): HTMLLIElement {
+    const item = document.createElement("li");
+    item.className = "file-item";
+    item.classList.toggle(
+      "is-active",
+      openedPath !== null && samePath(path, openedPath),
+    );
+    item.textContent = name.replace(/\.md$/i, "");
+    item.addEventListener("click", (event) =>
+      void openFile(path, {
+        newTab: event.ctrlKey || event.metaKey,
       }),
     );
+    item.addEventListener("auxclick", (event) => {
+      if (event.button === 1) {
+        event.preventDefault();
+        void openFile(path, { newTab: true });
+      }
+    });
+    item.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      openFileMenu(event.clientX, event.clientY, path);
+    });
+    return item;
+  }
+
+  /** Collapsible folder tree of the recursive vault. */
+  function renderVaultTree(): void {
+    const render = (nodes: TreeNode[]): HTMLLIElement[] =>
+      nodes.map((node) => {
+        if (!node.isDir) {
+          return fileListItem(node.path, node.name);
+        }
+        const item = document.createElement("li");
+        item.className = "tree-folder";
+        const collapsed = collapsedDirs.has(normalizePath(node.path));
+        const row = document.createElement("div");
+        row.className = "tree-folder-row";
+        row.append(
+          createIcon(collapsed ? "chevron-right" : "chevron-down"),
+        );
+        const label = document.createElement("span");
+        label.className = "tree-folder-name";
+        label.textContent = node.name;
+        row.append(label);
+        row.addEventListener("click", () => {
+          const key = normalizePath(node.path);
+          if (collapsedDirs.has(key)) {
+            collapsedDirs.delete(key);
+          } else {
+            collapsedDirs.add(key);
+          }
+          renderVaultTree();
+        });
+        item.append(row);
+        if (!collapsed && node.children.length > 0) {
+          const children = document.createElement("ul");
+          children.className = "tree-children";
+          children.append(...render(node.children));
+          item.append(children);
+        }
+        return item;
+      });
+    fileList.replaceChildren(...render(vaultTree));
   }
 
   async function openWikilink(target: string, newTab = false): Promise<void> {
@@ -2266,13 +2414,14 @@ export function mountLayout(root: HTMLElement): void {
     viewTitle.textContent = noteName;
     // Before setDoc: the block-decorations field reads it on rebuild.
     setInlineTitle(getSettings().appearance.inlineTitle ? noteName : null);
-    // Window title "folder - note"; cosmetic, so failures are ignored.
-    void getCurrentWindow()
-      .setTitle(`${basename(dirname(path))} - ${noteName}`)
-      .catch(() => undefined);
     // The folder state must exist before setDoc: embed widgets resolve
     // their sources against it while building decorations.
     await refreshFolder(dirname(path));
+    // Window title "vault - note" (vault root name in vault mode);
+    // cosmetic, so failures are ignored.
+    void getCurrentWindow()
+      .setTitle(`${basename(vaultRoot ?? dirname(path))} - ${noteName}`)
+      .catch(() => undefined);
     try {
       editor.setDoc(contents);
       const folds = fileFolds.get(normalizePath(path));
@@ -2496,7 +2645,7 @@ export function mountLayout(root: HTMLElement): void {
       const noteName = basename(target).replace(/\.md$/i, "");
       viewTitle.textContent = noteName;
       void getCurrentWindow()
-        .setTitle(`${basename(dirname(target))} - ${noteName}`)
+        .setTitle(`${basename(vaultRoot ?? dirname(target))} - ${noteName}`)
         .catch(() => undefined);
       setInlineTitle(
         getSettings().appearance.inlineTitle ? noteName : null,
@@ -2709,10 +2858,10 @@ export function mountLayout(root: HTMLElement): void {
     renderTabs();
     scheduleSessionSave();
     setStatusError(null);
-    await refreshFolder(path);
+    await refreshFolder(path, { redetect: true });
     renderBacklinks();
     void getCurrentWindow()
-      .setTitle(basename(path))
+      .setTitle(basename(currentFolder ?? path))
       .catch(() => undefined);
   }
 
@@ -2725,21 +2874,32 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
+  /** Switcher label: vault-relative path in vault mode, bare name flat. */
+  function switcherLabel(file: FolderFile): string {
+    const label =
+      vaultRoot === null
+        ? file.name
+        : relativePath(vaultRoot, file.path);
+    return label.replace(/\.md$/i, "");
+  }
+
   function openQuickSwitcher(): void {
     openPalette({
       placeholder: t("switcher.placeholder"),
       emptyLabel:
         currentFolder === null ? t("sidebar.noFolder") : t("palette.noResults"),
       items: [
+        // In vault mode the label is the path from the vault root, so
+        // duplicate names stay distinguishable (Obsidian-style).
         ...folderFiles.map((file) => ({
           id: file.path,
-          label: file.name.replace(/\.md$/i, ""),
+          label: switcherLabel(file),
         })),
         // Aliases jump to their note; "|" never appears in Windows paths.
         ...folderFiles.flatMap((file) =>
           (file.aliases ?? []).map((alias) => ({
             id: `${file.path}|${alias}`,
-            label: `${alias} → ${file.name.replace(/\.md$/i, "")}`,
+            label: `${alias} → ${switcherLabel(file)}`,
           })),
         ),
       ],

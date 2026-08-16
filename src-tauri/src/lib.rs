@@ -23,13 +23,15 @@ struct FolderChange {
     paths: Vec<String>,
 }
 
-/// Watches a single folder (non-recursive) and forwards raw change events
-/// to the frontend as "folder-changed"; no business logic here.
+/// Watches a single folder and forwards raw change events to the
+/// frontend as "folder-changed"; no business logic here. `recursive`
+/// covers the whole subtree (multi-folder vault modes).
 #[tauri::command]
 fn watch_folder(
     app: AppHandle,
     state: State<WatcherState>,
     path: String,
+    recursive: bool,
 ) -> Result<(), String> {
     let mut watcher = notify::recommended_watcher(
         move |result: Result<notify::Event, notify::Error>| {
@@ -47,8 +49,13 @@ fn watch_folder(
         },
     )
     .map_err(|e| e.to_string())?;
+    let mode = if recursive {
+        RecursiveMode::Recursive
+    } else {
+        RecursiveMode::NonRecursive
+    };
     watcher
-        .watch(std::path::Path::new(&path), RecursiveMode::NonRecursive)
+        .watch(std::path::Path::new(&path), mode)
         .map_err(|e| e.to_string())?;
     *state.0.lock().map_err(|e| e.to_string())? = Some(watcher);
     Ok(())

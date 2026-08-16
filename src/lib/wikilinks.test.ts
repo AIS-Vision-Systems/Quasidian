@@ -111,6 +111,61 @@ describe("resolveWikilink — relative and full paths", () => {
   });
 });
 
+describe("resolveWikilink — recursive vault", () => {
+  const vault = "C:/vault";
+  const vaultFiles = [
+    { name: "nota.md", path: "C:/vault/a/nota.md" },
+    { name: "nota.md", path: "C:/vault/b/deep/nota.md" },
+    { name: "unica.md", path: "C:/vault/b/unica.md" },
+  ];
+
+  it("resolves bare names anywhere in the vault", () => {
+    expect(resolveWikilink("unica", vault, vaultFiles)).toEqual({
+      path: "C:/vault/b/unica.md",
+      exists: true,
+    });
+  });
+
+  it("duplicate bare names resolve to the shallowest path", () => {
+    expect(resolveWikilink("nota", vault, vaultFiles)).toEqual({
+      path: "C:/vault/a/nota.md",
+      exists: true,
+    });
+  });
+
+  it("subpaths disambiguate duplicates by path suffix", () => {
+    expect(resolveWikilink("deep/nota", vault, vaultFiles)).toEqual({
+      path: "C:/vault/b/deep/nota.md",
+      exists: true,
+    });
+    expect(resolveWikilink("a/nota", vault, vaultFiles)).toEqual({
+      path: "C:/vault/a/nota.md",
+      exists: true,
+    });
+  });
+
+  it("suffix matching is case-insensitive and accepts the extension", () => {
+    expect(resolveWikilink("Deep/Nota.md", vault, vaultFiles)).toEqual({
+      path: "C:/vault/b/deep/nota.md",
+      exists: true,
+    });
+  });
+
+  it("unknown subpaths still produce a creation path from the root", () => {
+    expect(resolveWikilink("nou/dir/x", vault, vaultFiles)).toEqual({
+      path: "C:/vault/nou/dir/x.md",
+      exists: false,
+    });
+  });
+
+  it("explicit relative prefixes skip suffix matching", () => {
+    expect(resolveWikilink("../deep/nota", vault, vaultFiles)).toEqual({
+      path: "C:/deep/nota.md",
+      exists: false,
+    });
+  });
+});
+
 describe("resolveWikilink — default extension setting", () => {
   it("uses the configured extension when creating", () => {
     expect(resolveWikilink("nova", folder, files, ".markdown")).toEqual({

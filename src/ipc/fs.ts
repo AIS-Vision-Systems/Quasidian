@@ -37,9 +37,12 @@ export function listFolder(path: string): Promise<FileEntry[]> {
   return invoke("list_folder", { path });
 }
 
-/** Watches `path` (non-recursive); replaces any previously watched folder. */
-export function watchFolder(path: string): Promise<void> {
-  return invoke("watch_folder", { path });
+/**
+ * Watches `path`, replacing any previously watched folder; `recursive`
+ * covers the whole subtree (vault modes).
+ */
+export function watchFolder(path: string, recursive = false): Promise<void> {
+  return invoke("watch_folder", { path, recursive });
 }
 
 /** File passed on the command line at launch, if any. */

@@ -353,6 +353,53 @@ button:focus-visible {
   color: var(--text-normal);
 }
 
+/* --- Vault folder tree (multi-folder modes) --- */
+
+.tree-folder {
+  list-style: none;
+}
+
+.tree-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tree-folder-row:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.tree-folder-row svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.tree-folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-children {
+  margin: 0;
+  padding: 0 0 0 14px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 1px solid var(--background-modifier-border);
+  margin-left: 14px;
+}
+
 /* --- Backlinks panel --- */
 
 .backlinks-panel {
