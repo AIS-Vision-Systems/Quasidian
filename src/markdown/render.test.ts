@@ -15,6 +15,16 @@ describe("renderToHtml — blocks", () => {
     expect(renderToHtml("`codi`")).toBe("<p><code>codi</code></p>");
   });
 
+  it("anchors top-level blocks with their document position on demand", () => {
+    expect(renderToHtml("hola\n\nadeu", { anchors: true })).toBe(
+      '<p data-pos="0">hola</p><p data-pos="6">adeu</p>',
+    );
+    // Blocks that already carry data-pos (headings) are not doubled.
+    expect(renderToHtml("# Títol", { anchors: true })).toBe(
+      '<h1 data-pos="0">Títol</h1>',
+    );
+  });
+
   it("renders footnote references and collects definitions at the bottom", () => {
     const html = renderToHtml("text[^1]\n\n[^1]: la nota");
     expect(html).toContain(

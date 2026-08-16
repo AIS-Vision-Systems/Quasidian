@@ -240,6 +240,7 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
     render(doc: string): void {
       content.innerHTML = renderToHtml(doc, {
         properties: hooks.showProperties(),
+        anchors: true,
       });
       const title = hooks.inlineTitle();
       if (title !== null) {

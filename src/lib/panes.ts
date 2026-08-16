@@ -238,8 +238,6 @@ export interface SessionData {
   activePane: number;
   panels: PanelSizes | null;
   rightView: RightPanelView | null;
-  /** Labels of secondary windows to restore (main window only). */
-  windows: string[];
 }
 
 export function serializeSession(
@@ -247,7 +245,6 @@ export function serializeSession(
   modeOf: (path: string) => SessionMode,
   panels: PanelSizes | null = null,
   rightView: RightPanelView | null = null,
-  windows: string[] = [],
 ): SessionData {
   const panes: SessionPane[] = [];
   let active = 0;
@@ -266,7 +263,6 @@ export function serializeSession(
     activePane: panes.length === 0 ? 0 : Math.min(active, panes.length - 1),
     panels,
     rightView,
-    windows,
   };
 }
 
@@ -322,10 +318,5 @@ export function parseSession(json: string): SessionData | null {
     typeof root.activePane === "number" && Number.isInteger(root.activePane)
       ? Math.max(0, Math.min(root.activePane, panes.length - 1))
       : 0;
-  const windows = Array.isArray(root.windows)
-    ? root.windows.filter(
-        (entry): entry is string => typeof entry === "string" && entry !== "",
-      )
-    : [];
-  return { panes, activePane, windows, ...extras };
+  return { panes, activePane, ...extras };
 }

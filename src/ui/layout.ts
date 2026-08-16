@@ -1,6 +1,6 @@
 // App shell: sidebar with folder listing, CM6 editor, status bar.
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { emit, listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
@@ -80,7 +80,13 @@ import {
   withWorkspaceOrCollapse,
   type SplitState,
 } from "../lib/panes";
-import { loadSession, saveSession } from "../ipc/sessionStore";
+import {
+  cleanupSecondarySessions,
+  loadLastWindow,
+  loadSession,
+  saveLastWindow,
+  saveSession,
+} from "../ipc/sessionStore";
 import type { EditorHandle } from "../editor/editor";
 import type { ReadingViewHandle } from "./readingView";
 import { renderToHtml } from "../markdown/render";
@@ -543,11 +549,10 @@ export function mountLayout(root: HTMLElement): void {
   let tabsState: WorkspaceState = emptyWorkspace();
   let splitState: SplitState = singlePane(emptyWorkspace());
   let currentFolder: string | null = null;
-  // Multi-window: each window keeps its own session file; the main one
-  // also remembers which secondary windows to restore.
+  // Multi-window: each window keeps its own session file; the next
+  // launch opens a single window restoring the last-focused one's.
   const windowLabel = getCurrentWindow().label;
   const isMainWindow = windowLabel === "main";
-  let secondaryWindows: string[] = [];
   let folderFiles: FolderFile[] = [];
   let folderImages: FolderFile[] = [];
   let lastWordCount = 0;
@@ -872,7 +877,6 @@ export function mountLayout(root: HTMLElement): void {
         fileModes.get(normalizePath(path)) ?? getSettings().editor.defaultMode,
       panelSizes,
       rightView,
-      isMainWindow ? secondaryWindows : [],
     );
   }
 
@@ -1213,21 +1217,30 @@ export function mountLayout(root: HTMLElement): void {
     await closeTabAt(index);
   }
 
-  /** Moves the tab at `index` of the active pane into a new right pane. */
-  async function splitTabRight(index: number): Promise<void> {
+  /**
+   * Moves the tab at `index` of the active pane into a new right pane;
+   * `duplicate` keeps the original where it is (a second instance).
+   */
+  async function splitTabRight(
+    index: number,
+    options?: { duplicate?: boolean },
+  ): Promise<void> {
     const tab = tabsState.tabs[index];
     if (tab === undefined) {
       return;
     }
     hideHoverPreview();
     await stashCurrentTabState();
-    let source = closeTab(tabsState, index);
+    const moved: Tab = options?.duplicate
+      ? { ...tab, back: [...tab.back], forward: [...tab.forward] }
+      : tab;
+    let source = options?.duplicate ? tabsState : closeTab(tabsState, index);
     if (source.tabs.length === 0) {
       source = { tabs: [makeTab(null)], active: 0 };
     }
     tabsState = source;
     let next = withWorkspace(splitState, boundPaneId, source);
-    next = splitRight(next, boundPaneId, tab);
+    next = splitRight(next, boundPaneId, moved);
     await applySplitChange(next);
   }
 
@@ -1257,11 +1270,8 @@ export function mountLayout(root: HTMLElement): void {
     if (tab === undefined || index === tabsState.active) {
       return;
     }
-    if (tab.path === null) {
-      await applyTabsChange({ ...tabsState, active: index });
-    } else {
-      await openFile(tab.path);
-    }
+    // By index, never by path: two tabs may hold the same file.
+    await applyTabsChange({ ...tabsState, active: index });
   }
 
   function cycleTab(delta: number): void {
@@ -1429,7 +1439,11 @@ export function mountLayout(root: HTMLElement): void {
       {
         label: t("tabs.splitRight"),
         icon: "separator-vertical",
-        onClick: () => void splitTabRight(index),
+        // Ctrl+click duplicates: the original stays in this pane.
+        onClick: (event) =>
+          void splitTabRight(index, {
+            duplicate: event.ctrlKey || event.metaKey,
+          }),
       },
       ...(tab.path !== null
         ? [
@@ -1463,6 +1477,32 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
+  /**
+   * Reading-view elements carrying a document offset, in document
+   * order. Embedded notes are skipped (their offsets belong to another
+   * document), as are elements hidden by folds.
+   */
+  function readingAnchors(): { pos: number; el: HTMLElement }[] {
+    const anchors: { pos: number; el: HTMLElement }[] = [];
+    for (const el of readingView.element.querySelectorAll<HTMLElement>(
+      "[data-pos]",
+    )) {
+      const pos = Number(el.dataset.pos);
+      if (
+        Number.isFinite(pos) &&
+        el.closest(".embed-note") === null &&
+        el.getClientRects().length > 0
+      ) {
+        anchors.push({ pos, el });
+      }
+    }
+    return anchors;
+  }
+
+  /**
+   * Switches between editing and reading keeping the same block at the
+   * top of the view, mapped through the shared document offsets.
+   */
   async function toggleMode(): Promise<void> {
     hideHoverPreview();
     if (openedPath === null) {
@@ -1473,14 +1513,44 @@ export function mountLayout(root: HTMLElement): void {
       if (autosave.isDirty()) {
         await saveNow();
       }
-      readingView.render(editor.getDoc());
+      const topPos = editor.topVisiblePos();
       const fraction = scrollFraction(scroller);
+      readingView.render(editor.getDoc());
       applyMode("read");
-      setScrollFraction(readingView.element, fraction);
+      // Last block starting at or before the editor's top line.
+      let target: HTMLElement | null = null;
+      for (const anchor of readingAnchors()) {
+        if (anchor.pos > topPos) {
+          break;
+        }
+        target = anchor.el;
+      }
+      if (target === null) {
+        setScrollFraction(readingView.element, fraction);
+      } else {
+        const container = readingView.element;
+        container.scrollTop +=
+          target.getBoundingClientRect().top -
+          container.getBoundingClientRect().top;
+      }
     } else {
+      // First block still visible at the top of the reading view.
+      const containerTop =
+        readingView.element.getBoundingClientRect().top;
+      let topPos: number | null = null;
+      for (const anchor of readingAnchors()) {
+        if (anchor.el.getBoundingClientRect().bottom > containerTop + 1) {
+          topPos = anchor.pos;
+          break;
+        }
+      }
       const fraction = scrollFraction(readingView.element);
       applyMode("edit");
-      setScrollFraction(scroller, fraction);
+      if (topPos === null) {
+        setScrollFraction(scroller, fraction);
+      } else {
+        editor.scrollPosToTop(topPos);
+      }
       editor.focus();
     }
   }
@@ -2924,31 +2994,24 @@ export function mountLayout(root: HTMLElement): void {
         void openFile(file, { newTab: true });
       }
     });
-    // The main window tracks which secondary windows are alive so the
-    // session can restore them.
-    void listen<string>("qd-window-opened", (event) => {
-      if (!secondaryWindows.includes(event.payload)) {
-        secondaryWindows.push(event.payload);
-        scheduleSessionSave();
-      }
-    });
-    void listen<string>("qd-window-closed", (event) => {
-      secondaryWindows = secondaryWindows.filter(
-        (label) => label !== event.payload,
-      );
-      scheduleSessionSave();
-    });
-  } else {
-    void emit("qd-window-opened", windowLabel);
-    window.addEventListener("beforeunload", () => {
-      void emit("qd-window-closed", windowLabel);
-    });
   }
 
   // Startup precedence: a file passed via the URL (tab moved to this
   // window), then the command line (main window), then the restored
-  // session of this window (when the setting allows it).
+  // session of the last-focused window (when the setting allows it).
   void (async () => {
+    await restoreStartup();
+    // From here on, remember the focused window: the next launch opens
+    // a single window restoring the session the user last worked in.
+    void getCurrentWindow().onFocusChanged(({ payload }) => {
+      if (payload) {
+        void saveLastWindow(windowLabel);
+      }
+    });
+    void saveLastWindow(windowLabel);
+  })();
+
+  async function restoreStartup(): Promise<void> {
     const params = new URLSearchParams(window.location.search);
     const openParam = params.get("open");
     if (openParam !== null) {
@@ -2969,15 +3032,18 @@ export function mountLayout(root: HTMLElement): void {
     if (!getSettings().files.restoreSession) {
       return;
     }
-    const session = await loadSession(windowLabel);
+    let session = await loadSession(windowLabel);
+    if (isMainWindow) {
+      // Only one window reopens: when the user last worked in a
+      // secondary one, the main window adopts its workspace.
+      const last = await loadLastWindow();
+      if (last !== null && last !== "main") {
+        session = (await loadSession(last)) ?? session;
+      }
+      void cleanupSecondarySessions();
+    }
     if (session === null) {
       return;
-    }
-    if (isMainWindow && session.windows.length > 0) {
-      secondaryWindows = [...session.windows];
-      for (const label of session.windows) {
-        spawnWindow(label, null);
-      }
     }
     if (session.panels !== null) {
       panelSizes = session.panels;
@@ -3026,5 +3092,5 @@ export function mountLayout(root: HTMLElement): void {
       activePane: paneStates[activeIndex].id,
       nextId: paneStates.length + 1,
     });
-  })();
+  }
 }

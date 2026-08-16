@@ -741,9 +741,10 @@ export function renderFootnoteContent(
 
 export function renderToHtml(
   doc: string,
-  options?: { properties?: boolean },
+  options?: { properties?: boolean; anchors?: boolean },
 ): string {
   renderProperties = options?.properties ?? true;
+  const anchors = options?.anchors ?? false;
   const tree = markdownParser.parse(doc);
 
   // Pre-scan: assign footnote numbers and collect definitions/inline
@@ -787,7 +788,24 @@ export function renderToHtml(
     child !== null;
     child = child.nextSibling
   ) {
-    renderNode(child, doc, out);
+    // With `anchors`, every top-level block carries its document
+    // offset, so mode switches can keep the same block at the top of
+    // the view. Embeds render without anchors: their offsets belong to
+    // another document.
+    const parts: string[] = [];
+    renderNode(child, doc, parts);
+    const first = parts[0];
+    if (
+      anchors &&
+      first !== undefined &&
+      !/^<[^>]*\bdata-pos="/.test(first)
+    ) {
+      parts[0] = first.replace(
+        /^<([a-zA-Z][^\s>]*)/,
+        `<$1 data-pos="${child.from}"`,
+      );
+    }
+    out.push(...parts);
   }
 
   // Footnote section: every definition and inline note, in number order,

@@ -509,6 +509,10 @@ export interface EditorHandle {
   reloadDoc(contents: string): void;
   /** Selects [from, to], scrolls it into view centered, and focuses. */
   revealRange(from: number, to: number): void;
+  /** Document position of the first visible line (mode-switch anchor). */
+  topVisiblePos(): number;
+  /** Scrolls so the line holding `pos` sits at the top of the view. */
+  scrollPosToTop(pos: number): void;
   focus(): void;
   /** Hot-applies configurable options without recreating the editor. */
   applyConfig(config: EditorConfig): void;
@@ -839,6 +843,18 @@ export function createEditor(
         effects: EditorView.scrollIntoView(anchor, { y: "center" }),
       });
       view.focus();
+    },
+    topVisiblePos(): number {
+      const rect = view.scrollDOM.getBoundingClientRect();
+      return view.posAtCoords({ x: rect.left + 1, y: rect.top + 1 }, false);
+    },
+    scrollPosToTop(pos: number): void {
+      view.dispatch({
+        effects: EditorView.scrollIntoView(
+          Math.min(pos, view.state.doc.length),
+          { y: "start" },
+        ),
+      });
     },
     focus(): void {
       view.focus();
