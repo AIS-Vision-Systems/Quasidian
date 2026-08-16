@@ -851,17 +851,35 @@ export function createEditor(
     topVisiblePos(): number {
       // Height-based, not coordinate-based: posAtCoords needs a point
       // over the content column, which readable line length margins
-      // break. lineBlockAtHeight is exact for any layout.
+      // break. The pixel fraction inside the top block is folded into
+      // the returned offset, so tall single-line blocks (note embeds,
+      // wrapped paragraphs) keep the point, not just the block start.
       const rect = view.scrollDOM.getBoundingClientRect();
-      return view.lineBlockAtHeight(rect.top + 1 - view.documentTop).from;
+      const y = rect.top + 1 - view.documentTop;
+      const block = view.lineBlockAtHeight(y);
+      const within =
+        block.height > 0
+          ? Math.max(0, Math.min((y - block.top) / block.height, 1))
+          : 0;
+      return Math.round(block.from + within * (block.to - block.from));
     },
     scrollPosToTop(pos: number): void {
-      view.dispatch({
-        effects: EditorView.scrollIntoView(
-          Math.min(pos, view.state.doc.length),
-          { y: "start" },
-        ),
-      });
+      // Mirror of topVisiblePos: the intra-line offset maps back to a
+      // pixel fraction of the block's height. Recomputing from current
+      // geometry keeps this idempotent, so callers may re-apply it
+      // while CodeMirror refines estimated heights.
+      const clamped = Math.min(pos, view.state.doc.length);
+      const block = view.lineBlockAt(clamped);
+      const within =
+        block.to > block.from
+          ? Math.max(
+              0,
+              Math.min((clamped - block.from) / (block.to - block.from), 1),
+            )
+          : 0;
+      const rect = view.scrollDOM.getBoundingClientRect();
+      view.scrollDOM.scrollTop +=
+        view.documentTop + block.top + within * block.height - rect.top - 1;
     },
     getSelection(): { anchor: number; head: number } {
       const { anchor, head } = view.state.selection.main;

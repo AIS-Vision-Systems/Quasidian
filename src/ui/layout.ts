@@ -1710,7 +1710,15 @@ export function mountLayout(root: HTMLElement): void {
       if (topPos === null) {
         setScrollFraction(scroller, fraction);
       } else {
-        editor.scrollPosToTop(topPos);
+        const pos = topPos;
+        editor.scrollPosToTop(pos);
+        if (scroller instanceof HTMLElement) {
+          // Re-apply while CodeMirror measures real block heights
+          // (embed widgets start with estimates).
+          keepAnchoredWhileLoading(scroller, () =>
+            editor.scrollPosToTop(pos),
+          );
+        }
       }
       editor.focus();
     }
