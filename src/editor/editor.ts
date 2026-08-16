@@ -802,8 +802,13 @@ export function createEditor(
               x: event.clientX,
               y: event.clientY,
             });
+            const overLink =
+              event.target instanceof Element &&
+              event.target.closest(".cm-link") !== null;
             const found =
-              pos === null ? null : (wikilinkAt(view.state, pos)?.target ?? null);
+              pos === null || !overLink
+                ? null
+                : (wikilinkAt(view.state, pos)?.target ?? null);
             // External URLs have no note to preview.
             const target =
               found !== null && isExternalTarget(found) ? null : found;
@@ -839,6 +844,14 @@ export function createEditor(
             if (event.button !== 0) {
               return false;
             }
+            // Only the visible link text navigates: clicking beside it
+            // (hidden syntax, margins) just places the cursor to edit.
+            if (
+              !(event.target instanceof Element) ||
+              event.target.closest(".cm-link") === null
+            ) {
+              return false;
+            }
             const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
             if (pos === null) {
               return false;
@@ -860,6 +873,12 @@ export function createEditor(
           // Middle-click on a wikilink: new tab, like rendered views.
           auxclick(event, view) {
             if (event.button !== 1) {
+              return false;
+            }
+            if (
+              !(event.target instanceof Element) ||
+              event.target.closest(".cm-link") === null
+            ) {
               return false;
             }
             const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });

@@ -3,7 +3,6 @@
 Minimalist desktop markdown editor that mimics Obsidian's look and behavior (Live Preview, wikilinks, dark theme) without the weight. Built with Tauri 2, Vite, TypeScript and CodeMirror 6.
 
 The full spec and milestone plan live in [`docs/SPEC.md`](docs/SPEC.md).
-
 ## Prerequisites
 
 ### Windows 11
