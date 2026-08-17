@@ -91,6 +91,7 @@ import {
   splitRight,
   withWorkspace,
   withWorkspaceOrCollapse,
+  type SessionData,
   type SplitState,
 } from "../lib/panes";
 import {
@@ -3388,6 +3389,7 @@ export function mountLayout(root: HTMLElement): void {
     const params = new URLSearchParams(window.location.search);
     const openParam = params.get("open");
     if (openParam !== null) {
+      // Tab moved into this fresh window: it carries no session.
       const mode = params.get("mode");
       if (mode === "edit" || mode === "read") {
         pendingModes.set(normalizePath(openParam), mode);
@@ -3395,16 +3397,7 @@ export function mountLayout(root: HTMLElement): void {
       await openFile(openParam);
       return;
     }
-    if (isMainWindow) {
-      const file = await startupFile();
-      if (file !== null) {
-        await openFile(file);
-        return;
-      }
-    }
-    if (!getSettings().files.restoreSession) {
-      return;
-    }
+    const startup = isMainWindow ? await startupFile() : null;
     let session = await loadSession(windowLabel);
     if (isMainWindow) {
       // Only one window reopens: when the user last worked in a
@@ -3415,18 +3408,33 @@ export function mountLayout(root: HTMLElement): void {
       }
       void cleanupSecondarySessions();
     }
-    if (session === null) {
-      return;
+    // Panel sizes and the right-panel view are layout state, not
+    // reopened files: they restore on every launch — even when a
+    // double-clicked file arrives or session restore is disabled — so
+    // starting the app never resets the workspace geometry.
+    if (session !== null) {
+      if (session.panels !== null) {
+        panelSizes = session.panels;
+        applyPanelSizes();
+      }
+      if (session.rightView !== null) {
+        rightView = session.rightView;
+        renderRightPanel();
+      }
     }
-    if (session.panels !== null) {
-      panelSizes = session.panels;
-      applyPanelSizes();
+    if (session !== null && getSettings().files.restoreSession) {
+      await restoreSessionPanes(session);
     }
-    if (session.rightView !== null) {
-      rightView = session.rightView;
-      renderRightPanel();
+    // A file opened from the file manager lands on top of the restored
+    // workspace, exactly as if it had been forwarded to a running
+    // instance — never replacing the session.
+    if (startup !== null) {
+      await openFile(startup, { newTab: true });
     }
-    // Rebuild the split state, probing files and dropping the missing.
+  }
+
+  /** Rebuilds the split state, probing files and dropping the missing. */
+  async function restoreSessionPanes(session: SessionData): Promise<void> {
     const paneStates: SplitState["panes"] = [];
     for (const sessionPane of session.panes) {
       const tabs: Tab[] = [];

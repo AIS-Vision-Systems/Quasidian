@@ -160,7 +160,7 @@
   "settings.confirmDelete.name": "Confirm before deleting",
   "settings.confirmDelete.desc": "Ask for confirmation before deleting files",
   "settings.restoreSession.name": "Restore session",
-  "settings.restoreSession.desc": "On startup, reopen the files from the last session (unless the app opens with a file)",
+  "settings.restoreSession.desc": "On startup, reopen the files from the last session (a file opened from the system is added on top)",
   "tabs.close": "Close tab",
   "tabs.new": "New tab",
   "tabs.splitRight": "Open to the right",
