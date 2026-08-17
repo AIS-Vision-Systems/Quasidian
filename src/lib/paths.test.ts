@@ -17,6 +17,20 @@ describe("dirname", () => {
   it("returns the input when there is no separator", () => {
     expect(dirname("note.md")).toBe("note.md");
   });
+
+  it("keeps the separator on filesystem roots", () => {
+    // A bare "C:" is drive-relative on Windows (resolves against the
+    // current working directory), so the parent of "C:\\x" is "C:\\".
+    expect(dirname("C:\\Data")).toBe("C:\\");
+    expect(dirname("C:/Data")).toBe("C:/");
+    expect(dirname("/home")).toBe("/");
+  });
+
+  it("is a fixed point at the root itself", () => {
+    expect(dirname("C:\\")).toBe("C:\\");
+    expect(dirname("C:/")).toBe("C:/");
+    expect(dirname("/")).toBe("/");
+  });
 });
 
 describe("basename", () => {
