@@ -81,6 +81,8 @@ describe("ui-state", () => {
     const state = {
       panels: { left: 280, right: 340 },
       rightView: "outline" as const,
+      leftVisible: false,
+      rightVisible: true,
       lastVault: "C:\\Data\\Notes",
     };
     expect(parseUiState(serializeUiState(state))).toEqual(state);

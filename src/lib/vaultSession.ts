@@ -63,12 +63,21 @@ export interface UiState {
   panels: PanelSizes | null;
   /** Right-panel view fallback for vaults without a session. */
   rightView: RightPanelView | null;
+  /** Side-panel visibility fallbacks (collapsed or expanded). */
+  leftVisible: boolean | null;
+  rightVisible: boolean | null;
   /** Root of the last active vault, restored on plain startups. */
   lastVault: string | null;
 }
 
 export function emptyUiState(): UiState {
-  return { panels: null, rightView: null, lastVault: null };
+  return {
+    panels: null,
+    rightView: null,
+    leftVisible: null,
+    rightVisible: null,
+    lastVault: null,
+  };
 }
 
 /** Parses ui-state.json; merge-with-defaults, never throws. */
@@ -83,12 +92,13 @@ export function parseUiState(json: string): UiState {
     return emptyUiState();
   }
   const root = raw as Record<string, unknown>;
-  const { panels, rightView } = parseSessionExtras(root);
+  const { panels, rightView, leftVisible, rightVisible } =
+    parseSessionExtras(root);
   const lastVault =
     typeof root.lastVault === "string" && root.lastVault !== ""
       ? root.lastVault
       : null;
-  return { panels, rightView, lastVault };
+  return { panels, rightView, leftVisible, rightVisible, lastVault };
 }
 
 export function serializeUiState(state: UiState): string {

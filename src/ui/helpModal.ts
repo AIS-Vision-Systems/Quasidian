@@ -11,6 +11,7 @@ import { getLocale, t } from "../i18n/i18n";
 import { renderToHtml } from "../markdown/render";
 import { createIcon } from "./icons";
 import { addCodePills, highlightCodeBlocks } from "./renderedContent";
+import { createUpdateCheck } from "./updateCheck";
 
 const GUIDES: Record<string, string> = {
   ca: guideCa,
@@ -58,7 +59,11 @@ export function openHelpModal(): void {
   author.className = "help-meta";
   author.textContent = `${t("help.author")}: Xavi Anguera`;
   identity.append(name, version, author);
-  credits.append(logo, identity);
+  // Update check fills the free space on the right of the credits.
+  const updates = document.createElement("div");
+  updates.className = "help-updates";
+  updates.append(createUpdateCheck());
+  credits.append(logo, identity, updates);
 
   // The guide for the UI language, rendered with the shared pipeline.
   // Raw imports keep the file's CRLF line endings, which the parser

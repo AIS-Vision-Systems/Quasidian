@@ -51,11 +51,17 @@ export interface FilesSettings {
   restoreSession: boolean;
 }
 
+export interface UpdatesSettings {
+  /** Check for a newer version at startup (never installs anything). */
+  checkAutomatically: boolean;
+}
+
 export interface Settings {
   language: LanguageSetting;
   appearance: AppearanceSettings;
   editor: EditorSettings;
   files: FilesSettings;
+  updates: UpdatesSettings;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -85,6 +91,9 @@ export const DEFAULT_SETTINGS: Settings = {
     confirmDelete: true,
     defaultExtension: ".md",
     restoreSession: true,
+  },
+  updates: {
+    checkAutomatically: true,
   },
 };
 
@@ -136,6 +145,7 @@ export function mergeSettings(raw: unknown): Settings {
   const appearance = asSection(root.appearance);
   const editor = asSection(root.editor);
   const files = asSection(root.files);
+  const updates = asSection(root.updates);
   const d = DEFAULT_SETTINGS;
   return {
     language: pickEnum(root.language, d.language, ["system", "ca", "es", "en"]),
@@ -208,6 +218,12 @@ export function mergeSettings(raw: unknown): Settings {
       restoreSession: pickBoolean(
         files.restoreSession,
         d.files.restoreSession,
+      ),
+    },
+    updates: {
+      checkAutomatically: pickBoolean(
+        updates.checkAutomatically,
+        d.updates.checkAutomatically,
       ),
     },
   };

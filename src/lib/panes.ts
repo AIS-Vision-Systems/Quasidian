@@ -232,22 +232,31 @@ export interface SessionPane extends SessionTabs {
   size: number;
 }
 
+export interface SessionExtras {
+  panels?: PanelSizes | null;
+  rightView?: RightPanelView | null;
+  /** Collapsed folder paths of the vault tree; null = never folded. */
+  collapsed?: string[] | null;
+  /** Whether the side panels are expanded; null = unknown (legacy). */
+  leftVisible?: boolean | null;
+  rightVisible?: boolean | null;
+}
+
 export interface SessionData {
   panes: SessionPane[];
   /** Index into `panes` of the active one. */
   activePane: number;
   panels: PanelSizes | null;
   rightView: RightPanelView | null;
-  /** Collapsed folder paths of the vault tree; null = never folded. */
   collapsed: string[] | null;
+  leftVisible: boolean | null;
+  rightVisible: boolean | null;
 }
 
 export function serializeSession(
   state: SplitState,
   modeOf: (tab: Tab) => SessionMode,
-  panels: PanelSizes | null = null,
-  rightView: RightPanelView | null = null,
-  collapsed: string[] | null = null,
+  extras: SessionExtras = {},
 ): SessionData {
   const panes: SessionPane[] = [];
   let active = 0;
@@ -264,9 +273,11 @@ export function serializeSession(
   return {
     panes,
     activePane: panes.length === 0 ? 0 : Math.min(active, panes.length - 1),
-    panels,
-    rightView,
-    collapsed,
+    panels: extras.panels ?? null,
+    rightView: extras.rightView ?? null,
+    collapsed: extras.collapsed ?? null,
+    leftVisible: extras.leftVisible ?? null,
+    rightVisible: extras.rightVisible ?? null,
   };
 }
 

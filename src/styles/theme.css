@@ -44,6 +44,8 @@
      (editor background) reads unmistakably against it. */
   --background-secondary-alt: #202020;
   --background-modifier-border: rgba(255, 255, 255, 0.14);
+  /* Floating surfaces (modals, palette, menus) need a livelier edge. */
+  --modal-border: rgba(255, 255, 255, 0.3);
   --background-modifier-hover: rgba(255, 255, 255, 0.08);
   --code-background: rgba(255, 255, 255, 0.09);
   --text-highlight-bg: rgba(255, 208, 0, 0.35);
@@ -83,6 +85,7 @@
   --background-secondary: #f2f3f5;
   --background-secondary-alt: #e8eaed;
   --background-modifier-border: rgba(0, 0, 0, 0.12);
+  --modal-border: rgba(0, 0, 0, 0.3);
   --background-modifier-hover: rgba(0, 0, 0, 0.06);
   --code-background: rgba(0, 0, 0, 0.05);
   --text-highlight-bg: rgba(255, 208, 0, 0.45);
