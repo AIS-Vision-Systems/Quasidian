@@ -7,7 +7,7 @@ import {
   subscribeSettings,
   updateSettings,
 } from "../ipc/settingsStore";
-import type { Settings } from "../lib/settings";
+import { DEFAULT_SETTINGS, type Settings } from "../lib/settings";
 import { createIcon } from "./icons";
 
 type SectionId = "general" | "appearance" | "editor" | "files";
@@ -183,6 +183,27 @@ export function openSettingsModal(): void {
     return element;
   }
 
+  /** Wraps a control with a reset button, disabled at the default. */
+  function withReset(
+    control: HTMLElement,
+    isDefault: boolean,
+    onReset: () => void,
+  ): HTMLElement {
+    const group = document.createElement("div");
+    group.className = "setting-reset-group";
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "setting-reset";
+    reset.append(createIcon("rotate-ccw"));
+    const label = t("settings.resetDefault");
+    reset.title = label;
+    reset.setAttribute("aria-label", label);
+    reset.disabled = isDefault;
+    reset.addEventListener("click", onReset);
+    group.append(reset, control);
+    return group;
+  }
+
   function renderSidebar(): void {
     sidebar.replaceChildren(
       ...SECTIONS.map((section) => {
@@ -240,7 +261,13 @@ export function openSettingsModal(): void {
       row(
         "settings.accentColor.name",
         "settings.accentColor.desc",
-        colorInput(a.accentColor, (accentColor) => patch({ accentColor })),
+        withReset(
+          colorInput(a.accentColor, (accentColor) => patch({ accentColor })),
+          a.accentColor.toLowerCase() ===
+            DEFAULT_SETTINGS.appearance.accentColor.toLowerCase(),
+          () =>
+            patch({ accentColor: DEFAULT_SETTINGS.appearance.accentColor }),
+        ),
       ),
       row(
         "settings.interfaceFont.name",
@@ -265,7 +292,11 @@ export function openSettingsModal(): void {
       row(
         "settings.fontSize.name",
         "settings.fontSize.desc",
-        numberInput(a.fontSize, 8, 40, (fontSize) => patch({ fontSize })),
+        withReset(
+          numberInput(a.fontSize, 8, 30, (fontSize) => patch({ fontSize })),
+          a.fontSize === DEFAULT_SETTINGS.appearance.fontSize,
+          () => patch({ fontSize: DEFAULT_SETTINGS.appearance.fontSize }),
+        ),
       ),
       row(
         "settings.readableLine.name",
@@ -307,11 +338,18 @@ export function openSettingsModal(): void {
       row(
         "settings.autosaveInterval.name",
         "settings.autosaveInterval.desc",
-        numberInput(
-          Math.round(e.autosaveIntervalMs / 1000),
-          1,
-          600,
-          (seconds) => patch({ autosaveIntervalMs: seconds * 1000 }),
+        withReset(
+          numberInput(
+            Math.round(e.autosaveIntervalMs / 1000),
+            1,
+            600,
+            (seconds) => patch({ autosaveIntervalMs: seconds * 1000 }),
+          ),
+          e.autosaveIntervalMs === DEFAULT_SETTINGS.editor.autosaveIntervalMs,
+          () =>
+            patch({
+              autosaveIntervalMs: DEFAULT_SETTINGS.editor.autosaveIntervalMs,
+            }),
         ),
       ),
       row(

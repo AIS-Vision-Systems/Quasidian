@@ -62,7 +62,8 @@ body {
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   box-shadow: 0 6px 24px var(--shadow-color);
-  font-size: var(--font-ui-small);
+  /* Obsidian-sized menu text; the UI-small size read too small. */
+  font-size: var(--font-ui-medium);
   color: var(--text-normal);
 }
 
@@ -71,7 +72,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 8px;
+  padding: 6px 10px;
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
@@ -96,7 +97,7 @@ body {
 
 .context-menu-icon {
   display: inline-flex;
-  width: 15px;
+  width: 16px;
   color: var(--text-muted);
 }
 
@@ -106,8 +107,8 @@ body {
 
 .context-menu-icon .app-icon,
 .context-menu-arrow .app-icon {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
 
 .context-menu-label {
@@ -124,6 +125,11 @@ body {
   position: absolute;
   left: calc(100% - 4px);
   top: -5px;
+}
+
+.context-menu-submenu.opens-left {
+  left: auto;
+  right: calc(100% - 4px);
 }
 
 .context-menu-item:hover > .context-menu-submenu {
@@ -1433,7 +1439,7 @@ body.is-readable-line-length .cm-editor .cm-content {
 }
 
 .setting-number {
-  width: 70px;
+  width: 52px;
 }
 
 .setting-text {
@@ -1448,6 +1454,34 @@ body.is-readable-line-length .cm-editor .cm-content {
   border: 1px solid var(--background-modifier-border);
   border-radius: 4px;
   cursor: pointer;
+}
+
+.setting-reset-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.setting-reset:hover:not(:disabled) {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.setting-reset:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .setting-toggle {

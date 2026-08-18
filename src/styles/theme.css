@@ -12,6 +12,7 @@
   --font-monospace: ui-monospace, "Cascadia Code", "Consolas",
     "DejaVu Sans Mono", monospace;
   --font-ui-small: 12px;
+  --font-ui-medium: 14px;
   --font-text-size: 15px;
 
   /*
@@ -26,6 +27,8 @@
 
 /* 1. Colours! Overriding both themes */
 .theme-dark {
+  /* Native widgets (number spinners, selects) follow the theme. */
+  color-scheme: dark;
   --color-1: #fdf7cd;
   --color-2: #00ecd8;
   --color-3: #e92741;
@@ -66,6 +69,7 @@
 }
 
 .theme-light {
+  color-scheme: light;
   --color-1: #020832;
   --color-2: #0066ff;
   --color-3: #020832;
