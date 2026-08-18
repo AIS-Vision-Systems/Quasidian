@@ -1,6 +1,7 @@
 // App shell: sidebar with folder listing, CM6 editor, status bar.
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { homeDir } from "@tauri-apps/api/path";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
@@ -95,12 +96,19 @@ import {
   type SplitState,
 } from "../lib/panes";
 import {
-  cleanupSecondarySessions,
-  loadLastWindow,
-  loadSession,
-  saveLastWindow,
-  saveSession,
+  loadUiState,
+  loadVaultSession,
+  migrateLegacySessions,
+  saveUiState,
+  saveVaultSession,
 } from "../ipc/sessionStore";
+import {
+  emptyUiState,
+  resolveScope,
+  scopeOf,
+  type ScopeInfo,
+  type UiState,
+} from "../lib/vaultSession";
 import type { EditorHandle } from "../editor/editor";
 import type { ReadingViewHandle } from "./readingView";
 import { renderToHtml } from "../markdown/render";
@@ -572,10 +580,20 @@ export function mountLayout(root: HTMLElement): void {
   // on every file open (markers are picked up on folder changes).
   let vaultProbeBase: string | null = null;
   const collapsedDirs = new Set<string>();
-  // Multi-window: each window keeps its own session file; the next
-  // launch opens a single window restoring the last-focused one's.
   const windowLabel = getCurrentWindow().label;
   const isMainWindow = windowLabel === "main";
+  // Per-vault sessions: the scope this window belongs to. Set only by
+  // explicit opens and the startup restore — never by following links
+  // or switching tabs — so saves never leak into another vault's
+  // session even though the sidebar keeps tracking the active file.
+  let homeScope: ScopeInfo | null = null;
+  // The user home (and its ancestors) never roots a vault: config
+  // dirs like ~/.claude would swallow every note under the profile.
+  const excludedVaultRoot: Promise<string | undefined> = homeDir().catch(
+    () => undefined,
+  );
+  // Global layout fallbacks + last-vault pointer (ui-state.json).
+  let uiState: UiState = emptyUiState();
   let folderFiles: FolderFile[] = [];
   let folderImages: FolderFile[] = [];
   let lastWordCount = 0;
@@ -960,8 +978,34 @@ export function mountLayout(root: HTMLElement): void {
     }
     sessionSaveDebounce = setTimeout(() => {
       sessionSaveDebounce = null;
-      void saveSession(snapshotSession(), windowLabel);
+      void persistSession();
     }, 300);
+  }
+
+  /** Saves this vault's session and the global ui-state fallbacks. */
+  function persistSession(): Promise<void> {
+    // Never mirror an unset panel width over a stored fallback.
+    if (panelSizes !== null) {
+      uiState.panels = panelSizes;
+    }
+    uiState.rightView = rightView;
+    if (homeScope !== null) {
+      uiState.lastVault = homeScope.root;
+    }
+    const saves = [saveUiState(uiState)];
+    if (homeScope !== null) {
+      saves.push(saveVaultSession(homeScope, snapshotSession()));
+    }
+    return Promise.all(saves).then(() => undefined);
+  }
+
+  /** Cancels the debounce and saves right now (vault switches). */
+  function flushSessionSave(): Promise<void> {
+    if (sessionSaveDebounce !== null) {
+      clearTimeout(sessionSaveDebounce);
+      sessionSaveDebounce = null;
+    }
+    return persistSession();
   }
 
   /** Saves the active tab's transient state (folds, scroll, buffer). */
@@ -2188,6 +2232,14 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
+  /** Session scope of a file or folder: vault root or the folder. */
+  async function resolveScopeOf(
+    path: string,
+    kind: "file" | "folder",
+  ): Promise<ScopeInfo> {
+    return resolveScope(path, kind, folderContains, await excludedVaultRoot);
+  }
+
   /** Breadth-first vault scan honoring the ignore rules and depth cap. */
   async function scanVault(root: string): Promise<FileEntry[]> {
     const collected: FileEntry[] = [];
@@ -2232,7 +2284,11 @@ export function mountLayout(root: HTMLElement): void {
       options?.redetect === true ||
       (!insideVault(folderPath) && !probed)
     ) {
-      const info = await detectVault(folderPath, folderContains);
+      const info = await detectVault(
+        folderPath,
+        folderContains,
+        await excludedVaultRoot,
+      );
       vaultRoot = info?.root ?? null;
       vaultMode = info?.mode ?? null;
       vaultProbeBase = folderPath;
@@ -2530,8 +2586,45 @@ export function mountLayout(root: HTMLElement): void {
       filterName: t("dialog.openFile.markdownFilter"),
     });
     if (path !== null) {
-      await openFile(path);
+      await handleExplicitOpen(path);
     }
+  }
+
+  /**
+   * Explicit file open (dialog, OS double-click): a file of another
+   * vault switches this window to that vault's session; inside the
+   * current vault it just opens — selecting the tab if it exists.
+   */
+  async function handleExplicitOpen(path: string): Promise<void> {
+    const scope = await resolveScopeOf(path, "file");
+    if (homeScope !== null && homeScope.key === scope.key) {
+      await revealOrOpen(path);
+      return;
+    }
+    // Another vault — or a window without one yet: either way the
+    // file's vault session takes over this window.
+    await switchToScope(scope, { file: path });
+  }
+
+  /** Activates the tab holding `path` in any pane, or opens it. */
+  async function revealOrOpen(path: string): Promise<void> {
+    splitState = withWorkspace(splitState, boundPaneId, tabsState);
+    for (const pane of splitState.panes) {
+      const index = findTab(pane.workspace, path);
+      if (index !== -1) {
+        await applySplitChange(
+          setActivePane(
+            withWorkspace(splitState, pane.id, {
+              ...pane.workspace,
+              active: index,
+            }),
+            pane.id,
+          ),
+        );
+        return;
+      }
+    }
+    await openFile(path, { newTab: true });
   }
 
   /** Clears the workspace to the welcome view (no tab left to show). */
@@ -2871,18 +2964,17 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   /** Opens a folder without a file: welcome view over its file list. */
+  /** Explicit folder open: loads the folder's own vault session. */
   async function openFolder(path: string): Promise<void> {
-    await stashCurrentTabState();
-    tabsState = emptyWorkspace();
-    clearWorkspaceView();
-    renderTabs();
-    scheduleSessionSave();
     setStatusError(null);
-    await refreshFolder(path, { redetect: true });
-    renderBacklinks();
-    void getCurrentWindow()
-      .setTitle(basename(currentFolder ?? path))
-      .catch(() => undefined);
+    const scope = await resolveScopeOf(path, "folder");
+    if (homeScope !== null && homeScope.key === scope.key) {
+      // Same vault: just refresh the listing, the workspace stays.
+      await refreshFolder(scope.root, { redetect: true });
+      renderBacklinks();
+      return;
+    }
+    await switchToScope(scope, {});
   }
 
   async function openFolderFromDialog(): Promise<void> {
@@ -3343,7 +3435,7 @@ export function mountLayout(root: HTMLElement): void {
   // Best-effort save of pending changes when the window closes.
   window.addEventListener("beforeunload", () => {
     autosave.flush();
-    void saveSession(snapshotSession(), windowLabel);
+    void persistSession();
   });
 
   // Mount the initial single pane and bind everything to it.
@@ -3358,83 +3450,147 @@ export function mountLayout(root: HTMLElement): void {
   renderBacklinks();
 
   // A second app instance forwards its command line here (single
-  // instance): the main window opens the file in a new tab.
+  // instance): an explicit open, so it may switch this window's vault.
   if (isMainWindow) {
     void listen<string[]>("single-instance", (event) => {
       const file = event.payload.find((arg) =>
         arg.toLowerCase().endsWith(".md"),
       );
       if (file !== undefined) {
-        void openFile(file, { newTab: true });
+        void handleExplicitOpen(file);
       }
     });
   }
 
   // Startup precedence: a file passed via the URL (tab moved to this
-  // window), then the command line (main window), then the restored
-  // session of the last-focused window (when the setting allows it).
+  // window), then the command line (main window), then the session of
+  // the last active vault.
   void (async () => {
     await restoreStartup();
-    // From here on, remember the focused window: the next launch opens
-    // a single window restoring the session the user last worked in.
+    // The focused window's vault is the one a plain launch reopens.
     void getCurrentWindow().onFocusChanged(({ payload }) => {
-      if (payload) {
-        void saveLastWindow(windowLabel);
+      if (payload && homeScope !== null) {
+        uiState.lastVault = homeScope.root;
+        void saveUiState(uiState);
       }
     });
-    void saveLastWindow(windowLabel);
   })();
 
   async function restoreStartup(): Promise<void> {
     const params = new URLSearchParams(window.location.search);
     const openParam = params.get("open");
     if (openParam !== null) {
-      // Tab moved into this fresh window: it carries no session.
+      // Tab moved into this fresh window: only that file opens. The
+      // window takes its geometry from the file's vault but stays
+      // scopeless — its saves must not clobber the vault session the
+      // origin window keeps writing. (Phase 4, milestone 31 gives
+      // same-scope windows a save arbiter and lifts this.)
       const mode = params.get("mode");
       if (mode === "edit" || mode === "read") {
         pendingModes.set(normalizePath(openParam), mode);
       }
+      uiState = (await loadUiState()) ?? emptyUiState();
+      const scope = await resolveScopeOf(openParam, "file");
+      applyRestoredGeometry(await loadVaultSession(scope));
       await openFile(openParam);
       return;
     }
-    const startup = isMainWindow ? await startupFile() : null;
-    let session = await loadSession(windowLabel);
     if (isMainWindow) {
-      // Only one window reopens: when the user last worked in a
-      // secondary one, the main window adopts its workspace.
-      const last = await loadLastWindow();
-      if (last !== null && last !== "main") {
-        session = (await loadSession(last)) ?? session;
-      }
-      void cleanupSecondarySessions();
+      await migrateLegacySessions((path) => resolveScopeOf(path, "file"));
     }
-    // Panel sizes and the right-panel view are layout state, not
-    // reopened files: they restore on every launch — even when a
-    // double-clicked file arrives or session restore is disabled — so
-    // starting the app never resets the workspace geometry.
-    if (session !== null) {
-      if (session.panels !== null) {
-        panelSizes = session.panels;
-        applyPanelSizes();
-      }
-      if (session.rightView !== null) {
-        rightView = session.rightView;
-        renderRightPanel();
-      }
-    }
-    if (session !== null && getSettings().files.restoreSession) {
-      await restoreSessionPanes(session);
-    }
-    // A file opened from the file manager lands on top of the restored
-    // workspace, exactly as if it had been forwarded to a running
-    // instance — never replacing the session.
+    uiState = (await loadUiState()) ?? emptyUiState();
+    const startup = isMainWindow ? await startupFile() : null;
     if (startup !== null) {
-      await openFile(startup, { newTab: true });
+      await switchToScope(await resolveScopeOf(startup, "file"), {
+        file: startup,
+      });
+      return;
+    }
+    if (uiState.lastVault !== null) {
+      await switchToScope(scopeOf(uiState.lastVault), {});
+      return;
+    }
+    // Nothing to reopen: apply the global layout fallbacks only.
+    applyRestoredGeometry(null);
+  }
+
+  /** Layout state: the vault session's values, else the global ones. */
+  function applyRestoredGeometry(session: SessionData | null): void {
+    const panels = session?.panels ?? uiState.panels;
+    if (panels !== null) {
+      panelSizes = panels;
+      applyPanelSizes();
+    }
+    const view = session?.rightView ?? uiState.rightView;
+    if (view !== null) {
+      rightView = view;
+      renderRightPanel();
     }
   }
 
-  /** Rebuilds the split state, probing files and dropping the missing. */
-  async function restoreSessionPanes(session: SessionData): Promise<void> {
+  /**
+   * Makes `scope` this window's vault: the outgoing vault's session is
+   * saved, the target's session (or an empty workspace) replaces the
+   * current one, and `opts.file` opens on top. The per-vault geometry
+   * falls back to the global ui-state.
+   */
+  async function switchToScope(
+    scope: ScopeInfo,
+    opts: { file?: string },
+  ): Promise<void> {
+    if (homeScope !== null && homeScope.key === scope.key) {
+      if (opts.file !== undefined) {
+        await revealOrOpen(opts.file);
+      }
+      return;
+    }
+    await stashCurrentTabState();
+    autosave.flush();
+    if (homeScope !== null) {
+      // The outgoing vault keeps its session before the workspace
+      // turns. A scopeless window has nothing to save — flushing
+      // would clobber the stored ui-state before it is applied.
+      await flushSessionSave();
+    }
+    homeScope = scope;
+    uiState.lastVault = scope.root;
+    void saveUiState(uiState);
+    const session = await loadVaultSession(scope);
+    applyRestoredGeometry(session);
+    const restored =
+      session !== null && getSettings().files.restoreSession
+        ? await restoreSessionPanes(session)
+        : false;
+    if (!restored) {
+      await applySplitChange(singlePane(emptyWorkspace()));
+    }
+    if (opts.file !== undefined) {
+      await revealOrOpen(opts.file);
+      return;
+    }
+    if (!restored) {
+      // Folder with nothing to reopen: show its (possibly empty)
+      // listing. An unreadable root leaves the window unassigned so
+      // the next explicit open can re-home it.
+      try {
+        await listFolder(scope.root);
+      } catch {
+        homeScope = null;
+        return;
+      }
+      await refreshFolder(scope.root, { redetect: true });
+      renderBacklinks();
+      void getCurrentWindow()
+        .setTitle(basename(vaultRoot ?? scope.root))
+        .catch(() => undefined);
+    }
+  }
+
+  /**
+   * Rebuilds the split state, probing files and dropping the missing;
+   * false when nothing valid remained to restore.
+   */
+  async function restoreSessionPanes(session: SessionData): Promise<boolean> {
     const paneStates: SplitState["panes"] = [];
     for (const sessionPane of session.panes) {
       const tabs: Tab[] = [];
@@ -3465,7 +3621,7 @@ export function mountLayout(root: HTMLElement): void {
       });
     }
     if (paneStates.length === 0) {
-      return;
+      return false;
     }
     const activeIndex = Math.min(session.activePane, paneStates.length - 1);
     await applySplitChange({
@@ -3473,5 +3629,6 @@ export function mountLayout(root: HTMLElement): void {
       activePane: paneStates[activeIndex].id,
       nextId: paneStates.length + 1,
     });
+    return true;
   }
 }

@@ -54,6 +54,35 @@ describe("detectVault", () => {
     expect((await detectVault("C:/proj", contains))?.mode).toBe("claude");
   });
 
+  it("markers in the excluded root or its ancestors never win", async () => {
+    // The user's home holds tool config dirs (.claude, .codex) that
+    // must not turn the whole profile into a vault.
+    const contains = fs({
+      "C:/Users/xavia": [".claude"],
+      "C:/Users": ["CLAUDE.md"],
+    });
+    expect(
+      await detectVault("C:/Users/xavia/Documents/notes", contains, "C:/Users/xavia"),
+    ).toBeNull();
+  });
+
+  it("a marked project under the excluded root is still a vault", async () => {
+    const contains = fs({
+      "C:/Users/xavia": [".claude"],
+      "C:/Users/xavia/proj": ["CLAUDE.md"],
+    });
+    expect(
+      (await detectVault("C:/Users/xavia/proj/docs", contains, "C:/Users/xavia"))?.root,
+    ).toBe("C:/Users/xavia/proj");
+  });
+
+  it("exclusion matches whole path segments, not name prefixes", async () => {
+    const contains = fs({ "C:/Users/xavia2": ["CLAUDE.md"] });
+    expect(
+      (await detectVault("C:/Users/xavia2/docs", contains, "C:/Users/xavia"))?.root,
+    ).toBe("C:/Users/xavia2");
+  });
+
   it("never probes a bare drive, only the rooted drive path", async () => {
     // "C:" without a separator is drive-relative on Windows: listing it
     // reads the current working directory, which Explorer sets to the

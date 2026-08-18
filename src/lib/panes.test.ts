@@ -179,4 +179,20 @@ describe("session snapshot (multi-pane)", () => {
     expect(parseSession('{"panes": []}')).toBeNull();
     expect(parseSession('{"panes": [{"tabs": []}]}')).toBeNull();
   });
+
+  it("ignores unknown fields such as the per-vault scope", () => {
+    // Per-vault session files embed a `scope` field next to the
+    // SessionData shape; parseSession must keep accepting them.
+    const parsed = parseSession(
+      JSON.stringify({
+        panes: [
+          { tabs: [{ path: "a.md", pinned: false, mode: "edit" }], active: 0, size: 1 },
+        ],
+        activePane: 0,
+        scope: "C:/notes",
+      }),
+    );
+    expect(parsed).not.toBeNull();
+    expect(parsed!.panes[0].tabs[0].path).toBe("a.md");
+  });
 });

@@ -2,7 +2,7 @@
 // a marker file in the opened folder — or any ancestor — turns that
 // folder into the root of a recursive, Obsidian-style vault. Without a
 // marker the app keeps its flat single-folder behavior.
-import { dirname } from "./paths";
+import { dirname, normalizePath } from "./paths";
 
 export type VaultMode = "claude" | "gpt";
 
@@ -39,22 +39,42 @@ export interface VaultInfo {
   marker: string;
 }
 
+/** Whether `dir` is `path` itself or one of its ancestors. */
+function isAncestorOrSelf(dir: string, path: string): boolean {
+  const dirKey = normalizePath(dir).toLowerCase();
+  const pathKey = normalizePath(path).toLowerCase();
+  return (
+    pathKey === dirKey ||
+    pathKey.startsWith(dirKey.endsWith("/") ? dirKey : dirKey + "/")
+  );
+}
+
 /**
  * Walks from `folder` to the filesystem root probing for markers via
  * the injected `contains`. The **farthest** marked ancestor wins, so a
  * whole project is always one vault regardless of nested markers.
+ *
+ * `excludedRoot` (typically the user's home directory) and its
+ * ancestors never root a vault: tool config dirs living in the home —
+ * `.claude`, `.codex` — would otherwise turn the whole profile into
+ * one giant vault for every note under it.
  */
 export async function detectVault(
   folder: string,
   contains: (dir: string, name: string) => Promise<boolean>,
+  excludedRoot?: string,
 ): Promise<VaultInfo | null> {
   let found: VaultInfo | null = null;
   let dir = folder;
   for (let depth = 0; depth < 64; depth++) {
-    for (const marker of VAULT_MARKERS) {
-      if (await contains(dir, marker.name)) {
-        found = { root: dir, mode: marker.mode, marker: marker.name };
-        break;
+    const excluded =
+      excludedRoot !== undefined && isAncestorOrSelf(dir, excludedRoot);
+    if (!excluded) {
+      for (const marker of VAULT_MARKERS) {
+        if (await contains(dir, marker.name)) {
+          found = { root: dir, mode: marker.mode, marker: marker.name };
+          break;
+        }
       }
     }
     const parent = dirname(dir);
