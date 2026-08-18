@@ -195,10 +195,18 @@ export function mountLayout(root: HTMLElement): void {
   });
   // Ctrl held while hovering previews the smart fold: the button shows
   // the sparkles icon and its tooltip until Ctrl is released or the
-  // pointer leaves; then the state icon and tooltip come back.
+  // pointer leaves; then the state icon and tooltip come back. The
+  // preview must be idempotent: holding Ctrl auto-repeats keydown, and
+  // re-replacing the icon on every repeat suppresses both the native
+  // tooltip and the click (the pressed element would vanish mid-click).
   let collapseAllHovered = false;
+  let collapseAllPreview = false;
   const syncCollapseAllPreview = (smart: boolean): void => {
+    if (smart === collapseAllPreview) {
+      return;
+    }
     if (smart) {
+      collapseAllPreview = true;
       const label = t("sidebar.smartFold");
       collapseAllButton.replaceChildren(createIcon("sparkles"));
       collapseAllButton.title = label;
@@ -2774,6 +2782,7 @@ export function mountLayout(root: HTMLElement): void {
 
   /** Icon and tooltip follow what a click would do next. */
   function updateCollapseAllButton(): void {
+    collapseAllPreview = false;
     const dirs = collectTreeDirs(vaultTree);
     const anyExpanded = dirs.some(
       (dir) => !collapsedDirs.has(normalizePath(dir)),
