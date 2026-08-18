@@ -129,6 +129,7 @@
   "settings.theme.system": "Según el sistema",
   "settings.accentColor.name": "Color de acento",
   "settings.accentColor.desc": "Color de los elementos interactivos",
+  "settings.accentColor.reset": "Restaurar el color por defecto",
   "settings.interfaceFont.name": "Fuente de la interfaz",
   "settings.interfaceFont.desc": "Nombre de la fuente de la interfaz; vacía para usar la predeterminada",
   "settings.editorFont.name": "Fuente del editor",

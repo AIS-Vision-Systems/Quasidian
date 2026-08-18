@@ -7,7 +7,7 @@ import {
   subscribeSettings,
   updateSettings,
 } from "../ipc/settingsStore";
-import type { Settings } from "../lib/settings";
+import { DEFAULT_SETTINGS, type Settings } from "../lib/settings";
 import { createIcon } from "./icons";
 
 type SectionId = "general" | "appearance" | "editor" | "files";
@@ -183,6 +183,27 @@ export function openSettingsModal(): void {
     return element;
   }
 
+  /** Color picker with a reset button, disabled at the default. */
+  function accentColorControl(
+    value: string,
+    onChange: (value: string) => void,
+  ): HTMLElement {
+    const group = document.createElement("div");
+    group.className = "setting-color-group";
+    const fallback = DEFAULT_SETTINGS.appearance.accentColor;
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "setting-reset";
+    reset.append(createIcon("rotate-ccw"));
+    const label = t("settings.accentColor.reset");
+    reset.title = label;
+    reset.setAttribute("aria-label", label);
+    reset.disabled = value.toLowerCase() === fallback.toLowerCase();
+    reset.addEventListener("click", () => onChange(fallback));
+    group.append(reset, colorInput(value, onChange));
+    return group;
+  }
+
   function renderSidebar(): void {
     sidebar.replaceChildren(
       ...SECTIONS.map((section) => {
@@ -240,7 +261,9 @@ export function openSettingsModal(): void {
       row(
         "settings.accentColor.name",
         "settings.accentColor.desc",
-        colorInput(a.accentColor, (accentColor) => patch({ accentColor })),
+        accentColorControl(a.accentColor, (accentColor) =>
+          patch({ accentColor }),
+        ),
       ),
       row(
         "settings.interfaceFont.name",

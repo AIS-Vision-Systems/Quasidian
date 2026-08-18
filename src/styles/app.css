@@ -1450,6 +1450,34 @@ body.is-readable-line-length .cm-editor .cm-content {
   cursor: pointer;
 }
 
+.setting-color-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.setting-reset:hover:not(:disabled) {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.setting-reset:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .setting-toggle {
   appearance: none;
   position: relative;

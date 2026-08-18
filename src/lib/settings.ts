@@ -62,10 +62,10 @@ export const DEFAULT_SETTINGS: Settings = {
   language: "system",
   appearance: {
     theme: "dark",
-    accentColor: "#483699",
+    accentColor: "#8a5cf5",
     interfaceFont: "",
     editorFont: "proportional",
-    fontSize: 15,
+    fontSize: 18,
     readableLineLength: true,
     inlineTitle: true,
   },
