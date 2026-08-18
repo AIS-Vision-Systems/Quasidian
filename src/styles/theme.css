@@ -37,7 +37,9 @@
   --background-primary: #000000;
   --background-primary-alt: #000000;
   --background-secondary: #0b0b0b;
-  --background-secondary-alt: #000000;
+  /* Tab strip: the Windows dark title-bar gray, so the active tab
+     (editor background) reads unmistakably against it. */
+  --background-secondary-alt: #202020;
   --background-modifier-border: rgba(255, 255, 255, 0.14);
   --background-modifier-hover: rgba(255, 255, 255, 0.08);
   --code-background: rgba(255, 255, 255, 0.09);

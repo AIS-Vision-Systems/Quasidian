@@ -606,7 +606,9 @@ button:focus-visible {
   align-items: center;
   gap: 8px;
   padding: 6px 8px 0;
-  background-color: var(--background-secondary);
+  /* Lighter than the panels: inactive tabs blend into the strip and
+     the active tab pops in the editor background, like Obsidian. */
+  background-color: var(--background-secondary-alt);
 }
 
 .view-header > .view-header-button {
