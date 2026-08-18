@@ -159,10 +159,63 @@ export function mountLayout(root: HTMLElement): void {
   searchButton.className = "view-header-button";
   searchButton.append(createIcon("search"));
   searchButton.addEventListener("click", () => toggleSearch());
-  // Collapse/expand every folder of the vault tree (vault mode only).
+  // Collapse/expand every folder of the vault tree (vault mode only);
+  // Ctrl+click re-applies the smart fold, right-click lists all three.
   const collapseAllButton = document.createElement("button");
   collapseAllButton.className = "view-header-button is-hidden";
-  collapseAllButton.addEventListener("click", () => toggleCollapseAll());
+  collapseAllButton.addEventListener("click", (event) =>
+    event.ctrlKey || event.metaKey ? applySmartFold() : toggleCollapseAll(),
+  );
+  collapseAllButton.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openContextMenu(event.clientX, event.clientY, [
+      {
+        label: t("sidebar.collapseAll"),
+        icon: "chevrons-down-up",
+        onClick: () => collapseAllFolders(),
+      },
+      {
+        label: t("sidebar.expandAll"),
+        icon: "chevrons-up-down",
+        onClick: () => expandAllFolders(),
+      },
+      {
+        label: t("sidebar.smartFold"),
+        icon: "sparkles",
+        onClick: () => applySmartFold(),
+      },
+    ]);
+  });
+  // Ctrl held while hovering announces the smart fold in the tooltip.
+  let collapseAllHovered = false;
+  const syncCollapseAllTooltip = (smart: boolean): void => {
+    if (smart) {
+      const label = t("sidebar.smartFold");
+      collapseAllButton.title = label;
+      collapseAllButton.setAttribute("aria-label", label);
+    } else {
+      updateCollapseAllButton();
+    }
+  };
+  collapseAllButton.addEventListener("mouseenter", (event) => {
+    collapseAllHovered = true;
+    syncCollapseAllTooltip(event.ctrlKey || event.metaKey);
+  });
+  collapseAllButton.addEventListener("mouseleave", () => {
+    collapseAllHovered = false;
+    updateCollapseAllButton();
+  });
+  window.addEventListener("keydown", (event) => {
+    if (collapseAllHovered && (event.key === "Control" || event.key === "Meta")) {
+      syncCollapseAllTooltip(true);
+    }
+  });
+  window.addEventListener("keyup", (event) => {
+    if (collapseAllHovered && (event.key === "Control" || event.key === "Meta")) {
+      syncCollapseAllTooltip(false);
+    }
+  });
   sidebarHeader.append(
     openFileButton,
     openFolderButton,
@@ -2668,20 +2721,46 @@ export function mountLayout(root: HTMLElement): void {
 
   /** Collapses every folder, or expands them all when none is open. */
   function toggleCollapseAll(): void {
-    const dirs = collectTreeDirs(vaultTree);
-    const anyExpanded = dirs.some(
+    const anyExpanded = collectTreeDirs(vaultTree).some(
       (dir) => !collapsedDirs.has(normalizePath(dir)),
     );
-    collapsedDirs.clear();
     if (anyExpanded) {
-      for (const dir of dirs) {
-        collapsedDirs.add(normalizePath(dir));
-      }
+      collapseAllFolders();
+    } else {
+      expandAllFolders();
     }
+  }
+
+  function collapseAllFolders(): void {
+    collapsedDirs.clear();
+    for (const dir of collectTreeDirs(vaultTree)) {
+      collapsedDirs.add(normalizePath(dir));
+    }
+    applyFoldChange();
+  }
+
+  function expandAllFolders(): void {
+    collapsedDirs.clear();
+    applyFoldChange();
+  }
+
+  function applyFoldChange(): void {
     foldStateKnown = true;
     renderVaultTree();
     updateCollapseAllButton();
     scheduleSessionSave();
+  }
+
+  /** Re-applies the smart default fold on demand (Ctrl+click, menu). */
+  function applySmartFold(): void {
+    if (vaultRoot === null) {
+      return;
+    }
+    collapsedDirs.clear();
+    for (const dir of collapsedByDefault(vaultTree)) {
+      collapsedDirs.add(normalizePath(dir));
+    }
+    applyFoldChange();
   }
 
   /** Icon and tooltip follow what a click would do next. */
@@ -3523,6 +3602,11 @@ export function mountLayout(root: HTMLElement): void {
         editor.foldAllSections();
         editor.focus();
       },
+    },
+    {
+      id: "smart-fold-folders",
+      nameKey: "command.smartFold",
+      run: () => applySmartFold(),
     },
     {
       id: "unfold-all",

@@ -89,6 +89,8 @@
   "search.title": "Cerca",
   "sidebar.collapseAll": "Col·lapsa-ho tot",
   "sidebar.expandAll": "Expandeix-ho tot",
+  "sidebar.smartFold": "Plegat intel·ligent",
+  "command.smartFold": "Plegat intel·ligent de carpetes",
   "search.close": "Tanca la cerca",
   "search.placeholder": "Cerca a la carpeta…",
   "search.results": "{count} resultats",

@@ -89,6 +89,8 @@
   "search.title": "Búsqueda",
   "sidebar.collapseAll": "Contraer todo",
   "sidebar.expandAll": "Expandir todo",
+  "sidebar.smartFold": "Plegado inteligente",
+  "command.smartFold": "Plegado inteligente de carpetas",
   "search.close": "Cerrar la búsqueda",
   "search.placeholder": "Buscar en la carpeta…",
   "search.results": "{count} resultados",
