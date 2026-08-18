@@ -129,7 +129,7 @@
   "settings.theme.system": "Follow system",
   "settings.accentColor.name": "Accent color",
   "settings.accentColor.desc": "Color of interactive elements",
-  "settings.accentColor.reset": "Restore default color",
+  "settings.resetDefault": "Restore default value",
   "settings.interfaceFont.name": "Interface font",
   "settings.interfaceFont.desc": "Interface font name; empty to use the default",
   "settings.editorFont.name": "Editor font",

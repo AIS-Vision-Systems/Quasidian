@@ -154,7 +154,7 @@ export function mergeSettings(raw: unknown): Settings {
         "proportional",
         "monospace",
       ]),
-      fontSize: pickNumber(appearance.fontSize, d.appearance.fontSize, 8, 40),
+      fontSize: pickNumber(appearance.fontSize, d.appearance.fontSize, 8, 30),
       readableLineLength: pickBoolean(
         appearance.readableLineLength,
         d.appearance.readableLineLength,

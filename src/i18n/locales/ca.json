@@ -129,7 +129,7 @@
   "settings.theme.system": "Segons el sistema",
   "settings.accentColor.name": "Color d'accent",
   "settings.accentColor.desc": "Color dels elements interactius",
-  "settings.accentColor.reset": "Restaura el color per defecte",
+  "settings.resetDefault": "Restaura el valor per defecte",
   "settings.interfaceFont.name": "Font de la interfície",
   "settings.interfaceFont.desc": "Nom de la font de la interfície; buida per usar la per defecte",
   "settings.editorFont.name": "Font de l'editor",
