@@ -53,6 +53,23 @@ describe("detectVault", () => {
     const contains = fs({ "C:/proj": ["AGENTS.md", "CLAUDE.md"] });
     expect((await detectVault("C:/proj", contains))?.mode).toBe("claude");
   });
+
+  it("never probes a bare drive, only the rooted drive path", async () => {
+    // "C:" without a separator is drive-relative on Windows: listing it
+    // reads the current working directory, which Explorer sets to the
+    // opened file's folder — probing it would hijack the vault root.
+    const probed: string[] = [];
+    const contains = (dir: string, name: string): Promise<boolean> => {
+      probed.push(dir);
+      return Promise.resolve(
+        dir === "C:/proj/docs" && name === "CLAUDE.md",
+      );
+    };
+    const info = await detectVault("C:/proj/docs", contains);
+    expect(info?.root).toBe("C:/proj/docs");
+    expect(probed).not.toContain("C:");
+    expect(probed).toContain("C:/");
+  });
 });
 
 describe("isIgnoredDir", () => {

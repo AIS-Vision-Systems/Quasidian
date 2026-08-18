@@ -3,7 +3,17 @@
 
 export function dirname(path: string): string {
   const separator = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return separator === -1 ? path : path.slice(0, separator);
+  if (separator === -1) {
+    return path;
+  }
+  const parent = path.slice(0, separator);
+  // Keep the separator when the parent is a filesystem root: a bare
+  // "C:" is drive-relative on Windows (it resolves against the current
+  // working directory, not the drive root) and "" is not a path.
+  if (parent === "" || /^[a-zA-Z]:$/.test(parent)) {
+    return path.slice(0, separator + 1);
+  }
+  return parent;
 }
 
 export function basename(path: string): string {

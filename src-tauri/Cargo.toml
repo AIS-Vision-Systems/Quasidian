@@ -1,6 +1,6 @@
 [package]
 name = "quasidian"
-version = "0.1.0"
+version = "1.0.0"
 description = "Minimalist desktop markdown editor with Obsidian-like look and behavior"
 authors = ["Xavi Anguera"]
 edition = "2021"
