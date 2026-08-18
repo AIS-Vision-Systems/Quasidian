@@ -7,8 +7,10 @@ import {
   subscribeSettings,
   updateSettings,
 } from "../ipc/settingsStore";
+import { getVersion } from "@tauri-apps/api/app";
 import { DEFAULT_SETTINGS, type Settings } from "../lib/settings";
 import { createIcon } from "./icons";
+import { createUpdateCheck } from "./updateCheck";
 
 type SectionId = "general" | "appearance" | "editor" | "files";
 
@@ -237,7 +239,36 @@ export function openSettingsModal(): void {
           (language) => mutate((s) => ({ ...s, language })),
         ),
       ),
+      updatesRow(),
+      row(
+        "settings.autoUpdates.name",
+        "settings.autoUpdates.desc",
+        toggle(settings.updates.checkAutomatically, (checkAutomatically) =>
+          mutate((s) => ({ ...s, updates: { ...s.updates, checkAutomatically } })),
+        ),
+      ),
     ];
+  }
+
+  /** Version line plus the shared check-for-updates widget. */
+  function updatesRow(): HTMLElement {
+    const item = document.createElement("div");
+    item.className = "setting-row";
+    const info = document.createElement("div");
+    info.className = "setting-info";
+    const name = document.createElement("div");
+    name.className = "setting-name";
+    name.textContent = t("settings.updates.name");
+    const desc = document.createElement("div");
+    desc.className = "setting-desc";
+    void getVersion()
+      .then((version) => {
+        desc.textContent = t("settings.updates.desc", { version });
+      })
+      .catch(() => undefined);
+    info.append(name, desc);
+    item.append(info, createUpdateCheck());
+    return item;
   }
 
   function appearanceRows(settings: Settings): HTMLElement[] {

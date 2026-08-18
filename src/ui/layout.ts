@@ -108,6 +108,7 @@ import {
   saveUiState,
   saveVaultSession,
 } from "../ipc/sessionStore";
+import { checkForUpdate } from "../ipc/updates";
 import {
   emptyUiState,
   parseScopeEntry,
@@ -628,6 +629,17 @@ export function mountLayout(root: HTMLElement): void {
   helpButton.addEventListener("click", () => openHelpModal());
   const statusError = document.createElement("span");
   statusError.className = "status-bar-error";
+  // Discreet startup notice when a newer version exists (check-only);
+  // clicking opens the download page.
+  const statusUpdate = document.createElement("button");
+  statusUpdate.className = "status-bar-update";
+  statusUpdate.hidden = true;
+  let availableUpdate: { version: string; url: string } | null = null;
+  statusUpdate.addEventListener("click", () => {
+    if (availableUpdate !== null) {
+      void openUrl(availableUpdate.url).catch(() => undefined);
+    }
+  });
   const statusBacklinks = document.createElement("button");
   statusBacklinks.className = "status-bar-backlinks";
   statusBacklinks.hidden = true;
@@ -644,6 +656,7 @@ export function mountLayout(root: HTMLElement): void {
     statusPalette,
     statusSwitcher,
     statusError,
+    statusUpdate,
     statusBacklinks,
     wordCount,
     charCount,
@@ -3907,6 +3920,7 @@ export function mountLayout(root: HTMLElement): void {
     statusSwitcher.title = t("command.quickSwitcher");
     statusSwitcher.setAttribute("aria-label", t("command.quickSwitcher"));
     refreshStatusChrome();
+    renderUpdateNotice();
     for (const ui of paneUis.values()) {
       ui.welcome.textContent = t("workspace.welcome");
       ui.modeHeaderButton.title = t("command.toggleReadingMode");
@@ -4081,7 +4095,28 @@ export function mountLayout(root: HTMLElement): void {
         void saveUiState(uiState);
       }
     });
+    // Startup update check (main window, when enabled): silent while
+    // up to date, a discreet status-bar notice otherwise.
+    if (isMainWindow && getSettings().updates.checkAutomatically) {
+      const result = await checkForUpdate();
+      if (result.status === "outdated") {
+        availableUpdate = {
+          version: result.latest.version,
+          url: result.latest.url,
+        };
+        renderUpdateNotice();
+      }
+    }
   })();
+
+  function renderUpdateNotice(): void {
+    statusUpdate.hidden = availableUpdate === null;
+    if (availableUpdate !== null) {
+      statusUpdate.textContent = t("updates.available", {
+        version: availableUpdate.version,
+      });
+    }
+  }
 
   async function restoreStartup(): Promise<void> {
     // A previous run of this same label may have crashed: its stale
