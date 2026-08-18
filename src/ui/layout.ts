@@ -201,6 +201,12 @@ export function mountLayout(root: HTMLElement): void {
   // tooltip and the click (the pressed element would vanish mid-click).
   let collapseAllHovered = false;
   let collapseAllPreview = false;
+  // Native title tooltips only appear after a mouse move, so pressing
+  // Ctrl with the pointer at rest would never show one: the preview
+  // brings its own tip instead.
+  const collapseAllTip = document.createElement("div");
+  collapseAllTip.className = "button-tip";
+  document.body.append(collapseAllTip);
   const syncCollapseAllPreview = (smart: boolean): void => {
     if (smart === collapseAllPreview) {
       return;
@@ -209,9 +215,15 @@ export function mountLayout(root: HTMLElement): void {
       collapseAllPreview = true;
       const label = t("sidebar.smartFold");
       collapseAllButton.replaceChildren(createIcon("sparkles"));
-      collapseAllButton.title = label;
+      collapseAllButton.removeAttribute("title");
       collapseAllButton.setAttribute("aria-label", label);
+      collapseAllTip.textContent = label;
+      const rect = collapseAllButton.getBoundingClientRect();
+      collapseAllTip.style.left = `${rect.left}px`;
+      collapseAllTip.style.top = `${rect.bottom + 6}px`;
+      collapseAllTip.classList.add("is-visible");
     } else {
+      collapseAllTip.classList.remove("is-visible");
       updateCollapseAllButton();
     }
   };
@@ -2783,6 +2795,7 @@ export function mountLayout(root: HTMLElement): void {
   /** Icon and tooltip follow what a click would do next. */
   function updateCollapseAllButton(): void {
     collapseAllPreview = false;
+    collapseAllTip.classList.remove("is-visible");
     const dirs = collectTreeDirs(vaultTree);
     const anyExpanded = dirs.some(
       (dir) => !collapsedDirs.has(normalizePath(dir)),

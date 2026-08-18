@@ -213,6 +213,27 @@ body {
   display: none;
 }
 
+/* Self-drawn tip for modifier-key previews: the native title tooltip
+   never shows without a mouse move, so Ctrl over a still pointer
+   would stay silent. */
+.button-tip {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  padding: 2px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.button-tip.is-visible {
+  display: block;
+}
+
 /* Image entries: name plus a small uppercase extension chip. */
 .file-item-name {
   overflow: hidden;
