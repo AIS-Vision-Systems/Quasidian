@@ -238,6 +238,8 @@ export interface SessionData {
   activePane: number;
   panels: PanelSizes | null;
   rightView: RightPanelView | null;
+  /** Collapsed folder paths of the vault tree; null = never folded. */
+  collapsed: string[] | null;
 }
 
 export function serializeSession(
@@ -245,6 +247,7 @@ export function serializeSession(
   modeOf: (tab: Tab) => SessionMode,
   panels: PanelSizes | null = null,
   rightView: RightPanelView | null = null,
+  collapsed: string[] | null = null,
 ): SessionData {
   const panes: SessionPane[] = [];
   let active = 0;
@@ -263,6 +266,7 @@ export function serializeSession(
     activePane: panes.length === 0 ? 0 : Math.min(active, panes.length - 1),
     panels,
     rightView,
+    collapsed,
   };
 }
 
@@ -318,5 +322,10 @@ export function parseSession(json: string): SessionData | null {
     typeof root.activePane === "number" && Number.isInteger(root.activePane)
       ? Math.max(0, Math.min(root.activePane, panes.length - 1))
       : 0;
-  return { panes, activePane, ...extras };
+  const collapsed = Array.isArray(root.collapsed)
+    ? root.collapsed.filter(
+        (entry): entry is string => typeof entry === "string" && entry !== "",
+      )
+    : null;
+  return { panes, activePane, collapsed, ...extras };
 }

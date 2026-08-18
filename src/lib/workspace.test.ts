@@ -15,6 +15,8 @@ import {
   newEmptyTab,
   openPath,
   parseTabs,
+  peekBack,
+  peekForward,
   renameTabPath,
   serializeTabs,
   setPinned,
@@ -175,6 +177,19 @@ describe("per-tab navigation history", () => {
     let state = openPath(workspace(["a.md"]), "b.md");
     state = renameTabPath(state, "a.md", "z.md");
     expect(state.tabs[0].back).toEqual(["z.md"]);
+  });
+
+  it("peeks back and forward without mutating", () => {
+    let state = openPath(openPath(workspace(["a.md"]), "b.md"), "c.md");
+    expect(peekBack(state)).toBe("b.md");
+    expect(peekForward(state)).toBeNull();
+    const before = state;
+    state = goBack(state)!;
+    expect(peekBack(state)).toBe("a.md");
+    expect(peekForward(state)).toBe("c.md");
+    expect(before.tabs[0].back).toEqual(["a.md", "b.md"]); // untouched
+    expect(peekBack(workspace(["a.md"]))).toBeNull();
+    expect(peekBack(emptyWorkspace())).toBeNull();
   });
 });
 

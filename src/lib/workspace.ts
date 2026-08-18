@@ -142,6 +142,28 @@ export function goForward(state: WorkspaceState): WorkspaceState | null {
   return { tabs, active: state.active };
 }
 
+/**
+ * Path a "back" step would land on, without mutating anything —
+ * Ctrl+click on the arrows opens it in a new tab instead of
+ * navigating.
+ */
+export function peekBack(state: WorkspaceState): string | null {
+  const active = state.tabs[state.active];
+  if (active === undefined || active.path === null) {
+    return null;
+  }
+  return active.back[active.back.length - 1] ?? null;
+}
+
+/** Path a "forward" step would land on, without mutating anything. */
+export function peekForward(state: WorkspaceState): string | null {
+  const active = state.tabs[state.active];
+  if (active === undefined || active.path === null) {
+    return null;
+  }
+  return active.forward[active.forward.length - 1] ?? null;
+}
+
 /** Whether back/forward are available for the active tab. */
 export function historyState(state: WorkspaceState): {
   canBack: boolean;
