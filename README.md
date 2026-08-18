@@ -56,3 +56,11 @@ npm run typecheck  # tsc --noEmit; must pass before any commit
 ```
 
 See [`CLAUDE.md`](CLAUDE.md) for architecture rules and workflow conventions.
+
+## Publishing a release
+
+1. Bump the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` (plus both lockfiles), merge to `main`.
+2. Tag it: `git tag vX.Y.Z && git push --tags`.
+3. The `release` workflow builds the Windows (NSIS) and Linux (deb, AppImage) installers, attaches them to a release in [Quasidian-releases](https://github.com/XaviAnguera/Quasidian-releases) and updates `latest.json` — the feed the in-app update check polls (the raw CDN can take ~5 minutes to refresh).
+
+The workflow needs the `RELEASES_TOKEN` Actions secret: a fine-grained PAT with **Contents: read and write** on `Quasidian-releases` only.
