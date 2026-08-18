@@ -59,7 +59,7 @@ body {
   min-width: 200px;
   padding: 4px;
   background-color: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--modal-border);
   border-radius: 8px;
   box-shadow: 0 6px 24px var(--shadow-color);
   /* Obsidian-sized menu text; the UI-small size read too small. */
@@ -149,7 +149,7 @@ body {
   width: min(360px, 90vw);
   padding: 16px;
   background-color: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--modal-border);
   border-radius: 10px;
   box-shadow: 0 10px 40px var(--shadow-color);
 }
@@ -1238,7 +1238,7 @@ body.is-readable-line-length .cm-editor .cm-content {
 .palette {
   width: min(560px, 90vw);
   background-color: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--modal-border);
   border-radius: 8px;
   box-shadow: 0 8px 30px var(--shadow-color);
   overflow: hidden;
@@ -1326,7 +1326,7 @@ body.is-readable-line-length .cm-editor .cm-content {
   width: min(760px, 92vw);
   height: min(560px, 85vh);
   background-color: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--modal-border);
   border-radius: 10px;
   box-shadow: 0 10px 40px var(--shadow-color);
   overflow: hidden;
@@ -1602,7 +1602,9 @@ body.is-readable-line-length .cm-editor .cm-content {
 }
 
 .update-check-status {
-  min-height: 1em;
+  /* One reserved line: the row must not grow when the result lands. */
+  line-height: 1.5;
+  min-height: 1.5em;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
 }
@@ -1617,8 +1619,9 @@ body.is-readable-line-length .cm-editor .cm-content {
 }
 
 .help-updates {
+  /* Bottom-aligned so the status line sits level with the author. */
   margin-left: auto;
-  align-self: center;
+  align-self: flex-end;
 }
 
 .status-bar-mode,
@@ -1964,7 +1967,7 @@ span.table-wrap > table {
   overflow-y: auto;
   padding: 12px 16px;
   background-color: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--modal-border);
   border-radius: 8px;
   box-shadow: 0 8px 30px var(--shadow-color);
   color: var(--text-normal);
@@ -2493,7 +2496,7 @@ span.table-wrap > table {
   width: min(720px, 92vw);
   height: min(640px, 88vh);
   background-color: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--modal-border);
   border-radius: 10px;
   box-shadow: 0 10px 40px var(--shadow-color);
   overflow: hidden;
