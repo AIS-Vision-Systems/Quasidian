@@ -384,10 +384,12 @@ export function parseTabs(raw: unknown): SessionTabs | null {
   return { tabs, active };
 }
 
-/** Parses the shared session extras (panel widths, right view). */
+/** Parses the shared session extras (panel geometry, right view). */
 export function parseSessionExtras(root: Record<string, unknown>): {
   panels: PanelSizes | null;
   rightView: RightPanelView | null;
+  leftVisible: boolean | null;
+  rightVisible: boolean | null;
 } {
   const rawPanels =
     typeof root.panels === "object" && root.panels !== null
@@ -407,5 +409,12 @@ export function parseSessionExtras(root: Record<string, unknown>): {
     root.rightView === "outline"
       ? root.rightView
       : null;
-  return { panels, rightView };
+  return {
+    panels,
+    rightView,
+    leftVisible:
+      typeof root.leftVisible === "boolean" ? root.leftVisible : null,
+    rightVisible:
+      typeof root.rightVisible === "boolean" ? root.rightVisible : null,
+  };
 }

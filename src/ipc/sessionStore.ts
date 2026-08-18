@@ -145,6 +145,8 @@ export async function migrateLegacySessions(
       await saveUiState({
         panels: session?.panels ?? null,
         rightView: session?.rightView ?? null,
+        leftVisible: session?.leftVisible ?? null,
+        rightVisible: session?.rightVisible ?? null,
         lastVault,
       });
     }

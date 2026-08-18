@@ -135,12 +135,12 @@ describe("session snapshot (multi-pane)", () => {
       makeTab("b.md"),
     );
     state = resizeBorder(state, state.panes[0].id, 0.2);
-    const session = serializeSession(
-      state,
-      () => "edit",
-      { left: 200, right: 260 },
-      "outline",
-    );
+    const session = serializeSession(state, () => "edit", {
+      panels: { left: 200, right: 260 },
+      rightView: "outline",
+      leftVisible: true,
+      rightVisible: false,
+    });
     const parsed = parseSession(JSON.stringify(session));
     expect(parsed).not.toBeNull();
     expect(parsed!.panes).toHaveLength(2);
@@ -150,6 +150,16 @@ describe("session snapshot (multi-pane)", () => {
     expect(parsed!.activePane).toBe(1);
     expect(parsed!.panels).toEqual({ left: 200, right: 260 });
     expect(parsed!.rightView).toBe("outline");
+    expect(parsed!.leftVisible).toBe(true);
+    expect(parsed!.rightVisible).toBe(false);
+  });
+
+  it("keeps panel visibility null when a session never stored it", () => {
+    const parsed = parseSession(
+      '{"panes": [{"tabs": [{"path": "a.md"}], "active": 0}]}',
+    );
+    expect(parsed!.leftVisible).toBeNull();
+    expect(parsed!.rightVisible).toBeNull();
   });
 
   it("drops panes holding only empty tabs", () => {
@@ -181,13 +191,9 @@ describe("session snapshot (multi-pane)", () => {
   });
 
   it("round-trips the collapsed folder list and rejects junk in it", () => {
-    const session = serializeSession(
-      singlePane(workspace(["a.md"])),
-      () => "edit",
-      null,
-      null,
-      ["C:/vault/src", "C:/vault/out"],
-    );
+    const session = serializeSession(singlePane(workspace(["a.md"])), () => "edit", {
+      collapsed: ["C:/vault/src", "C:/vault/out"],
+    });
     const parsed = parseSession(JSON.stringify(session));
     expect(parsed!.collapsed).toEqual(["C:/vault/src", "C:/vault/out"]);
     const junk = parseSession(

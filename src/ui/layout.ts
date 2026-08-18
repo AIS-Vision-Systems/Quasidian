@@ -1192,9 +1192,13 @@ export function mountLayout(root: HTMLElement): void {
     return serializeSession(
       splitState,
       (tab) => tabModes.get(tab.id) ?? getSettings().editor.defaultMode,
-      panelSizes,
-      rightView,
-      foldStateKnown ? [...collapsedDirs] : null,
+      {
+        panels: panelSizes,
+        rightView,
+        collapsed: foldStateKnown ? [...collapsedDirs] : null,
+        leftVisible: sidebarVisible,
+        rightVisible,
+      },
     );
   }
 
@@ -1254,6 +1258,8 @@ export function mountLayout(root: HTMLElement): void {
       uiState.panels = panelSizes;
     }
     uiState.rightView = rightView;
+    uiState.leftVisible = sidebarVisible;
+    uiState.rightVisible = rightVisible;
     if (homeScope !== null) {
       uiState.lastVault = homeScope.root;
     }
@@ -3715,18 +3721,28 @@ export function mountLayout(root: HTMLElement): void {
     },
   ];
 
+  function applySidebarVisible(visible: boolean): void {
+    sidebarVisible = visible;
+    root.classList.toggle("left-collapsed", !visible);
+  }
+
+  function applyRightVisible(visible: boolean): void {
+    rightVisible = visible;
+    backlinksPanel.classList.toggle("is-hidden", !visible);
+    root.classList.toggle("right-collapsed", !visible);
+    if (visible) {
+      renderRightPanel();
+    }
+  }
+
   function toggleSidebar(): void {
-    sidebarVisible = !sidebarVisible;
-    root.classList.toggle("left-collapsed", !sidebarVisible);
+    applySidebarVisible(!sidebarVisible);
+    scheduleSessionSave();
   }
 
   function toggleRightPanel(): void {
-    rightVisible = !rightVisible;
-    backlinksPanel.classList.toggle("is-hidden", !rightVisible);
-    root.classList.toggle("right-collapsed", !rightVisible);
-    if (rightVisible) {
-      renderRightPanel();
-    }
+    applyRightVisible(!rightVisible);
+    scheduleSessionSave();
   }
 
   /** Opens the right panel on the backlinks view (status-bar shortcut). */
@@ -4198,6 +4214,14 @@ export function mountLayout(root: HTMLElement): void {
     if (view !== null) {
       rightView = view;
       renderRightPanel();
+    }
+    const left = session?.leftVisible ?? uiState.leftVisible;
+    if (left !== null) {
+      applySidebarVisible(left);
+    }
+    const right = session?.rightVisible ?? uiState.rightVisible;
+    if (right !== null) {
+      applyRightVisible(right);
     }
   }
 
