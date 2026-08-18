@@ -59,6 +59,7 @@ import {
 } from "../lib/vault";
 import {
   buildFolderTree,
+  collapsedByDefault,
   relativePath,
   type TreeNode,
 } from "../lib/folderTree";
@@ -77,6 +78,8 @@ import {
   moveTab,
   newEmptyTab,
   openPath as openTabPath,
+  peekBack,
+  peekForward,
   renameTabPath,
   setPinned,
   type PanelSizes,
@@ -156,7 +159,16 @@ export function mountLayout(root: HTMLElement): void {
   searchButton.className = "view-header-button";
   searchButton.append(createIcon("search"));
   searchButton.addEventListener("click", () => toggleSearch());
-  sidebarHeader.append(openFileButton, openFolderButton, searchButton);
+  // Collapse/expand every folder of the vault tree (vault mode only).
+  const collapseAllButton = document.createElement("button");
+  collapseAllButton.className = "view-header-button is-hidden";
+  collapseAllButton.addEventListener("click", () => toggleCollapseAll());
+  sidebarHeader.append(
+    openFileButton,
+    openFolderButton,
+    searchButton,
+    collapseAllButton,
+  );
   sidebar.append(sidebarHeader);
 
   const sidebarFiles = document.createElement("div");
@@ -225,6 +237,8 @@ export function mountLayout(root: HTMLElement): void {
     welcome: HTMLElement;
     editorHost: HTMLElement;
     emptyTabView: HTMLElement;
+    imageView: HTMLElement;
+    imageEl: HTMLImageElement;
     editor: EditorHandle;
     readingView: ReadingViewHandle;
     openedPath: string | null;
@@ -246,6 +260,8 @@ export function mountLayout(root: HTMLElement): void {
   let welcome!: HTMLElement;
   let editorHost!: HTMLElement;
   let emptyTabView!: HTMLElement;
+  let imageView!: HTMLElement;
+  let imageEl!: HTMLImageElement;
   let editor!: EditorHandle;
   let readingView!: ReadingViewHandle;
 
@@ -266,11 +282,33 @@ export function mountLayout(root: HTMLElement): void {
     const back = document.createElement("button");
     back.className = "view-header-button";
     back.append(createIcon("arrow-left"));
-    back.addEventListener("click", () => void navigateHistory(-1));
+    // Ctrl/Cmd+click (and middle-click) opens the history entry in a
+    // new tab instead of navigating, like Obsidian.
+    back.addEventListener("click", (event) =>
+      event.ctrlKey || event.metaKey
+        ? void openHistoryInNewTab(-1)
+        : void navigateHistory(-1),
+    );
+    back.addEventListener("auxclick", (event) => {
+      if (event.button === 1) {
+        event.preventDefault();
+        void openHistoryInNewTab(-1);
+      }
+    });
     const forward = document.createElement("button");
     forward.className = "view-header-button";
     forward.append(createIcon("arrow-right"));
-    forward.addEventListener("click", () => void navigateHistory(1));
+    forward.addEventListener("click", (event) =>
+      event.ctrlKey || event.metaKey
+        ? void openHistoryInNewTab(1)
+        : void navigateHistory(1),
+    );
+    forward.addEventListener("auxclick", (event) => {
+      if (event.button === 1) {
+        event.preventDefault();
+        void openHistoryInNewTab(1);
+      }
+    });
     navGroup.append(back, forward);
     const title = document.createElement("span");
     title.className = "view-title";
@@ -342,9 +380,15 @@ export function mountLayout(root: HTMLElement): void {
         }
       }),
     );
+    // Read-only image view (milestone 32): a tab holding an image file
+    // renders it here instead of the editor.
+    const paneImageView = document.createElement("div");
+    paneImageView.className = "image-view is-hidden";
+    const paneImageEl = document.createElement("img");
+    paneImageView.append(paneImageEl);
     const paneEditor = createPaneEditor(host);
     const paneReading = createPaneReading();
-    body.append(welcomeEl, host, emptyView, paneReading.element);
+    body.append(welcomeEl, host, emptyView, paneImageView, paneReading.element);
     root.append(header, paneFileBar, body);
 
     // Interacting anywhere in a pane makes it the active one — in the
@@ -374,6 +418,8 @@ export function mountLayout(root: HTMLElement): void {
       welcome: welcomeEl,
       editorHost: host,
       emptyTabView: emptyView,
+      imageView: paneImageView,
+      imageEl: paneImageEl,
       editor: paneEditor,
       readingView: paneReading,
       openedPath: null,
@@ -408,6 +454,8 @@ export function mountLayout(root: HTMLElement): void {
     welcome = ui.welcome;
     editorHost = ui.editorHost;
     emptyTabView = ui.emptyTabView;
+    imageView = ui.imageView;
+    imageEl = ui.imageEl;
     editor = ui.editor;
     readingView = ui.readingView;
     openedPath = ui.openedPath;
@@ -436,10 +484,7 @@ export function mountLayout(root: HTMLElement): void {
     // Status bar and right panel follow the active pane. The tab bars
     // themselves are not rebuilt here: a rebuild mid-mousedown would
     // detach the element the user is clicking.
-    setCounts(editor.getDoc());
-    modeButton.textContent = t(
-      currentMode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
-    );
+    refreshStatusChrome();
     updateNavButtons();
     renderBacklinks();
     scheduleSessionSave();
@@ -587,6 +632,9 @@ export function mountLayout(root: HTMLElement): void {
   // on every file open (markers are picked up on folder changes).
   let vaultProbeBase: string | null = null;
   const collapsedDirs = new Set<string>();
+  // Whether the fold state came from the vault session or the user;
+  // false = compute the smart default on the next vault render.
+  let foldStateKnown = false;
   const windowLabel = getCurrentWindow().label;
   const isMainWindow = windowLabel === "main";
   // Per-vault sessions: the scope this window belongs to. Set only by
@@ -1015,20 +1063,34 @@ export function mountLayout(root: HTMLElement): void {
       tabModes.set(id, mode);
     }
     const editing = mode === "edit";
+    imageView.classList.add("is-hidden");
     editorHost.classList.toggle("is-hidden", !editing);
     readingView.element.classList.toggle("is-hidden", editing);
-    modeButton.textContent = t(
-      editing ? "statusBar.mode.edit" : "statusBar.mode.read",
-    );
+    setStatusMode(editing ? "edit" : "read");
     modeHeaderButton.replaceChildren(
       createIcon(editing ? "book-open" : "pencil"),
     );
     scheduleSessionSave();
   }
 
+  /**
+   * Status-bar mode label and header toggle: hidden for image tabs
+   * (nothing to switch), the mode name otherwise.
+   */
+  function setStatusMode(mode: EditorModeSetting | "image"): void {
+    const image = mode === "image";
+    modeButton.hidden = image;
+    modeHeaderButton.hidden = image;
+    if (!image) {
+      modeButton.textContent = t(
+        mode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
+      );
+    }
+  }
+
   // --- Tabs ---
 
-  /** Session snapshot: panes, tabs, modes, panel sizes and right view. */
+  /** Session snapshot: panes, tabs, modes, layout and fold state. */
   function snapshotSession() {
     splitState = withWorkspace(splitState, boundPaneId, tabsState);
     pruneTabState();
@@ -1037,6 +1099,7 @@ export function mountLayout(root: HTMLElement): void {
       (tab) => tabModes.get(tab.id) ?? getSettings().editor.defaultMode,
       panelSizes,
       rightView,
+      foldStateKnown ? [...collapsedDirs] : null,
     );
   }
 
@@ -1126,6 +1189,9 @@ export function mountLayout(root: HTMLElement): void {
     if (openedPath === null) {
       return;
     }
+    if (isImageTarget(openedPath)) {
+      return; // nothing of the editor's belongs to an image tab
+    }
     fileFolds.set(normalizePath(openedPath), editor.getFolds());
     const id = activeTabId();
     if (id !== null) {
@@ -1166,11 +1232,17 @@ export function mountLayout(root: HTMLElement): void {
         }
         const name = document.createElement("span");
         name.className = "workspace-tab-name";
+        const image = tab.path !== null && isImageTarget(tab.path);
         name.textContent =
           tab.path === null
             ? t("tabs.newTab")
-            : basename(tab.path).replace(/\.md$/i, "");
+            : image
+              ? imageBaseName(tab.path)
+              : basename(tab.path).replace(/\.md$/i, "");
         el.append(name);
+        if (image && tab.path !== null) {
+          el.append(extensionChip(basename(tab.path)));
+        }
         if (!tab.pinned) {
           const close = document.createElement("button");
           close.className = "workspace-tab-close";
@@ -1285,6 +1357,9 @@ export function mountLayout(root: HTMLElement): void {
 
   /** Applies the active tab's own mode, cursor and scroll. */
   async function applyActiveTabView(): Promise<void> {
+    if (openedPath !== null && isImageTarget(openedPath)) {
+      return; // a twin image tab shares the same static view
+    }
     const id = activeTabId();
     const mode =
       (id !== null ? tabModes.get(id) : undefined) ??
@@ -1323,6 +1398,8 @@ export function mountLayout(root: HTMLElement): void {
     editor.setDoc("");
     editorHost.classList.add("is-hidden");
     readingView.element.classList.add("is-hidden");
+    imageView.classList.add("is-hidden");
+    setStatusMode(currentMode);
     welcome.remove();
     emptyTabView.classList.remove("is-hidden");
     fileBar.classList.remove("is-hidden");
@@ -1447,10 +1524,7 @@ export function mountLayout(root: HTMLElement): void {
         paneId === splitState.activePane,
       );
     }
-    setCounts(editor.getDoc());
-    modeButton.textContent = t(
-      currentMode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
-    );
+    refreshStatusChrome();
     renderBacklinks();
     renderTabs();
     scheduleSessionSave();
@@ -1560,6 +1634,19 @@ export function mountLayout(root: HTMLElement): void {
     const { canBack, canForward } = historyState(tabsState);
     navBackButton.disabled = !canBack;
     navForwardButton.disabled = !canForward;
+  }
+
+  /**
+   * The history entry a back/forward step would reach, opened in a new
+   * tab; the current tab's history stays untouched.
+   */
+  async function openHistoryInNewTab(direction: -1 | 1): Promise<void> {
+    const path =
+      direction === -1 ? peekBack(tabsState) : peekForward(tabsState);
+    if (path !== null) {
+      hideHoverPreview();
+      await openFile(path, { newTab: true });
+    }
   }
 
   async function activateTab(index: number): Promise<void> {
@@ -1902,7 +1989,7 @@ export function mountLayout(root: HTMLElement): void {
    */
   async function toggleMode(): Promise<void> {
     hideHoverPreview();
-    if (openedPath === null) {
+    if (openedPath === null || isImageTarget(openedPath)) {
       return;
     }
     const scroller = editorHost.querySelector(".cm-scroller");
@@ -1942,6 +2029,18 @@ export function mountLayout(root: HTMLElement): void {
     });
   }
 
+  /** Counts and mode chrome for the active tab; blank for images. */
+  function refreshStatusChrome(): void {
+    if (openedPath !== null && isImageTarget(openedPath)) {
+      wordCount.textContent = "";
+      charCount.textContent = "";
+      setStatusMode("image");
+    } else {
+      setCounts(editor.getDoc());
+      setStatusMode(currentMode);
+    }
+  }
+
   function setStatusError(message: string | null): void {
     statusError.textContent = message ?? "";
   }
@@ -1954,7 +2053,8 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   async function saveNow(): Promise<void> {
-    if (openedPath === null) {
+    // Never let the buffer editor write over an image tab's file.
+    if (openedPath === null || isImageTarget(openedPath)) {
       return;
     }
     autosave.cancel();
@@ -2429,27 +2529,52 @@ export function mountLayout(root: HTMLElement): void {
     } else {
       renderBacklinks();
     }
-    if (markdownFiles.length === 0) {
+    if (markdownFiles.length === 0 && folderImages.length === 0) {
       setListMessage(t("sidebar.emptyFolder"));
       return;
     }
     if (vaultRoot === null) {
+      // Notes and images interleave alphabetically, like Obsidian.
+      const listed = [...markdownFiles, ...folderImages].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
       fileList.replaceChildren(
-        ...markdownFiles.map((entry) => fileListItem(entry.path, entry.name)),
+        ...listed.map((entry) => fileListItem(entry.path, entry.name)),
       );
     } else {
       vaultTree = buildFolderTree(
         vaultRoot,
         entries.filter(
           (entry) =>
-            entry.isDir || entry.name.toLowerCase().endsWith(".md"),
+            entry.isDir ||
+            entry.name.toLowerCase().endsWith(".md") ||
+            isImageTarget(entry.name),
         ),
       );
+      if (!foldStateKnown) {
+        // First look at this vault: noise branches (no notes, no
+        // images anywhere below) start collapsed.
+        collapsedDirs.clear();
+        for (const dir of collapsedByDefault(vaultTree)) {
+          collapsedDirs.add(normalizePath(dir));
+        }
+        foldStateKnown = true;
+      }
       renderVaultTree();
     }
+    collapseAllButton.classList.toggle("is-hidden", vaultRoot === null);
+    updateCollapseAllButton();
   }
 
-  /** Sidebar entry for one note (flat list and vault tree share it). */
+  /** Uppercase extension chip for image entries ("JPG", "PNG"…). */
+  function extensionChip(name: string): HTMLSpanElement {
+    const chip = document.createElement("span");
+    chip.className = "file-item-chip";
+    chip.textContent = name.replace(/^.*\./, "").toUpperCase();
+    return chip;
+  }
+
+  /** Sidebar entry for one file (flat list and vault tree share it). */
   function fileListItem(path: string, name: string): HTMLLIElement {
     const item = document.createElement("li");
     item.className = "file-item";
@@ -2457,7 +2582,14 @@ export function mountLayout(root: HTMLElement): void {
       "is-active",
       openedPath !== null && samePath(path, openedPath),
     );
-    item.textContent = name.replace(/\.md$/i, "");
+    if (isImageTarget(name)) {
+      const label = document.createElement("span");
+      label.className = "file-item-name";
+      label.textContent = name.replace(/\.[^.]+$/, "");
+      item.append(label, extensionChip(name));
+    } else {
+      item.textContent = name.replace(/\.md$/i, "");
+    }
     item.addEventListener("click", (event) =>
       void openFile(path, {
         newTab: event.ctrlKey || event.metaKey,
@@ -2502,7 +2634,10 @@ export function mountLayout(root: HTMLElement): void {
           } else {
             collapsedDirs.add(key);
           }
+          foldStateKnown = true;
           renderVaultTree();
+          updateCollapseAllButton();
+          scheduleSessionSave();
         });
         item.append(row);
         if (!collapsed && node.children.length > 0) {
@@ -2514,6 +2649,66 @@ export function mountLayout(root: HTMLElement): void {
         return item;
       });
     fileList.replaceChildren(...render(vaultTree));
+  }
+
+  /** Every folder path of the vault tree, any depth. */
+  function collectTreeDirs(nodes: TreeNode[]): string[] {
+    const dirs: string[] = [];
+    const walk = (list: TreeNode[]): void => {
+      for (const node of list) {
+        if (node.isDir) {
+          dirs.push(node.path);
+          walk(node.children);
+        }
+      }
+    };
+    walk(nodes);
+    return dirs;
+  }
+
+  /** Collapses every folder, or expands them all when none is open. */
+  function toggleCollapseAll(): void {
+    const dirs = collectTreeDirs(vaultTree);
+    const anyExpanded = dirs.some(
+      (dir) => !collapsedDirs.has(normalizePath(dir)),
+    );
+    collapsedDirs.clear();
+    if (anyExpanded) {
+      for (const dir of dirs) {
+        collapsedDirs.add(normalizePath(dir));
+      }
+    }
+    foldStateKnown = true;
+    renderVaultTree();
+    updateCollapseAllButton();
+    scheduleSessionSave();
+  }
+
+  /** Icon and tooltip follow what a click would do next. */
+  function updateCollapseAllButton(): void {
+    const dirs = collectTreeDirs(vaultTree);
+    const anyExpanded = dirs.some(
+      (dir) => !collapsedDirs.has(normalizePath(dir)),
+    );
+    const label = t(anyExpanded ? "sidebar.collapseAll" : "sidebar.expandAll");
+    collapseAllButton.replaceChildren(
+      createIcon(anyExpanded ? "chevrons-down-up" : "chevrons-up-down"),
+    );
+    collapseAllButton.title = label;
+    collapseAllButton.setAttribute("aria-label", label);
+  }
+
+  /** Fold state from the vault session; null = smart default later. */
+  function applyRestoredFoldState(session: SessionData | null): void {
+    collapsedDirs.clear();
+    if (session !== null && session.collapsed !== null) {
+      for (const dir of session.collapsed) {
+        collapsedDirs.add(normalizePath(dir));
+      }
+      foldStateKnown = true;
+    } else {
+      foldStateKnown = false;
+    }
   }
 
   async function openWikilink(target: string, newTab = false): Promise<void> {
@@ -2583,6 +2778,9 @@ export function mountLayout(root: HTMLElement): void {
 
   /** Loads `path` into the workspace view; false when reading fails. */
   async function loadFile(path: string): Promise<boolean> {
+    if (isImageTarget(path)) {
+      return loadImageFile(path);
+    }
     let contents;
     try {
       contents = await readFile(path);
@@ -2654,6 +2852,41 @@ export function mountLayout(root: HTMLElement): void {
       // A rendering failure must never leave the view half-open.
       setStatusError(t("error.openFile", { error: String(error) }));
     }
+    renderTabs();
+    renderBacklinks();
+    scheduleSessionSave();
+    return true;
+  }
+
+  /** Image file name without its extension, for titles and labels. */
+  function imageBaseName(path: string): string {
+    return basename(path).replace(/\.[^.]+$/, "");
+  }
+
+  /**
+   * Read-only image tab (milestone 32): the file renders in the pane's
+   * image view via the asset protocol; the text editor never sees it.
+   */
+  async function loadImageFile(path: string): Promise<boolean> {
+    autosave.cancel();
+    openedPath = path;
+    setStatusError(null);
+    welcome.remove();
+    emptyTabView.classList.add("is-hidden");
+    fileBar.classList.remove("is-hidden");
+    const name = imageBaseName(path);
+    viewTitle.textContent = name;
+    setInlineTitle(null);
+    await refreshFolder(dirname(path));
+    void getCurrentWindow()
+      .setTitle(`${basename(vaultRoot ?? dirname(path))} - ${name}`)
+      .catch(() => undefined);
+    editorHost.classList.add("is-hidden");
+    readingView.element.classList.add("is-hidden");
+    imageView.classList.remove("is-hidden");
+    imageEl.src = convertFileSrc(path);
+    imageEl.alt = name;
+    refreshStatusChrome();
     renderTabs();
     renderBacklinks();
     scheduleSessionSave();
@@ -2835,7 +3068,9 @@ export function mountLayout(root: HTMLElement): void {
     editor.setDoc("");
     editorHost.classList.add("is-hidden");
     readingView.element.classList.add("is-hidden");
+    imageView.classList.add("is-hidden");
     emptyTabView.classList.add("is-hidden");
+    setStatusMode(currentMode);
     if (!welcome.isConnected) {
       workspaceBody.prepend(welcome);
     }
@@ -2865,7 +3100,9 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   async function renameFromMenu(path: string): Promise<void> {
-    const current = basename(path).replace(/\.md$/i, "");
+    const current = isImageTarget(path)
+      ? imageBaseName(path)
+      : basename(path).replace(/\.md$/i, "");
     const name = await openPromptModal({
       title: t("menu.rename"),
       initial: current,
@@ -2879,9 +3116,15 @@ export function mountLayout(root: HTMLElement): void {
 
   /** Renames `path` to `name`, repointing links (menu + inline title). */
   async function renameNoteTo(path: string, name: string): Promise<void> {
+    // Images keep their own extension; notes default to .md.
+    const extension = isImageTarget(path)
+      ? basename(path).replace(/^.*(?=\.)/, "")
+      : ".md";
     const target = joinPath(
       dirname(path),
-      name.toLowerCase().endsWith(".md") ? name : `${name}.md`,
+      name.toLowerCase().endsWith(extension.toLowerCase())
+        ? name
+        : `${name}${extension}`,
     );
     // Files linking here, resolved with the pre-rename index and listing.
     const linkers =
@@ -3098,19 +3341,24 @@ export function mountLayout(root: HTMLElement): void {
 
   function openFileMenu(x: number, y: number, path: string): void {
     const isOpenFile = openedPath !== null && samePath(path, openedPath);
+    const image = isImageTarget(path);
     openContextMenu(x, y, [
       {
         label: t("menu.rename"),
         icon: "pencil",
         onClick: () => void renameFromMenu(path),
       },
-      ...(isOpenFile
+      ...(isOpenFile && !image
         ? [
             {
               label: t("menu.addProperty"),
               icon: "plus" as const,
               onClick: () => editor.addProperty(),
             },
+          ]
+        : []),
+      ...(isOpenFile
+        ? [
             {
               label: t("tabs.splitRight"),
               icon: "separator-vertical" as const,
@@ -3149,11 +3397,15 @@ export function mountLayout(root: HTMLElement): void {
             setStatusError(t("error.openFile", { error: String(error) })),
           ),
       },
-      {
-        label: t("menu.exportPdf"),
-        icon: "file-down",
-        onClick: () => void exportPdfFromMenu(path),
-      },
+      ...(image
+        ? []
+        : [
+            {
+              label: t("menu.exportPdf"),
+              icon: "file-down" as const,
+              onClick: () => void exportPdfFromMenu(path),
+            },
+          ]),
       "separator",
       {
         label: t("menu.delete"),
@@ -3164,7 +3416,6 @@ export function mountLayout(root: HTMLElement): void {
     ]);
   }
 
-  /** Opens a folder without a file: welcome view over its file list. */
   /** Explicit folder open: routes to the folder's vault window. */
   async function openFolder(path: string): Promise<void> {
     setStatusError(null);
@@ -3529,6 +3780,7 @@ export function mountLayout(root: HTMLElement): void {
     openFolderButton.setAttribute("aria-label", t("sidebar.openFolder"));
     searchButton.title = t("search.title");
     searchButton.setAttribute("aria-label", t("search.title"));
+    updateCollapseAllButton();
     collapseLeftButton.title = t("workspace.collapseLeft");
     collapseRightButton.title = t("workspace.collapseRight");
     settingsButton.title = t("settings.title");
@@ -3539,13 +3791,7 @@ export function mountLayout(root: HTMLElement): void {
     statusPalette.setAttribute("aria-label", t("command.commandPalette"));
     statusSwitcher.title = t("command.quickSwitcher");
     statusSwitcher.setAttribute("aria-label", t("command.quickSwitcher"));
-    modeButton.textContent = t(
-      currentMode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
-    );
-    wordCount.textContent = t("statusBar.words", { count: lastWordCount });
-    charCount.textContent = t("statusBar.characters", {
-      count: lastCharCount,
-    });
+    refreshStatusChrome();
     for (const ui of paneUis.values()) {
       ui.welcome.textContent = t("workspace.welcome");
       ui.modeHeaderButton.title = t("command.toggleReadingMode");
@@ -3585,6 +3831,12 @@ export function mountLayout(root: HTMLElement): void {
     if (openedPath === null || autosave.isDirty()) {
       return;
     }
+    if (isImageTarget(openedPath)) {
+      // The webview caches asset URLs; re-set the source so an edited
+      // image repaints.
+      imageEl.src = convertFileSrc(openedPath) + `?v=${Date.now()}`;
+      return;
+    }
     let contents: string;
     try {
       contents = await readFile(openedPath);
@@ -3595,12 +3847,22 @@ export function mountLayout(root: HTMLElement): void {
     if (contents === editor.getDoc()) {
       return;
     }
+    // The reader must stay where they are: anchor in document space
+    // before the reload and re-apply after — a full-document replace
+    // (and the reading re-render) would otherwise land at the top.
+    const anchor =
+      currentMode === "edit" ? editor.topVisiblePos() : readingTopAnchor();
     reloadingFromDisk = true;
     editor.reloadDoc(contents);
     reloadingFromDisk = false;
     setCounts(contents);
     if (currentMode === "read") {
-      readingView.render(contents);
+      await readingView.render(contents);
+      if (anchor !== null) {
+        scrollReadingToAnchor(anchor);
+      }
+    } else if (anchor !== null) {
+      scrollEditorToAnchor(anchor);
     }
     mirrorToTwins(openedPath, contents);
   }
@@ -3736,7 +3998,9 @@ export function mountLayout(root: HTMLElement): void {
       }
       uiState = (await loadUiState()) ?? emptyUiState();
       const scope = await resolveScopeOf(openParam, "file");
-      applyRestoredGeometry(await loadVaultSession(scope));
+      const session = await loadVaultSession(scope);
+      applyRestoredGeometry(session);
+      applyRestoredFoldState(session);
       setHomeScope(scope);
       await openFile(openParam);
       return;
@@ -3814,6 +4078,7 @@ export function mountLayout(root: HTMLElement): void {
     setHomeScope(scope);
     const session = await loadVaultSession(scope);
     applyRestoredGeometry(session);
+    applyRestoredFoldState(session);
     const restored =
       session !== null && getSettings().files.restoreSession
         ? await restoreSessionPanes(session)
@@ -3853,10 +4118,17 @@ export function mountLayout(root: HTMLElement): void {
     for (const sessionPane of session.panes) {
       const tabs: Tab[] = [];
       for (const tab of sessionPane.tabs) {
-        try {
-          await readFile(tab.path);
-        } catch {
-          continue; // gone since last session
+        // Images cannot be read as text: probe them via the listing.
+        if (isImageTarget(tab.path)) {
+          if (!(await folderContains(dirname(tab.path), basename(tab.path)))) {
+            continue; // gone since last session
+          }
+        } else {
+          try {
+            await readFile(tab.path);
+          } catch {
+            continue; // gone since last session
+          }
         }
         const restored: Tab = {
           ...makeTab(tab.path, tab.pinned),

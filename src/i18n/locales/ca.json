@@ -87,6 +87,8 @@
   "dialog.openFolder.title": "Obre una carpeta",
   "command.globalSearch": "Cerca global",
   "search.title": "Cerca",
+  "sidebar.collapseAll": "Col·lapsa-ho tot",
+  "sidebar.expandAll": "Expandeix-ho tot",
   "search.close": "Tanca la cerca",
   "search.placeholder": "Cerca a la carpeta…",
   "search.results": "{count} resultats",

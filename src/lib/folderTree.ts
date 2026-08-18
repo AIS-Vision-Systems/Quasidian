@@ -43,6 +43,35 @@ function sortChildren(nodes: TreeNode[]): void {
 }
 
 /**
+ * Paths of the folders whose subtree holds no file at all — since the
+ * tree is built from managed entries only (.md and images), these are
+ * the noise branches (code, assets…) that should start collapsed when
+ * a vault opens without a remembered fold state.
+ */
+export function collapsedByDefault(nodes: TreeNode[]): string[] {
+  const collapsed: string[] = [];
+  const hasFiles = (node: TreeNode): boolean => {
+    if (!node.isDir) {
+      return true;
+    }
+    let found = false;
+    for (const child of node.children) {
+      if (hasFiles(child)) {
+        found = true;
+      }
+    }
+    if (!found) {
+      collapsed.push(node.path);
+    }
+    return found;
+  };
+  for (const node of nodes) {
+    hasFiles(node);
+  }
+  return collapsed;
+}
+
+/**
  * Nests `entries` (any order) under their parent folders relative to
  * `root`. Entries outside `root` are ignored; missing intermediate
  * folders are created implicitly.

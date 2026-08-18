@@ -180,6 +180,26 @@ describe("session snapshot (multi-pane)", () => {
     expect(parseSession('{"panes": [{"tabs": []}]}')).toBeNull();
   });
 
+  it("round-trips the collapsed folder list and rejects junk in it", () => {
+    const session = serializeSession(
+      singlePane(workspace(["a.md"])),
+      () => "edit",
+      null,
+      null,
+      ["C:/vault/src", "C:/vault/out"],
+    );
+    const parsed = parseSession(JSON.stringify(session));
+    expect(parsed!.collapsed).toEqual(["C:/vault/src", "C:/vault/out"]);
+    const junk = parseSession(
+      '{"panes": [{"tabs": [{"path": "a.md"}], "active": 0}], "collapsed": [1, "", "ok"]}',
+    );
+    expect(junk!.collapsed).toEqual(["ok"]);
+    const absent = parseSession(
+      '{"panes": [{"tabs": [{"path": "a.md"}], "active": 0}]}',
+    );
+    expect(absent!.collapsed).toBeNull();
+  });
+
   it("ignores unknown fields such as the per-vault scope", () => {
     // Per-vault session files embed a `scope` field next to the
     // SessionData shape; parseSession must keep accepting them.

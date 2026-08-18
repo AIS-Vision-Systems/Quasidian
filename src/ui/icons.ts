@@ -17,6 +17,8 @@ export type IconName =
   | "panel-right"
   | "chevron-down"
   | "chevron-right"
+  | "chevrons-down-up"
+  | "chevrons-up-down"
   | "terminal"
   | "file-search"
   | "trash"
@@ -85,6 +87,8 @@ const ICON_PATHS: Record<IconName, string> = {
     '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
   "chevron-down": '<path d="m6 9 6 6 6-6"/>',
   "chevron-right": '<path d="m9 18 6-6-6-6"/>',
+  "chevrons-down-up": '<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/>',
+  "chevrons-up-down": '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
   terminal:
     '<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>',
   "file-search":

@@ -87,6 +87,8 @@
   "dialog.openFolder.title": "Abrir una carpeta",
   "command.globalSearch": "Búsqueda global",
   "search.title": "Búsqueda",
+  "sidebar.collapseAll": "Contraer todo",
+  "sidebar.expandAll": "Expandir todo",
   "search.close": "Cerrar la búsqueda",
   "search.placeholder": "Buscar en la carpeta…",
   "search.results": "{count} resultados",

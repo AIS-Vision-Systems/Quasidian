@@ -209,6 +209,56 @@ body {
   color: var(--text-normal);
 }
 
+.view-header-button.is-hidden {
+  display: none;
+}
+
+/* Image entries: name plus a small uppercase extension chip. */
+.file-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-item-chip {
+  margin-left: 8px;
+  flex-shrink: 0;
+  float: right;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background-color: var(--background-modifier-hover);
+  color: var(--text-faint);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+}
+
+.workspace-tab .file-item-chip {
+  float: none;
+  margin-left: 2px;
+}
+
+/* Read-only image tabs (milestone 32). */
+.image-view {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 24px;
+}
+
+.image-view.is-hidden {
+  display: none;
+}
+
+.image-view img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 .sidebar-view {
   display: flex;
   flex-direction: column;
