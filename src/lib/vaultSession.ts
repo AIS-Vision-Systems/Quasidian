@@ -94,3 +94,109 @@ export function parseUiState(json: string): UiState {
 export function serializeUiState(state: UiState): string {
   return JSON.stringify(state, null, 2);
 }
+
+// --- Window registry and routing (milestone 31) ---
+
+/** One window's published scope, as stored in the shared registry. */
+export interface ScopeEntry {
+  label: string;
+  key: string;
+  /** Scope root in display case (spawned windows need it verbatim). */
+  root: string;
+  /** Last time the window gained focus or published; newest wins. */
+  focusedAt: number;
+}
+
+/** Parses one registry value; null when it is not a valid entry. */
+export function parseScopeEntry(label: string, json: string): ScopeEntry | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+  const entry = raw as Record<string, unknown>;
+  if (
+    typeof entry.key !== "string" ||
+    entry.key === "" ||
+    typeof entry.root !== "string" ||
+    entry.root === "" ||
+    typeof entry.focusedAt !== "number" ||
+    !Number.isFinite(entry.focusedAt)
+  ) {
+    return null;
+  }
+  return { label, key: entry.key, root: entry.root, focusedAt: entry.focusedAt };
+}
+
+export type RouteDecision =
+  | { action: "in-place" }
+  | { action: "focus"; label: string }
+  | { action: "spawn" };
+
+/**
+ * Where an explicit open of `targetKey` should land: this window (its
+ * own scope, or none adopted yet), the live window already holding the
+ * scope (the most recently focused one when several), or a new window.
+ * Registry entries of dead windows (crashes) are ignored via
+ * `liveLabels`.
+ */
+export function routeDecision(
+  targetKey: string,
+  homeKey: string | null,
+  entries: readonly ScopeEntry[],
+  liveLabels: readonly string[],
+  selfLabel: string,
+): RouteDecision {
+  if (homeKey === null || homeKey === targetKey) {
+    return { action: "in-place" };
+  }
+  const holder = latestForKey(entries, targetKey, liveLabels, selfLabel);
+  return holder === null
+    ? { action: "spawn" }
+    : { action: "focus", label: holder };
+}
+
+/**
+ * Which window persists the tab session of `key`: the most recently
+ * focused live one — so a stray second window on the same vault never
+ * clobbers the session of the one the user works in. Null when no
+ * entry qualifies (the caller saves). Omitting `liveLabels` trusts the
+ * registry as-is (the synchronous close path).
+ */
+export function sessionOwner(
+  entries: readonly ScopeEntry[],
+  key: string,
+  liveLabels?: readonly string[],
+): string | null {
+  return latestForKey(entries, key, liveLabels ?? null, null);
+}
+
+/** Latest-focused entry for `key`, filtered and deterministic. */
+function latestForKey(
+  entries: readonly ScopeEntry[],
+  key: string,
+  liveLabels: readonly string[] | null,
+  excludeLabel: string | null,
+): string | null {
+  let best: ScopeEntry | null = null;
+  for (const entry of entries) {
+    if (entry.key !== key || entry.label === excludeLabel) {
+      continue;
+    }
+    if (liveLabels !== null && !liveLabels.includes(entry.label)) {
+      continue;
+    }
+    if (
+      best === null ||
+      entry.focusedAt > best.focusedAt ||
+      (entry.focusedAt === best.focusedAt && entry.label > best.label)
+    ) {
+      best = entry;
+    }
+  }
+  return best?.label ?? null;
+}

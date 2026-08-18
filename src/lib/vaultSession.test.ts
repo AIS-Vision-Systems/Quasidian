@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   emptyUiState,
   fnv1a,
+  parseScopeEntry,
   parseUiState,
   resolveScope,
+  routeDecision,
   scopeKey,
   serializeUiState,
   sessionFileName,
+  sessionOwner,
+  type ScopeEntry,
 } from "./vaultSession";
 
 describe("fnv1a", () => {
@@ -90,5 +94,106 @@ describe("ui-state", () => {
       parseUiState('{"panels": {"left": "x"}, "rightView": "nope", "lastVault": ""}'),
     ).toEqual(emptyUiState());
     expect(parseUiState('{"lastVault": "C:/n"}').lastVault).toBe("C:/n");
+  });
+});
+
+describe("parseScopeEntry", () => {
+  it("round-trips a valid entry", () => {
+    const entry = parseScopeEntry(
+      "w1",
+      JSON.stringify({ key: "c:/notes", root: "C:/Notes", focusedAt: 42 }),
+    );
+    expect(entry).toEqual({
+      label: "w1",
+      key: "c:/notes",
+      root: "C:/Notes",
+      focusedAt: 42,
+    });
+  });
+
+  it("rejects garbage", () => {
+    expect(parseScopeEntry("w1", "not json")).toBeNull();
+    expect(parseScopeEntry("w1", "42")).toBeNull();
+    expect(parseScopeEntry("w1", '{"key": "", "root": "r", "focusedAt": 1}')).toBeNull();
+    expect(parseScopeEntry("w1", '{"key": "k", "root": "r"}')).toBeNull();
+  });
+});
+
+describe("routeDecision", () => {
+  const entry = (label: string, key: string, focusedAt: number): ScopeEntry => ({
+    label,
+    key,
+    root: key,
+    focusedAt,
+  });
+
+  it("opens in place in a scopeless window or inside the own scope", () => {
+    expect(routeDecision("c:/b", null, [], [], "main")).toEqual({
+      action: "in-place",
+    });
+    expect(routeDecision("c:/a", "c:/a", [entry("w1", "c:/a", 5)], ["w1"], "main")).toEqual({
+      action: "in-place",
+    });
+  });
+
+  it("focuses the live window already holding the scope", () => {
+    const entries = [entry("main", "c:/a", 1), entry("w1", "c:/b", 2)];
+    expect(routeDecision("c:/b", "c:/a", entries, ["main", "w1"], "main")).toEqual({
+      action: "focus",
+      label: "w1",
+    });
+  });
+
+  it("prefers the most recently focused of several holders", () => {
+    const entries = [entry("w1", "c:/b", 2), entry("w2", "c:/b", 7)];
+    expect(routeDecision("c:/b", "c:/a", entries, ["w1", "w2"], "main")).toEqual({
+      action: "focus",
+      label: "w2",
+    });
+  });
+
+  it("ignores stale entries of dead windows and spawns", () => {
+    const entries = [entry("w1", "c:/b", 9)];
+    expect(routeDecision("c:/b", "c:/a", entries, ["main"], "main")).toEqual({
+      action: "spawn",
+    });
+  });
+
+  it("never routes to itself", () => {
+    // A self entry with the target key would be inconsistent (homeKey
+    // differs); it must not produce a focus on this same window.
+    const entries = [entry("main", "c:/b", 9)];
+    expect(routeDecision("c:/b", "c:/a", entries, ["main"], "main")).toEqual({
+      action: "spawn",
+    });
+  });
+});
+
+describe("sessionOwner", () => {
+  const entry = (label: string, key: string, focusedAt: number): ScopeEntry => ({
+    label,
+    key,
+    root: key,
+    focusedAt,
+  });
+
+  it("is the most recently focused live window of the scope", () => {
+    const entries = [entry("main", "c:/a", 3), entry("w1", "c:/a", 8)];
+    expect(sessionOwner(entries, "c:/a", ["main", "w1"])).toBe("w1");
+    expect(sessionOwner(entries, "c:/a", ["main"])).toBe("main");
+  });
+
+  it("trusts the registry when no live list is given", () => {
+    const entries = [entry("main", "c:/a", 3), entry("w1", "c:/a", 8)];
+    expect(sessionOwner(entries, "c:/a")).toBe("w1");
+  });
+
+  it("is null when no entry matches the scope", () => {
+    expect(sessionOwner([entry("main", "c:/a", 3)], "c:/b")).toBeNull();
+  });
+
+  it("breaks focusedAt ties deterministically", () => {
+    const entries = [entry("w1", "c:/a", 5), entry("w2", "c:/a", 5)];
+    expect(sessionOwner(entries, "c:/a")).toBe("w2");
   });
 });
