@@ -64,6 +64,23 @@ function buildItem(
       }
     }
     element.append(submenu);
+    // The CSS places submenus to the right; near the window edge they
+    // must flip to the left (and shift up when they would run past the
+    // bottom). Measured on every hover: the menu may sit anywhere.
+    element.addEventListener("mouseenter", () => {
+      submenu.classList.remove("opens-left");
+      submenu.style.top = "";
+      submenu.style.display = "block";
+      const rect = submenu.getBoundingClientRect();
+      submenu.style.display = "";
+      if (rect.right > window.innerWidth - 8) {
+        submenu.classList.add("opens-left");
+      }
+      const overflowY = rect.bottom - (window.innerHeight - 8);
+      if (overflowY > 0) {
+        submenu.style.top = `${-5 - overflowY}px`;
+      }
+    });
   } else if (item.disabled !== true) {
     element.addEventListener("click", (event) => {
       event.stopPropagation();

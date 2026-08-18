@@ -127,6 +127,11 @@ body {
   top: -5px;
 }
 
+.context-menu-submenu.opens-left {
+  left: auto;
+  right: calc(100% - 4px);
+}
+
 .context-menu-item:hover > .context-menu-submenu {
   display: block;
 }
