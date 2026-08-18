@@ -1413,6 +1413,9 @@ body.is-readable-line-length .cm-editor .cm-content {
 .status-bar {
   grid-area: statusbar;
   display: flex;
+  /* Center vertically: spans (counts) and buttons (backlinks, mode)
+     place their text differently when stretched to the row height. */
+  align-items: center;
   justify-content: flex-end;
   gap: 16px;
   padding: 4px 12px;
