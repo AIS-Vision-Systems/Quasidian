@@ -163,9 +163,15 @@ export function mountLayout(root: HTMLElement): void {
   // Ctrl+click re-applies the smart fold, right-click lists all three.
   const collapseAllButton = document.createElement("button");
   collapseAllButton.className = "view-header-button is-hidden";
-  collapseAllButton.addEventListener("click", (event) =>
-    event.ctrlKey || event.metaKey ? applySmartFold() : toggleCollapseAll(),
-  );
+  collapseAllButton.addEventListener("click", (event) => {
+    if (event.ctrlKey || event.metaKey) {
+      applySmartFold();
+      // Ctrl is still down over the button: keep the preview up.
+      syncCollapseAllPreview(true);
+    } else {
+      toggleCollapseAll();
+    }
+  });
   collapseAllButton.addEventListener("contextmenu", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -187,11 +193,14 @@ export function mountLayout(root: HTMLElement): void {
       },
     ]);
   });
-  // Ctrl held while hovering announces the smart fold in the tooltip.
+  // Ctrl held while hovering previews the smart fold: the button shows
+  // the sparkles icon and its tooltip until Ctrl is released or the
+  // pointer leaves; then the state icon and tooltip come back.
   let collapseAllHovered = false;
-  const syncCollapseAllTooltip = (smart: boolean): void => {
+  const syncCollapseAllPreview = (smart: boolean): void => {
     if (smart) {
       const label = t("sidebar.smartFold");
+      collapseAllButton.replaceChildren(createIcon("sparkles"));
       collapseAllButton.title = label;
       collapseAllButton.setAttribute("aria-label", label);
     } else {
@@ -200,7 +209,7 @@ export function mountLayout(root: HTMLElement): void {
   };
   collapseAllButton.addEventListener("mouseenter", (event) => {
     collapseAllHovered = true;
-    syncCollapseAllTooltip(event.ctrlKey || event.metaKey);
+    syncCollapseAllPreview(event.ctrlKey || event.metaKey);
   });
   collapseAllButton.addEventListener("mouseleave", () => {
     collapseAllHovered = false;
@@ -208,12 +217,12 @@ export function mountLayout(root: HTMLElement): void {
   });
   window.addEventListener("keydown", (event) => {
     if (collapseAllHovered && (event.key === "Control" || event.key === "Meta")) {
-      syncCollapseAllTooltip(true);
+      syncCollapseAllPreview(true);
     }
   });
   window.addEventListener("keyup", (event) => {
     if (collapseAllHovered && (event.key === "Control" || event.key === "Meta")) {
-      syncCollapseAllTooltip(false);
+      syncCollapseAllPreview(false);
     }
   });
   sidebarHeader.append(
