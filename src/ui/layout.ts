@@ -1,8 +1,11 @@
 // App shell: sidebar with folder listing, CM6 editor, status bar.
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { homeDir } from "@tauri-apps/api/path";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import {
+  getAllWebviewWindows,
+  WebviewWindow,
+} from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -104,8 +107,12 @@ import {
 } from "../ipc/sessionStore";
 import {
   emptyUiState,
+  parseScopeEntry,
   resolveScope,
+  routeDecision,
   scopeOf,
+  sessionOwner,
+  type ScopeEntry,
   type ScopeInfo,
   type UiState,
 } from "../lib/vaultSession";
@@ -592,6 +599,93 @@ export function mountLayout(root: HTMLElement): void {
   const excludedVaultRoot: Promise<string | undefined> = homeDir().catch(
     () => undefined,
   );
+
+  // --- Cross-window scope registry (milestone 31) ---
+  // Every window publishes its home scope under its own localStorage
+  // key (shared origin across windows), so explicit opens can route to
+  // the window already holding a vault. One key per window: no writer
+  // ever races another. Entries of crashed windows are filtered by
+  // intersecting with the live window list.
+  const SCOPE_ENTRY_PREFIX = "qd-scope:";
+
+  function publishScope(): void {
+    if (homeScope === null) {
+      return;
+    }
+    try {
+      localStorage.setItem(
+        SCOPE_ENTRY_PREFIX + windowLabel,
+        JSON.stringify({
+          key: homeScope.key,
+          root: homeScope.root,
+          focusedAt: Date.now(),
+        }),
+      );
+    } catch {
+      // Registry is best-effort; routing degrades to spawning.
+    }
+  }
+
+  function clearScopeEntry(): void {
+    try {
+      localStorage.removeItem(SCOPE_ENTRY_PREFIX + windowLabel);
+    } catch {
+      // Best effort.
+    }
+  }
+
+  function queryScopes(): ScopeEntry[] {
+    const entries: ScopeEntry[] = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key === null || !key.startsWith(SCOPE_ENTRY_PREFIX)) {
+          continue;
+        }
+        const value = localStorage.getItem(key);
+        if (value === null) {
+          continue;
+        }
+        const entry = parseScopeEntry(
+          key.slice(SCOPE_ENTRY_PREFIX.length),
+          value,
+        );
+        if (entry !== null) {
+          entries.push(entry);
+        }
+      }
+    } catch {
+      // Best effort.
+    }
+    return entries;
+  }
+
+  async function liveWindowLabels(): Promise<string[]> {
+    try {
+      return (await getAllWebviewWindows()).map((win) => win.label);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Adopts `scope` as this window's vault and announces it. */
+  function setHomeScope(scope: ScopeInfo): void {
+    homeScope = scope;
+    publishScope();
+    uiState.lastVault = scope.root;
+    void saveUiState(uiState);
+  }
+
+  // Workspace mutations arriving from outside the UI (startup restore,
+  // routed opens, single-instance forwards) run strictly one after
+  // another: a routed file landing mid-restore must not interleave two
+  // async flows over the same split state.
+  let workspaceQueue: Promise<void> = Promise.resolve();
+  function enqueueWorkspace(task: () => Promise<void>): Promise<void> {
+    const next = workspaceQueue.then(task);
+    workspaceQueue = next.catch(() => undefined);
+    return next;
+  }
   // Global layout fallbacks + last-vault pointer (ui-state.json).
   let uiState: UiState = emptyUiState();
   let folderFiles: FolderFile[] = [];
@@ -978,12 +1072,25 @@ export function mountLayout(root: HTMLElement): void {
     }
     sessionSaveDebounce = setTimeout(() => {
       sessionSaveDebounce = null;
-      void persistSession();
+      void (async () =>
+        persistSession({
+          entries: queryScopes(),
+          live: await liveWindowLabels(),
+        }))();
     }, 300);
   }
 
-  /** Saves this vault's session and the global ui-state fallbacks. */
-  function persistSession(): Promise<void> {
+  /**
+   * Saves this vault's session and the global ui-state fallbacks. The
+   * `arbiter` snapshot elects one saver among windows sharing a scope:
+   * only the most recently focused one persists the tab session, so a
+   * stray second window (a moved-out tab) never clobbers it. Without
+   * an arbiter the tab session always saves.
+   */
+  function persistSession(arbiter?: {
+    entries: ScopeEntry[];
+    live?: readonly string[];
+  }): Promise<void> {
     // Never mirror an unset panel width over a stored fallback.
     if (panelSizes !== null) {
       uiState.panels = panelSizes;
@@ -994,7 +1101,13 @@ export function mountLayout(root: HTMLElement): void {
     }
     const saves = [saveUiState(uiState)];
     if (homeScope !== null) {
-      saves.push(saveVaultSession(homeScope, snapshotSession()));
+      const owner =
+        arbiter === undefined
+          ? null
+          : sessionOwner(arbiter.entries, homeScope.key, arbiter.live);
+      if (owner === null || owner === windowLabel) {
+        saves.push(saveVaultSession(homeScope, snapshotSession()));
+      }
     }
     return Promise.all(saves).then(() => undefined);
   }
@@ -1005,7 +1118,7 @@ export function mountLayout(root: HTMLElement): void {
       clearTimeout(sessionSaveDebounce);
       sessionSaveDebounce = null;
     }
-    return persistSession();
+    return persistSession({ entries: queryScopes() });
   }
 
   /** Saves the active tab's transient state (folds, scroll, buffer). */
@@ -1344,15 +1457,7 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   /** Opens a new app window; `path` (with `mode`) preloads a file. */
-  function spawnWindow(
-    label: string,
-    path: string | null,
-    mode?: EditorModeSetting,
-  ): void {
-    const query =
-      path === null
-        ? ""
-        : `?open=${encodeURIComponent(path)}${mode !== undefined ? `&mode=${mode}` : ""}`;
+  function spawnWindow(label: string, query: string): void {
     const spawned = new WebviewWindow(label, {
       url: `index.html${query}`,
       title: "Quasidian",
@@ -1398,7 +1503,11 @@ export function mountLayout(root: HTMLElement): void {
     // Flush pending edits so the new window reads the fresh contents.
     await stashCurrentTabState();
     const label = `w${Date.now().toString(36)}`;
-    spawnWindow(label, tab.path, tabModes.get(tab.id));
+    const mode = tabModes.get(tab.id);
+    spawnWindow(
+      label,
+      `?open=${encodeURIComponent(tab.path)}${mode !== undefined ? `&mode=${mode}` : ""}`,
+    );
     if (options?.duplicate !== true) {
       await closeTabAt(index);
     }
@@ -2586,24 +2695,116 @@ export function mountLayout(root: HTMLElement): void {
       filterName: t("dialog.openFile.markdownFilter"),
     });
     if (path !== null) {
-      await handleExplicitOpen(path);
+      await routeOpen("file", path);
     }
   }
 
   /**
-   * Explicit file open (dialog, OS double-click): a file of another
-   * vault switches this window to that vault's session; inside the
-   * current vault it just opens — selecting the tab if it exists.
+   * Explicit open (dialogs, OS double-click): lands in this window
+   * (own scope, or none adopted yet), in the live window already
+   * holding the target vault — focused, tab selected — or in a new
+   * window restoring that vault's session. Windows never mix vaults.
    */
-  async function handleExplicitOpen(path: string): Promise<void> {
-    const scope = await resolveScopeOf(path, "file");
-    if (homeScope !== null && homeScope.key === scope.key) {
-      await revealOrOpen(path);
+  async function routeOpen(
+    kind: "file" | "folder",
+    path: string,
+    opts?: { focusSelf?: boolean },
+  ): Promise<void> {
+    const target = await resolveScopeOf(path, kind);
+    const decision = routeDecision(
+      target.key,
+      homeScope?.key ?? null,
+      queryScopes(),
+      await liveWindowLabels(),
+      windowLabel,
+    );
+    if (decision.action === "in-place") {
+      if (homeScope !== null && homeScope.key === target.key) {
+        if (kind === "file") {
+          await revealOrOpen(path);
+        } else {
+          // Same vault: refresh the listing, the workspace stays.
+          await refreshFolder(target.root, { redetect: true });
+          renderBacklinks();
+        }
+      } else {
+        // A window without a vault adopts the target's session.
+        await switchToScope(target, kind === "file" ? { file: path } : {});
+      }
+      if (opts?.focusSelf === true) {
+        const self = getCurrentWindow();
+        await self.unminimize().catch(() => undefined);
+        await self.setFocus().catch(() => undefined);
+      }
       return;
     }
-    // Another vault — or a window without one yet: either way the
-    // file's vault session takes over this window.
-    await switchToScope(scope, { file: path });
+    if (decision.action === "focus") {
+      await focusAndSend(decision.label, kind, path);
+      return;
+    }
+    await spawnVaultWindow(target, kind, path);
+  }
+
+  /** Brings `label` to front and hands it the open to perform. */
+  async function focusAndSend(
+    label: string,
+    kind: "file" | "folder",
+    path: string,
+  ): Promise<void> {
+    const win = await WebviewWindow.getByLabel(label);
+    await win?.unminimize().catch(() => undefined);
+    await win?.setFocus().catch(() => undefined);
+    // `to` travels in the payload: plain listen() hears events for
+    // every target, so each receiver must drop what is not its own.
+    await emitTo(label, "routed-open", { to: label, kind, path }).catch(
+      () => undefined,
+    );
+  }
+
+  /**
+   * Two rapid opens into the same still-closed vault must not spawn
+   * two windows: the second waits for the first window to publish its
+   * scope, then routes to it.
+   */
+  const pendingSpawns = new Map<string, { label: string; at: number }>();
+
+  async function spawnVaultWindow(
+    target: ScopeInfo,
+    kind: "file" | "folder",
+    path: string,
+  ): Promise<void> {
+    const pending = pendingSpawns.get(target.key);
+    if (pending !== undefined && Date.now() - pending.at < 5000) {
+      if (await waitForWindowScope(pending.label, target.key, 3000)) {
+        await focusAndSend(pending.label, kind, path);
+        return;
+      }
+    }
+    const label = `w${Date.now().toString(36)}`;
+    pendingSpawns.set(target.key, { label, at: Date.now() });
+    const param = kind === "file" ? "vopen" : "vfolder";
+    spawnWindow(label, `?${param}=${encodeURIComponent(path)}`);
+  }
+
+  async function waitForWindowScope(
+    label: string,
+    key: string,
+    timeoutMs: number,
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (
+        queryScopes().some(
+          (entry) => entry.label === label && entry.key === key,
+        )
+      ) {
+        return true;
+      }
+      if (Date.now() >= deadline) {
+        return false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
   }
 
   /** Activates the tab holding `path` in any pane, or opens it. */
@@ -2964,17 +3165,10 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   /** Opens a folder without a file: welcome view over its file list. */
-  /** Explicit folder open: loads the folder's own vault session. */
+  /** Explicit folder open: routes to the folder's vault window. */
   async function openFolder(path: string): Promise<void> {
     setStatusError(null);
-    const scope = await resolveScopeOf(path, "folder");
-    if (homeScope !== null && homeScope.key === scope.key) {
-      // Same vault: just refresh the listing, the workspace stays.
-      await refreshFolder(scope.root, { redetect: true });
-      renderBacklinks();
-      return;
-    }
-    await switchToScope(scope, {});
+    await routeOpen("folder", path);
   }
 
   async function openFolderFromDialog(): Promise<void> {
@@ -3432,10 +3626,14 @@ export function mountLayout(root: HTMLElement): void {
     }, 300);
   });
 
-  // Best-effort save of pending changes when the window closes.
+  // Best-effort save of pending changes when the window closes. The
+  // arbiter snapshot is read before this window's registry entry is
+  // removed, so a surviving same-scope window keeps the session.
   window.addEventListener("beforeunload", () => {
     autosave.flush();
-    void persistSession();
+    const entries = queryScopes();
+    clearScopeEntry();
+    void persistSession({ entries });
   });
 
   // Mount the initial single pane and bind everything to it.
@@ -3449,27 +3647,59 @@ export function mountLayout(root: HTMLElement): void {
   refreshTexts();
   renderBacklinks();
 
-  // A second app instance forwards its command line here (single
-  // instance): an explicit open, so it may switch this window's vault.
-  if (isMainWindow) {
-    void listen<string[]>("single-instance", (event) => {
+  // A second app instance forwards its command line to every window
+  // (single instance). Exactly one handles it: the live window whose
+  // label sorts first ("main" before "w*") — deterministic without
+  // coordination, and it also covers the main window being closed
+  // while secondaries live on. The leader routes the file to the
+  // right vault window.
+  void listen<string[]>("single-instance", (event) => {
+    void (async () => {
       const file = event.payload.find((arg) =>
         arg.toLowerCase().endsWith(".md"),
       );
-      if (file !== undefined) {
-        void handleExplicitOpen(file);
+      if (file === undefined) {
+        return;
       }
-    });
-  }
+      const labels = (await liveWindowLabels()).sort();
+      if (labels.length > 0 && labels[0] !== windowLabel) {
+        return;
+      }
+      await enqueueWorkspace(() => routeOpen("file", file, { focusSelf: true }));
+    })();
+  });
 
-  // Startup precedence: a file passed via the URL (tab moved to this
-  // window), then the command line (main window), then the session of
-  // the last active vault.
+  // Routed opens arriving from another window: reveal or open the
+  // file here; a folder just refreshes the listing (never destroys
+  // this window's tabs remotely).
+  void listen<{ to: string; kind: "file" | "folder"; path: string }>(
+    "routed-open",
+    (event) => {
+      if (event.payload.to !== windowLabel) {
+        return; // addressed to another window
+      }
+      void enqueueWorkspace(async () => {
+        if (event.payload.kind === "file") {
+          await revealOrOpen(event.payload.path);
+        } else {
+          await refreshFolder(event.payload.path, { redetect: true });
+          renderBacklinks();
+        }
+      });
+    },
+  );
+
+  // Startup precedence: a file passed via the URL (moved tab or a
+  // routed spawn), then the command line (main window), then the
+  // session of the last active vault.
   void (async () => {
-    await restoreStartup();
-    // The focused window's vault is the one a plain launch reopens.
+    await enqueueWorkspace(() => restoreStartup());
+    // The focused window's vault is the one a plain launch reopens,
+    // and its freshness elects the session owner among same-scope
+    // windows.
     void getCurrentWindow().onFocusChanged(({ payload }) => {
       if (payload && homeScope !== null) {
+        publishScope();
         uiState.lastVault = homeScope.root;
         void saveUiState(uiState);
       }
@@ -3477,14 +3707,29 @@ export function mountLayout(root: HTMLElement): void {
   })();
 
   async function restoreStartup(): Promise<void> {
+    // A previous run of this same label may have crashed: its stale
+    // registry entry must not outlive it. The main window also sweeps
+    // entries of labels that are no longer alive.
+    clearScopeEntry();
+    if (isMainWindow) {
+      const live = await liveWindowLabels();
+      for (const entry of queryScopes()) {
+        if (!live.includes(entry.label)) {
+          try {
+            localStorage.removeItem(SCOPE_ENTRY_PREFIX + entry.label);
+          } catch {
+            // Best effort.
+          }
+        }
+      }
+    }
     const params = new URLSearchParams(window.location.search);
     const openParam = params.get("open");
     if (openParam !== null) {
-      // Tab moved into this fresh window: only that file opens. The
-      // window takes its geometry from the file's vault but stays
-      // scopeless — its saves must not clobber the vault session the
-      // origin window keeps writing. (Phase 4, milestone 31 gives
-      // same-scope windows a save arbiter and lifts this.)
+      // Tab moved into this fresh window: only that file opens, and
+      // the window joins the file's vault. The save arbiter keeps its
+      // single-tab snapshot from clobbering the origin window's
+      // session — only the last-focused same-scope window persists.
       const mode = params.get("mode");
       if (mode === "edit" || mode === "read") {
         pendingModes.set(normalizePath(openParam), mode);
@@ -3492,7 +3737,23 @@ export function mountLayout(root: HTMLElement): void {
       uiState = (await loadUiState()) ?? emptyUiState();
       const scope = await resolveScopeOf(openParam, "file");
       applyRestoredGeometry(await loadVaultSession(scope));
+      setHomeScope(scope);
       await openFile(openParam);
+      return;
+    }
+    // Routed spawn (milestone 31): a fresh window opening a vault that
+    // no live window held — full per-vault restore, then the target.
+    const routedFile = params.get("vopen");
+    const routedFolder = params.get("vfolder");
+    if (routedFile !== null || routedFolder !== null) {
+      uiState = (await loadUiState()) ?? emptyUiState();
+      if (routedFile !== null) {
+        await switchToScope(await resolveScopeOf(routedFile, "file"), {
+          file: routedFile,
+        });
+      } else if (routedFolder !== null) {
+        await switchToScope(await resolveScopeOf(routedFolder, "folder"), {});
+      }
       return;
     }
     if (isMainWindow) {
@@ -3501,9 +3762,7 @@ export function mountLayout(root: HTMLElement): void {
     uiState = (await loadUiState()) ?? emptyUiState();
     const startup = isMainWindow ? await startupFile() : null;
     if (startup !== null) {
-      await switchToScope(await resolveScopeOf(startup, "file"), {
-        file: startup,
-      });
+      await routeOpen("file", startup, { focusSelf: true });
       return;
     }
     if (uiState.lastVault !== null) {
@@ -3552,9 +3811,7 @@ export function mountLayout(root: HTMLElement): void {
       // would clobber the stored ui-state before it is applied.
       await flushSessionSave();
     }
-    homeScope = scope;
-    uiState.lastVault = scope.root;
-    void saveUiState(uiState);
+    setHomeScope(scope);
     const session = await loadVaultSession(scope);
     applyRestoredGeometry(session);
     const restored =
@@ -3576,6 +3833,7 @@ export function mountLayout(root: HTMLElement): void {
         await listFolder(scope.root);
       } catch {
         homeScope = null;
+        clearScopeEntry();
         return;
       }
       await refreshFolder(scope.root, { redetect: true });
