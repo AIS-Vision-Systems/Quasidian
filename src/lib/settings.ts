@@ -44,8 +44,9 @@ export interface FilesSettings {
   /** Extension used when creating notes from wikilinks. */
   defaultExtension: string;
   /**
-   * Restore the last session (open tabs, active tab, modes) at startup.
-   * Ignored when the app is launched with a file argument.
+   * Reopen the files of a vault's last session (tabs, active tab,
+   * modes) when that vault is opened. Sessions are kept per vault;
+   * panel sizes and the right view restore regardless.
    */
   restoreSession: boolean;
 }
