@@ -1,6 +1,6 @@
 [package]
 name = "quasidian"
-version = "1.0.0"
+version = "1.0.1"
 description = "Minimalist desktop markdown editor with Obsidian-like look and behavior"
 authors = ["Xavi Anguera", "AIS Vision Systems"]
 license-file = "../LICENSE.md"
