@@ -1,12 +1,39 @@
 # Quasidian
 
-Minimalist desktop markdown editor that mimics Obsidian's look and behavior (Live Preview, wikilinks, dark theme) without the weight. Built with Tauri 2, Vite, TypeScript and CodeMirror 6.
+**English** · [Català](README.ca.md) · [Español](README.es.md)
 
-The full spec and milestone plan live in [`docs/SPEC.md`](docs/SPEC.md).
+Minimalist desktop markdown editor that mimics Obsidian's look and behavior (Live Preview, wikilinks, dark theme) without the weight. Built with Tauri 2, Vite, TypeScript and CodeMirror 6, by [AIS Vision Systems](https://github.com/AIS-Vision-Systems).
 
-## Prerequisites
+## Features
 
-### Windows 11
+- **Live Preview editing** — markdown syntax tokens hide outside the active line, Obsidian-style. Editing is always plain text.
+- **Reading mode** (Ctrl+E) — rendered HTML from the same parse tree the editor uses; task-list checkboxes stay clickable.
+- **Wikilinks and backlinks** — `[[links]]` with autocompletion, resolved against the open file's folder.
+- **Folder = vault** — no configuration, no database, no index files written into your notes. Open a markdown file and its folder becomes the workspace.
+- **Global search** across the folder, kept fresh by a file watcher.
+- **Math** rendering via KaTeX.
+- **Trilingual UI** — English, Català, Español.
+- **Windows 11 and Ubuntu** support, with an in-app update check.
+
+## Download
+
+Grab the latest installer from the [Releases page](https://github.com/AIS-Vision-Systems/Quasidian/releases/latest):
+
+- **Windows**: NSIS installer (`.exe`)
+- **Ubuntu/Linux**: `.deb` package or `.AppImage`
+
+The app checks for new versions on startup (configurable in Settings) and notifies you discreetly in the status bar.
+
+## License
+
+Quasidian is dual-licensed:
+
+- **Free for noncommercial use** under the [PolyForm Noncommercial License 1.0.0](LICENSE.md).
+- **Commercial use** requires a [commercial license](LICENSE-COMMERCIAL.md) from AIS Vision Systems.
+
+## Building from source
+
+### Prerequisites — Windows 11
 
 1. **Rust** (stable, MSVC toolchain):
    ```powershell
@@ -17,7 +44,7 @@ The full spec and milestone plan live in [`docs/SPEC.md`](docs/SPEC.md).
 3. **WebView2** — preinstalled on Windows 11.
 4. **Node.js** ≥ 20 with npm.
 
-### Ubuntu
+### Prerequisites — Ubuntu
 
 1. System packages:
    ```sh
@@ -31,7 +58,7 @@ The full spec and milestone plan live in [`docs/SPEC.md`](docs/SPEC.md).
    ```
 3. **Node.js** ≥ 20 with npm (e.g. via [nvm](https://github.com/nvm-sh/nvm) or NodeSource).
 
-## Running
+### Running
 
 ```sh
 npm install
@@ -40,7 +67,7 @@ npm run tauri dev
 
 The first run compiles the Rust shell and takes a few minutes; subsequent runs are fast.
 
-## Building
+### Building
 
 ```sh
 npm run tauri build
@@ -55,12 +82,18 @@ npm test           # Vitest unit tests (pure modules)
 npm run typecheck  # tsc --noEmit; must pass before any commit
 ```
 
-See [`CLAUDE.md`](CLAUDE.md) for architecture rules and workflow conventions.
+See [`CLAUDE.md`](CLAUDE.md) for architecture rules and workflow conventions, and [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to contribute. Contributions require accepting the [Contributor License Agreement](CLA.md).
 
-## Publishing a release
+## Roadmap
+
+Quasidian's core (link resolution, indexing, markdown rendering) is pure TypeScript with no Tauri or DOM dependencies, on top of CodeMirror 6 and Lezer. A future goal is to package that core as an **embeddable markdown viewer/editor for web applications**, beyond the desktop app.
+
+## Publishing a release (maintainers)
 
 1. Bump the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` (plus both lockfiles), merge to `main`.
-2. Tag it: `git tag vX.Y.Z && git push --tags`.
-3. The `release` workflow builds the Windows (NSIS) and Linux (deb, AppImage) installers, attaches them to a release in [Quasidian-releases](https://github.com/XaviAnguera/Quasidian-releases) and updates `latest.json` — the feed the in-app update check polls (the raw CDN can take ~5 minutes to refresh).
+2. Tag it: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. The `release` workflow creates a draft release in this repository, builds the Windows (NSIS) and Linux (deb, AppImage) installers, uploads them, and publishes the release once every installer is up — the in-app update check reads the latest published release through the GitHub API.
 
-The workflow needs the `RELEASES_TOKEN` Actions secret: a fine-grained PAT with **Contents: read and write** on `Quasidian-releases` only.
+## Credits
+
+Idea and original development by **Xavi Anguera**. A project of **AIS Vision Systems**.

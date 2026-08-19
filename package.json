@@ -2,6 +2,15 @@
   "name": "quasidian",
   "private": true,
   "version": "1.0.0",
+  "description": "Minimalist desktop markdown editor with Obsidian-like look and behavior",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "author": "AIS Vision Systems",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AIS-Vision-Systems/Quasidian.git"
+  },
+  "homepage": "https://github.com/AIS-Vision-Systems/Quasidian",
+  "bugs": "https://github.com/AIS-Vision-Systems/Quasidian/issues",
   "type": "module",
   "scripts": {
     "dev": "vite",

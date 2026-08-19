@@ -2,7 +2,10 @@
 name = "quasidian"
 version = "1.0.0"
 description = "Minimalist desktop markdown editor with Obsidian-like look and behavior"
-authors = ["Xavi Anguera"]
+authors = ["Xavi Anguera", "AIS Vision Systems"]
+license-file = "../LICENSE.md"
+repository = "https://github.com/AIS-Vision-Systems/Quasidian"
+homepage = "https://github.com/AIS-Vision-Systems/Quasidian"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
