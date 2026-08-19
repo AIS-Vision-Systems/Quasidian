@@ -1,12 +1,14 @@
-// Update check against the public distribution repo. Check-only: the
-// result points the user at the download page, nothing installs
-// itself. Failures degrade to an explicit error status — the check
-// must never break the app.
+// Update check against this repository's latest published GitHub
+// release (api.github.com sends CORS headers; release-asset downloads
+// do not, so the API is the only feed a webview fetch can read).
+// Check-only: the result points the user at the release page, nothing
+// installs itself. Failures degrade to an explicit error status — the
+// check must never break the app.
 import { getVersion } from "@tauri-apps/api/app";
-import { isNewer, parseLatest, type LatestInfo } from "../lib/updates";
+import { isNewer, parseLatestRelease, type LatestInfo } from "../lib/updates";
 
-const LATEST_URL =
-  "https://raw.githubusercontent.com/XaviAnguera/Quasidian-releases/main/latest.json";
+const LATEST_RELEASE_URL =
+  "https://api.github.com/repos/AIS-Vision-Systems/Quasidian/releases/latest";
 
 export type UpdateCheck =
   | { status: "current"; version: string }
@@ -16,11 +18,14 @@ export type UpdateCheck =
 export async function checkForUpdate(): Promise<UpdateCheck> {
   try {
     const current = await getVersion();
-    const response = await fetch(LATEST_URL, { cache: "no-store" });
+    const response = await fetch(LATEST_RELEASE_URL, {
+      cache: "no-store",
+      headers: { Accept: "application/vnd.github+json" },
+    });
     if (!response.ok) {
       return { status: "error" };
     }
-    const latest = parseLatest(await response.text());
+    const latest = parseLatestRelease(await response.text());
     if (latest === null) {
       return { status: "error" };
     }

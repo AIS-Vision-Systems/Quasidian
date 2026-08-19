@@ -2528,6 +2528,44 @@ span.table-wrap > table {
   font-size: var(--font-ui-small);
 }
 
+.help-license {
+  cursor: pointer;
+}
+
+.help-license:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
+.help-branding {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  flex-shrink: 0;
+}
+
+.help-ais-logo {
+  height: 22px;
+  width: auto;
+}
+
+/* The theme picks the logo variant: blue on light, white on dark. */
+.help-ais-logo-white {
+  display: none;
+}
+
+body.theme-dark .help-ais-logo-blue {
+  display: none;
+}
+
+body.theme-dark .help-ais-logo-white {
+  display: block;
+}
+
 .help-guide {
   flex: 1;
   min-height: 0;

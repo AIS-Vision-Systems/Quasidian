@@ -1,7 +1,7 @@
-// Pure module: no Tauri, no DOM. Update check (phase 4, milestone 34):
-// the public distribution repo serves a latest.json; the app compares
-// its own version against it and points the user to the download page.
-// Check-only by design — nothing downloads or installs itself.
+// Pure module: no Tauri, no DOM. Update check (milestone 34, reworked
+// in milestone 35): the app reads the repository's latest published
+// GitHub release, compares versions and points the user to the release
+// page. Check-only by design — nothing downloads or installs itself.
 
 export interface LatestInfo {
   version: string;
@@ -10,8 +10,8 @@ export interface LatestInfo {
   notes: string | null;
 }
 
-/** Parses latest.json; null when it is not a valid payload. */
-export function parseLatest(json: string): LatestInfo | null {
+/** Parses a GitHub "latest release" API response; null when invalid. */
+export function parseLatestRelease(json: string): LatestInfo | null {
   let raw: unknown;
   try {
     raw = JSON.parse(json);
@@ -23,18 +23,21 @@ export function parseLatest(json: string): LatestInfo | null {
   }
   const root = raw as Record<string, unknown>;
   if (
-    typeof root.version !== "string" ||
-    root.version === "" ||
-    typeof root.url !== "string" ||
-    !/^https:\/\//.test(root.url)
+    typeof root.tag_name !== "string" ||
+    typeof root.html_url !== "string" ||
+    !/^https:\/\//.test(root.html_url)
   ) {
     return null;
   }
+  const version = root.tag_name.trim().replace(/^v/i, "");
+  if (version === "") {
+    return null;
+  }
   return {
-    version: root.version,
-    url: root.url,
+    version,
+    url: root.html_url,
     notes:
-      typeof root.notes === "string" && root.notes !== "" ? root.notes : null,
+      typeof root.body === "string" && root.body !== "" ? root.body : null,
   };
 }
 
