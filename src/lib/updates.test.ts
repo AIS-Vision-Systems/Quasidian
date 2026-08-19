@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareVersions, isNewer, parseLatest } from "./updates";
+import { compareVersions, isNewer, parseLatestRelease } from "./updates";
 
 describe("compareVersions", () => {
   it("orders major, minor and patch numerically", () => {
@@ -23,28 +23,43 @@ describe("compareVersions", () => {
   });
 });
 
-describe("parseLatest", () => {
-  it("parses a valid payload", () => {
+describe("parseLatestRelease", () => {
+  it("parses a GitHub latest-release payload", () => {
     expect(
-      parseLatest(
-        '{"version": "1.2.3", "url": "https://example.com/d", "notes": "x"}',
+      parseLatestRelease(
+        '{"tag_name": "v1.2.3", "html_url": "https://github.com/o/r/releases/tag/v1.2.3", "body": "notes"}',
       ),
-    ).toEqual({ version: "1.2.3", url: "https://example.com/d", notes: "x" });
+    ).toEqual({
+      version: "1.2.3",
+      url: "https://github.com/o/r/releases/tag/v1.2.3",
+      notes: "notes",
+    });
+  });
+
+  it("strips the v prefix and normalizes an absent or empty body", () => {
     expect(
-      parseLatest('{"version": "1.2.3", "url": "https://example.com/d"}')
-        ?.notes,
+      parseLatestRelease(
+        '{"tag_name": "2.0", "html_url": "https://example.com/r"}',
+      ),
+    ).toEqual({ version: "2.0", url: "https://example.com/r", notes: null });
+    expect(
+      parseLatestRelease(
+        '{"tag_name": "v1.0.1", "html_url": "https://example.com/r", "body": ""}',
+      )?.notes,
     ).toBeNull();
   });
 
   it("rejects garbage, missing fields and non-https urls", () => {
-    expect(parseLatest("not json")).toBeNull();
-    expect(parseLatest("42")).toBeNull();
-    expect(parseLatest('{"version": "1.0.0"}')).toBeNull();
+    expect(parseLatestRelease("not json")).toBeNull();
+    expect(parseLatestRelease("42")).toBeNull();
+    expect(parseLatestRelease('{"tag_name": "v1.0.0"}')).toBeNull();
     expect(
-      parseLatest('{"version": "", "url": "https://example.com"}'),
+      parseLatestRelease('{"tag_name": "v", "html_url": "https://x.com"}'),
     ).toBeNull();
     expect(
-      parseLatest('{"version": "1.0.0", "url": "http://example.com"}'),
+      parseLatestRelease(
+        '{"tag_name": "v1.0.0", "html_url": "http://example.com"}',
+      ),
     ).toBeNull();
   });
 });
