@@ -32,6 +32,8 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "AIS Vision Systems",
+    "copyright": "© 2026 AIS Vision Systems",
     "fileAssociations": [
       {
         "ext": ["md"],
