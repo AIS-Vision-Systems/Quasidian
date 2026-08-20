@@ -78,7 +78,6 @@
   "dialog.delete.message": "Vols eliminar «{name}»?",
   "error.renameFile": "No s'ha pogut canviar el nom: {error}",
   "error.deleteFile": "No s'ha pogut eliminar el fitxer: {error}",
-  "backlinks.title": "Backlinks",
   "backlinks.empty": "Cap fitxer enllaça aquí",
   "rightPanel.backlinks": "Backlinks",
   "rightPanel.outgoing": "Enllaços sortints",
