@@ -34,11 +34,14 @@ Structure of SPEC2–SPEC6: `## Invariants (no els canviïs)`, `## Fora d'abast`
    - **Tests required** — what the spec demands (dual-mode tests, pure-module tests, cross-platform manual checks).
    - **Acceptance** — explicit criteria if present, otherwise the observable behavior implied.
    - **Constraints from earlier phases** — only the ones that apply.
-   - **Out of scope for this milestone** — anything the spec explicitly defers.
+   - **Out of scope for this milestone** — only what the spec explicitly defers. **Omit this section entirely if the spec defers nothing.**
+
+End with the line range you read, as `docs/SPECn.md:LL-LL`.
 
 ## Rules
 
 - Never quote long Catalan passages: translate and compress. Your whole answer should fit in well under a page.
 - Never dump file contents. Cite as `docs/SPEC6.md:NN` when the caller may want to look.
-- Never invent a requirement. If the spec is silent, say so — do not fill the gap with a plausible design.
+- **Every sentence you write must be traceable to a line you actually read.** If the spec is silent, drop the section or write "the spec says nothing about this" — never fill a gap with a plausible design, a rationale, or a link to another milestone. An empty section is a correct answer; an invented one sends the caller down the wrong path.
+- Do not relate the milestone to other milestones unless the spec itself does.
 - Never suggest editing a spec. They are historical.
