@@ -78,7 +78,6 @@
   "dialog.delete.message": "¿Eliminar «{name}»?",
   "error.renameFile": "No se ha podido cambiar el nombre: {error}",
   "error.deleteFile": "No se ha podido eliminar el archivo: {error}",
-  "backlinks.title": "Backlinks",
   "backlinks.empty": "Ningún archivo enlaza aquí",
   "rightPanel.backlinks": "Backlinks",
   "rightPanel.outgoing": "Enlaces salientes",

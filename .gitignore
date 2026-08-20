@@ -10,7 +10,7 @@ src-tauri/gen/
 /test/
 
 # Editor / OS
-.claude/
+.claude/settings.local.json
 .vscode/
 .idea/
 *.log

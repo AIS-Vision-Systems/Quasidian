@@ -78,7 +78,6 @@
   "dialog.delete.message": "Delete \"{name}\"?",
   "error.renameFile": "Could not rename file: {error}",
   "error.deleteFile": "Could not delete file: {error}",
-  "backlinks.title": "Backlinks",
   "backlinks.empty": "No files link here",
   "rightPanel.backlinks": "Backlinks",
   "rightPanel.outgoing": "Outgoing links",
