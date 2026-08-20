@@ -16,9 +16,11 @@ import {
   computeMathRanges,
   computeNoteEmbeds,
   computeTaskMarkers,
+  buildBlockDecorations,
   estimatedImageHeight,
   getEmbedHtml,
   setEmbedHtml,
+  sourceMode,
   tableBlankGuard,
   type HiddenRange,
 } from "./livePreview";
@@ -597,5 +599,124 @@ describe("embed html cache — stale seeding across saves (m36)", () => {
     setEmbedHtml("NoteE", null, "<p>e</p>");
     bumpEmbedGeneration();
     expect(getEmbedHtml("NoteE", null)).toBeUndefined();
+  });
+});
+
+describe("source mode (m38) — every token visible, no widgets", () => {
+  function sourceState(
+    doc: string,
+    anchor: number = doc.length,
+  ): EditorState {
+    const state = EditorState.create({
+      doc,
+      selection: EditorSelection.single(anchor),
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+        sourceMode.of(true),
+      ],
+    });
+    ensureSyntaxTree(state, doc.length, 5000);
+    return state;
+  }
+
+  it("hides nothing, wherever the cursor is", () => {
+    const doc = "# Head\n\n**bold** and [[Nota|alias]] and ==mark==\n";
+    expect(computeHiddenRanges(sourceState(doc, 0), 0, doc.length)).toEqual(
+      [],
+    );
+  });
+
+  it("replaces no embeds, math, tasks, bullets or rules", () => {
+    const doc = [
+      "![[img.png]]",
+      "![[Altra nota]]",
+      "$x^2$",
+      "- [ ] task",
+      "- item",
+      "---",
+      "",
+    ].join("\n");
+    const state = sourceState(doc, 0);
+    expect(computeImageEmbeds(state, 0, doc.length)).toEqual([]);
+    expect(computeNoteEmbeds(state, 0, doc.length)).toEqual([]);
+    expect(computeMathRanges(state, 0, doc.length)).toEqual([]);
+    expect(computeTaskMarkers(state, 0, doc.length)).toEqual([]);
+    expect(computeListMarks(state, 0, doc.length)).toEqual([]);
+    expect(computeHorizontalRules(state, 0, doc.length)).toEqual([]);
+  });
+
+  it("keeps line styling: headings, list lines, done tasks", () => {
+    const doc = "# Head\n\n- [x] done\n- item\n";
+    const plain = (() => {
+      const state = EditorState.create({
+        doc,
+        selection: EditorSelection.single(doc.length),
+        extensions: [
+          markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+        ],
+      });
+      ensureSyntaxTree(state, doc.length, 5000);
+      return state;
+    })();
+    const source = sourceState(doc);
+    expect(computeHeadingLines(source, 0, doc.length)).toEqual(
+      computeHeadingLines(plain, 0, doc.length),
+    );
+    expect(computeListLines(source, 0, doc.length)).toEqual(
+      computeListLines(plain, 0, doc.length),
+    );
+    expect(computeDoneTaskLines(source, 0, doc.length)).toEqual(
+      computeDoneTaskLines(plain, 0, doc.length),
+    );
+  });
+
+  it("emits no block widgets: frontmatter, tables and math stay raw", () => {
+    const doc = [
+      "---",
+      "tags: [a]",
+      "---",
+      "",
+      "| a | b |",
+      "| --- | --- |",
+      "| 1 | 2 |",
+      "",
+      "$$",
+      "x^2",
+      "$$",
+      "",
+    ].join("\n");
+    const plain = EditorState.create({
+      doc,
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+      ],
+    });
+    // The regular build replaces all three blocks…
+    expect(buildBlockDecorations(plain).size).toBeGreaterThanOrEqual(3);
+    // …and the source build replaces nothing at all.
+    const source = EditorState.create({
+      doc,
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+        sourceMode.of(true),
+      ],
+    });
+    expect(buildBlockDecorations(source).size).toBe(0);
+  });
+
+  it("changes nothing when the facet is off (Live Preview intact)", () => {
+    const doc = "**bold** tail";
+    const state = EditorState.create({
+      doc,
+      selection: EditorSelection.single(doc.length),
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+      ],
+    });
+    ensureSyntaxTree(state, doc.length, 5000);
+    // The default facet value is off: the usual hides are still there.
+    expect(
+      computeHiddenRanges(state, 0, doc.length).length,
+    ).toBeGreaterThan(0);
   });
 });

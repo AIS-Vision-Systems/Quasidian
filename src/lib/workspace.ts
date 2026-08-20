@@ -292,6 +292,8 @@ export interface SessionTab {
   path: string;
   pinned: boolean;
   mode: SessionMode;
+  /** Source mode flag (m38): raw syntax while editing. */
+  source: boolean;
   back: string[];
   forward: string[];
 }
@@ -315,6 +317,7 @@ export interface SessionTabs {
 export function serializeTabs(
   state: WorkspaceState,
   modeOf: (tab: Tab) => SessionMode,
+  sourceOf: (tab: Tab) => boolean = () => false,
 ): SessionTabs {
   const tabs: SessionTab[] = [];
   let active = 0;
@@ -329,6 +332,7 @@ export function serializeTabs(
       path: tab.path,
       pinned: tab.pinned,
       mode: modeOf(tab),
+      source: sourceOf(tab),
       back: tab.back.slice(-HISTORY_LIMIT),
       forward: tab.forward.slice(-HISTORY_LIMIT),
     });
@@ -370,6 +374,8 @@ export function parseTabs(raw: unknown): SessionTabs | null {
       path: item.path,
       pinned: item.pinned === true,
       mode: item.mode === "read" ? "read" : "edit",
+      // Absent in sessions written before m38: defaults to off.
+      source: item.source === true,
       back: pathList(item.back),
       forward: pathList(item.forward),
     });

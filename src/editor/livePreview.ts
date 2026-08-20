@@ -13,6 +13,7 @@ import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
 import {
   EditorState,
+  Facet,
   Prec,
   StateEffect,
   StateField,
@@ -109,6 +110,18 @@ function selectionTouchesLine(state: EditorState, pos: number): boolean {
   return selectionTouches(state, line.from, line.to);
 }
 
+/**
+ * Source mode (m38): every syntax token stays visible, exactly as if
+ * the cursor were inside each element. The decoration build emits no
+ * hides (Decoration.replace) and no block widgets; syntax highlighting,
+ * line styling, folding and line numbers remain. The parser is never
+ * consulted differently — this is a decoration-only switch, provided
+ * per editor through a compartment.
+ */
+export const sourceMode = Facet.define<boolean, boolean>({
+  combine: (values) => values.some(Boolean),
+});
+
 /** Extends a mark range over one following space, to hide "# " and "> ". */
 function withFollowingSpace(state: EditorState, from: number, to: number): HiddenRange {
   const next = state.doc.sliceString(to, to + 1);
@@ -126,6 +139,9 @@ export function computeHiddenRanges(
   from: number,
   to: number,
 ): HiddenRange[] {
+  if (state.facet(sourceMode)) {
+    return [];
+  }
   const hidden: HiddenRange[] = [];
   syntaxTree(state).iterate({
     from,
@@ -274,7 +290,7 @@ export function computeImageEmbeds(
   from: number,
   to: number,
 ): EmbedRange[] {
-  return computeEmbeds(state, from, to, true);
+  return state.facet(sourceMode) ? [] : computeEmbeds(state, from, to, true);
 }
 
 /** Note embeds to replace with transclusion widgets (selection outside). */
@@ -283,7 +299,7 @@ export function computeNoteEmbeds(
   from: number,
   to: number,
 ): EmbedRange[] {
-  return computeEmbeds(state, from, to, false);
+  return state.facet(sourceMode) ? [] : computeEmbeds(state, from, to, false);
 }
 
 export interface MathRange {
@@ -302,6 +318,9 @@ export function computeMathRanges(
   from: number,
   to: number,
 ): MathRange[] {
+  if (state.facet(sourceMode)) {
+    return [];
+  }
   const ranges: MathRange[] = [];
   syntaxTree(state).iterate({
     from,
@@ -337,6 +356,9 @@ export function computeHorizontalRules(
   from: number,
   to: number,
 ): HiddenRange[] {
+  if (state.facet(sourceMode)) {
+    return [];
+  }
   const rules: HiddenRange[] = [];
   syntaxTree(state).iterate({
     from,
@@ -369,6 +391,9 @@ export function computeTaskMarkers(
   from: number,
   to: number,
 ): TaskMarkerInfo[] {
+  if (state.facet(sourceMode)) {
+    return [];
+  }
   const markers: TaskMarkerInfo[] = [];
   syntaxTree(state).iterate({
     from,
@@ -416,6 +441,9 @@ export function computeListMarks(
   from: number,
   to: number,
 ): ListMarkInfo[] {
+  if (state.facet(sourceMode)) {
+    return [];
+  }
   const marks: ListMarkInfo[] = [];
   syntaxTree(state).iterate({
     from,
@@ -2108,6 +2136,10 @@ function buildDecorations(
   hooks: LivePreviewHooks,
 ): DecorationSet {
   const state = view.state;
+  // Source mode: the gated compute* helpers already return nothing;
+  // the tree walk below keeps line and mark styling but must emit
+  // none of its own hides or widgets either.
+  const source = state.facet(sourceMode);
   const ranges: Range<Decoration>[] = [];
 
   function decorateLines(node: SyntaxNode, decoration: Decoration): void {
@@ -2130,7 +2162,7 @@ function buildDecorations(
   function decorateFencedCode(node: SyntaxNode): void {
     decorateLines(node, codeblockLine);
     decorateCodeEdges(node);
-    if (selectionTouches(state, node.from, node.to)) {
+    if (source || selectionTouches(state, node.from, node.to)) {
       return;
     }
     const fenceMarks = node.getChildren("CodeMark");
@@ -2182,6 +2214,7 @@ function buildDecorations(
           // corner classes so both modes show the same callout box.
           // A collapsed callout shows only its title line.
           const collapsed =
+            !source &&
             callout.fold === "-" &&
             !selectionTouches(state, node.from, node.to);
           const firstLine = state.doc.lineAt(node.from).number;
@@ -2208,6 +2241,7 @@ function buildDecorations(
           // fragment visibleRanges and iterate the node twice, which
           // would duplicate this point widget.
           if (
+            !source &&
             callout.fold !== null &&
             callout.titleTo >= from &&
             callout.titleTo <= to
@@ -2227,7 +2261,7 @@ function buildDecorations(
           // breaks may not come from a view plugin.
           // The [!type] marker renders as the callout's icon when the
           // line is not being edited; the title reads bold.
-          if (!selectionTouchesLine(state, callout.markerFrom)) {
+          if (!source && !selectionTouchesLine(state, callout.markerFrom)) {
             ranges.push(
               Decoration.replace({
                 widget: new CalloutIconWidget(callout.type),
@@ -2383,7 +2417,7 @@ function buildDecorations(
 // Block decorations may not come from a ViewPlugin (CodeMirror throws),
 // so inactive tables and multi-line math blocks are replaced through a
 // StateField instead.
-function buildBlockDecorations(state: EditorState): DecorationSet {
+export function buildBlockDecorations(state: EditorState): DecorationSet {
   ensureSyntaxTree(state, state.doc.length, 50);
   const ranges: Range<Decoration>[] = [];
   if (inlineTitleText !== null) {
@@ -2394,6 +2428,12 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
         block: true,
       }).range(0),
     );
+  }
+  // Source mode: nothing is replaced — frontmatter, tables, collapsed
+  // callouts and math blocks stay raw, editable text. The inline title
+  // is note chrome, not document syntax, so it stays.
+  if (state.facet(sourceMode)) {
+    return Decoration.set(ranges, true);
   }
   syntaxTree(state).iterate({
     enter(node) {
@@ -2581,6 +2621,11 @@ export const tableBlankGuard = EditorState.transactionFilter.of((tr) => {
 
 /** Frontmatter and tables are atomic: the cursor never sits inside. */
 const frontmatterAtomic = EditorView.atomicRanges.of((view) => {
+  // Source mode edits frontmatter and tables as raw text: nothing may
+  // be atomic or the cursor could never enter them.
+  if (view.state.facet(sourceMode)) {
+    return Decoration.none;
+  }
   const ranges: Range<Decoration>[] = [];
   syntaxTree(view.state).iterate({
     enter(node) {

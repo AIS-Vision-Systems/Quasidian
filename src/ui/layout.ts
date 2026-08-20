@@ -1210,6 +1210,9 @@ export function mountLayout(root: HTMLElement): void {
   // pixels or fractions: those break whenever async content (embeds,
   // images) changes the page height between save and restore.
   const tabModes = new Map<number, EditorModeSetting>();
+  // Source mode (m38): per tab like the edit/read mode; absent = off.
+  // Remembered while the tab reads and re-applied on return to edit.
+  const tabSourceMode = new Map<number, boolean>();
   const tabScroll = new Map<number, number>();
   const tabSelection = new Map<number, { anchor: number; head: number }>();
   // Mode requested for a path before its tab exists (?open=...&mode=).
@@ -1229,6 +1232,11 @@ export function mountLayout(root: HTMLElement): void {
       tabModes.set(id, mode);
     }
     const editing = mode === "edit";
+    // Re-applies the tab's source flag; a tab without one is plain
+    // Live Preview. Harmless while reading (the editor is hidden).
+    editor.setSourceMode(
+      (id !== null ? tabSourceMode.get(id) : undefined) ?? false,
+    );
     imageView.classList.add("is-hidden");
     editorHost.classList.toggle("is-hidden", !editing);
     readingView.element.classList.toggle("is-hidden", editing);
@@ -1272,6 +1280,7 @@ export function mountLayout(root: HTMLElement): void {
         leftVisible: sidebarVisible,
         rightVisible,
       },
+      (tab) => tabSourceMode.get(tab.id) ?? false,
     );
   }
 
@@ -1286,6 +1295,11 @@ export function mountLayout(root: HTMLElement): void {
     for (const id of [...tabModes.keys()]) {
       if (!alive.has(id)) {
         tabModes.delete(id);
+      }
+    }
+    for (const id of [...tabSourceMode.keys()]) {
+      if (!alive.has(id)) {
+        tabSourceMode.delete(id);
       }
     }
     for (const id of [...tabScroll.keys()]) {
@@ -1726,6 +1740,10 @@ export function mountLayout(root: HTMLElement): void {
     const mode = tabModes.get(fromId);
     if (mode !== undefined) {
       tabModes.set(toId, mode);
+    }
+    const source = tabSourceMode.get(fromId);
+    if (source !== undefined) {
+      tabSourceMode.set(toId, source);
     }
     const scroll = tabScroll.get(fromId);
     if (scroll !== undefined) {
@@ -3588,6 +3606,20 @@ export function mountLayout(root: HTMLElement): void {
               icon: currentMode === "edit" ? "book-open" : "pencil",
               onClick: () => void toggleMode(),
             },
+            // Source mode is a sub-mode of editing: no check in read.
+            ...(currentMode === "edit"
+              ? ([
+                  {
+                    label: t("menu.sourceMode"),
+                    icon: "code",
+                    checked:
+                      (activeTabId() !== null
+                        ? tabSourceMode.get(activeTabId() as number)
+                        : undefined) ?? false,
+                    onClick: () => toggleSourceMode(),
+                  },
+                ] satisfies MenuEntry[])
+              : []),
             "separator",
             {
               label: t("command.foldAll"),
@@ -3742,6 +3774,24 @@ export function mountLayout(root: HTMLElement): void {
     });
   }
 
+  /** Toggles the active tab's source mode (m38): edit mode only. */
+  function toggleSourceMode(): void {
+    const id = activeTabId();
+    if (
+      id === null ||
+      openedPath === null ||
+      isImageTarget(openedPath) ||
+      currentMode !== "edit"
+    ) {
+      return;
+    }
+    const next = !(tabSourceMode.get(id) ?? false);
+    tabSourceMode.set(id, next);
+    editor.setSourceMode(next);
+    editor.focus();
+    scheduleSessionSave();
+  }
+
   /**
    * Runs a fold command and keeps the open view in step: fold state
    * lives in the editor and the reading render hides folded sections,
@@ -3817,6 +3867,11 @@ export function mountLayout(root: HTMLElement): void {
       id: "toggle-fold-all",
       nameKey: "command.toggleFold",
       run: () => runFoldCommand(() => editor.toggleAllSections()),
+    },
+    {
+      id: "toggle-source-mode",
+      nameKey: "command.toggleSourceMode",
+      run: () => toggleSourceMode(),
     },
     {
       id: "insert-table",
@@ -4463,6 +4518,9 @@ export function mountLayout(root: HTMLElement): void {
         };
         tabs.push(restored);
         tabModes.set(restored.id, tab.mode);
+        if (tab.source) {
+          tabSourceMode.set(restored.id, true);
+        }
       }
       if (tabs.length === 0) {
         continue;

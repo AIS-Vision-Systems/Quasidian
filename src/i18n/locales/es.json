@@ -12,6 +12,7 @@
   "command.foldAll": "Plegar todos los encabezados",
   "command.unfoldAll": "Desplegar todos los encabezados",
   "command.toggleFold": "Conmuta el plegado de todos los encabezados",
+  "command.toggleSourceMode": "Conmuta el modo fuente",
   "command.commandPalette": "Paleta de comandos…",
   "properties.title": "Propiedades",
   "properties.add": "Añadir una propiedad",
@@ -205,6 +206,7 @@
   "error.writeFile": "No se ha podido guardar el archivo: {error}",
   "error.createFile": "No se ha podido crear el archivo: {error}",
   "error.listFolder": "No se ha podido listar la carpeta: {error}",
+  "menu.sourceMode": "Modo fuente",
   "menu.readingMode": "Modo lectura",
   "menu.editingMode": "Modo edición"
 }

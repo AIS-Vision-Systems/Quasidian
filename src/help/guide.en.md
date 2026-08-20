@@ -11,7 +11,7 @@ Quasidian has no vaults and no configuration: **the folder of the open file is y
 
 ## Editing and reading modes
 
-`Ctrl+E` toggles between **editing** (Live Preview: syntax hides away from the active line) and **reading** (rendered HTML, only task checkboxes stay interactive). The book button in the file bar does the same. The pane's three-dots menu also switches the mode and folds or unfolds all headings, in both modes.
+`Ctrl+E` toggles between **editing** (Live Preview: syntax hides away from the active line) and **reading** (rendered HTML, only task checkboxes stay interactive). The book button in the file bar does the same. The pane's three-dots menu also switches the mode and folds or unfolds all headings, in both modes. Within editing mode, **source mode** (in the same menu or from the palette) shows all syntax as plain highlighted text, per tab.
 
 ## Links and transclusions
 

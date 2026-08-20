@@ -247,12 +247,32 @@ describe("tab serialization", () => {
           path: "b.md",
           pinned: true,
           mode: "read",
+          source: false,
           back: ["a.md"],
           forward: [],
         },
       ],
       active: 0,
     });
+  });
+
+  it("round trips the per-tab source flag (m38)", () => {
+    const state = openPath(workspace(["a.md"]), "b.md");
+    const session = serializeTabs(
+      state,
+      () => "edit",
+      (tab) => tab.path === "b.md",
+    );
+    const parsed = parseTabs(JSON.parse(JSON.stringify(session)));
+    expect(parsed?.tabs[0].source).toBe(true);
+  });
+
+  it("defaults the source flag to off for pre-m38 sessions", () => {
+    const parsed = parseTabs({
+      tabs: [{ path: "a.md", mode: "edit" }],
+      active: 0,
+    });
+    expect(parsed?.tabs[0].source).toBe(false);
   });
 
   it("returns null on malformed input", () => {
@@ -269,7 +289,14 @@ describe("tab serialization", () => {
       }),
     ).toEqual({
       tabs: [
-        { path: "a.md", pinned: false, mode: "edit", back: [], forward: [] },
+        {
+          path: "a.md",
+          pinned: false,
+          mode: "edit",
+          source: false,
+          back: [],
+          forward: [],
+        },
       ],
       active: 0,
     });

@@ -11,7 +11,7 @@ Quasidian no té «vaults» ni configuració: **la carpeta del fitxer obert és 
 
 ## Modes d'edició i lectura
 
-`Ctrl+E` commuta entre **edició** (Live Preview: la sintaxi s'amaga fora de la línia activa) i **lectura** (HTML renderitzat, només les caselles de tasca són interactives). El botó del llibre a la barra del fitxer fa el mateix. El menú de tres punts del panell també commuta el mode i plega o desplega tots els encapçalaments, en tots dos modes.
+`Ctrl+E` commuta entre **edició** (Live Preview: la sintaxi s'amaga fora de la línia activa) i **lectura** (HTML renderitzat, només les caselles de tasca són interactives). El botó del llibre a la barra del fitxer fa el mateix. El menú de tres punts del panell també commuta el mode i plega o desplega tots els encapçalaments, en tots dos modes. Dins del mode edició, el **mode font** (al mateix menú o des de la paleta) mostra tota la sintaxi com a text pla amb ressaltat, per pestanya.
 
 ## Enllaços i transclusions
 
