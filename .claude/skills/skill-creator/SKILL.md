@@ -9,12 +9,33 @@ description: How to add or edit a Claude Code skill, subagent or rule for the Qu
 
 | Kind of knowledge | Goes in | Why |
 |---|---|---|
-| An invariant that is always true | `CLAUDE.md` | Loaded every session. Costs tokens on every turn, so only rules that could be violated at any moment earn a line. |
+| An invariant that is always true | `CLAUDE.md` | Loaded every session, and re-injected after `/compact`. Costs tokens on every turn, so only rules that could be violated at any moment earn a line. |
+| A constraint that only applies to one layer | a path-scoped rule in `.claude/rules/` | Loads when Claude reads a file the `paths` globs cover. Free until then. |
 | A procedure with steps, run occasionally | a skill in `.claude/skills/` | Only the description is always loaded; the body loads when triggered. |
 | A search, audit or extraction that would flood the main context | a subagent in `.claude/agents/` | Returns a conclusion instead of the files it read. |
 | A one-off preference for this session | just say it | Not everything needs a file. |
 
-If you are unsure between a rule and a skill: a rule is a *constraint*, a skill is a *recipe*.
+If you are unsure between a rule and a skill: a rule is a *constraint*, a skill is a *recipe*. A rule fires because a file was opened; a skill fires because of what someone is trying to do. They overlap on purpose — the rule is the safety net for when the skill was never invoked.
+
+## Rule anatomy
+
+`.claude/rules/<kebab-name>.md`:
+
+```markdown
+---
+paths:
+  - "src/lib/**/*.ts"
+---
+
+# Title
+
+The constraints, and why each one exists.
+```
+
+- `paths` is a **YAML list of quoted globs**, matched from the project root. Use `src/lib/**/*.ts`, not `src/lib/**` — `**` alone matches directories.
+- **A rule with no `paths` loads every session**, exactly like `CLAUDE.md`. If you leave the frontmatter off by accident you have silently made the file always-on; that is the most common mistake.
+- Path-scoped rules load when Claude **reads** a matching file. They are also *not* re-injected after `/compact` — they reload the next time a matching file is read. So a constraint that must never be forgotten belongs in `CLAUDE.md`, with the detail here.
+- Keep the invariant in `CLAUDE.md` as one line and put the *how* and the *why* in the rule. Don't let the two contradict each other; if they do, Claude may pick either.
 
 ## Skill anatomy
 

@@ -28,14 +28,12 @@ Quasidian is a minimalist desktop markdown editor that mimics Obsidian's look an
 - App settings: single `settings.json` in the app config dir (Tauri `appConfigDir`), typed schema with defaults, merge-with-defaults on invalid/partial JSON — never crash on bad config. Hot-reload: changes apply without restart.
 - Never embed a token or secret in the binary or the repo. The update check is public and read-only; releases are written by CI with the ephemeral workflow token.
 - The app version is never hardcoded — read it from the Tauri config at runtime.
-- `packages/core` (milestone 41) never imports anything from the app; `@codemirror/*` and `@lezer/*` are peerDependencies there.
 
 ## UI conventions
 
 - All UI text goes through `t(key)` (i18n dictionaries: `ca`, `es`, `en`). No hardcoded user-facing strings, ever — including in new features and error messages.
 - All colors go through Obsidian-style CSS variables (`--background-primary`, `--text-normal`, `--interactive-accent`, …). No hardcoded colors.
-- Editing mode is CM6 Live Preview (syntax tokens hidden outside the active line/selection via `Decoration.replace`). Reading mode (Ctrl+E) is rendered HTML, read-only except task-list checkboxes.
-- Context menus use the app's own menu component, never the native WebView menu.
+- Editing mode is CM6 Live Preview; reading mode (Ctrl+E) is rendered HTML, read-only except task-list checkboxes.
 
 ## Out of scope — do not implement
 
@@ -59,3 +57,4 @@ Quasidian is a minimalist desktop markdown editor that mimics Obsidian's look an
 - Every change to the parser **or to the dual-mode decorations** ships tests for both editing decorations and reading-mode HTML output, so the two modes can't diverge.
 - A version bump touches five files: `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and both lockfiles.
 - For recurring procedures invoke the matching skill instead of re-deriving it: `/milestone-workflow`, `/i18n-text`, `/settings-option`, `/markdown-editor`, `/release-version`, `/docs-sync`, `/commit-pr`, `/skill-creator`.
+- Layer-specific constraints live in `.claude/rules/` and load when you open a file they cover. They are the detail behind the rules above, not exceptions to them.
