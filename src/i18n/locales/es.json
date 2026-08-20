@@ -11,6 +11,7 @@
   "command.openFolder": "Abrir una carpeta…",
   "command.foldAll": "Plegar todos los encabezados",
   "command.unfoldAll": "Desplegar todos los encabezados",
+  "command.toggleFold": "Conmuta el plegado de todos los encabezados",
   "command.commandPalette": "Paleta de comandos…",
   "properties.title": "Propiedades",
   "properties.add": "Añadir una propiedad",
@@ -31,7 +32,6 @@
   "menu.copy": "Copiar",
   "menu.paste": "Pegar",
   "menu.selectAll": "Seleccionar todo",
-  "menu.addLink": "Añadir un enlace",
   "menu.format": "Formato",
   "menu.formatBold": "Negrita",
   "menu.formatItalic": "Cursiva",
@@ -52,6 +52,7 @@
   "menu.insert": "Insertar",
   "menu.insertFootnote": "Nota al pie",
   "menu.insertCallout": "Callout",
+  "menu.insertWikilink": "Wikilink",
   "menu.insertMarkdownLink": "Enlace markdown",
   "menu.insertHr": "Línea horizontal",
   "menu.insertCodeBlock": "Bloque de código",
@@ -203,5 +204,7 @@
   "error.openFile": "No se ha podido abrir el archivo: {error}",
   "error.writeFile": "No se ha podido guardar el archivo: {error}",
   "error.createFile": "No se ha podido crear el archivo: {error}",
-  "error.listFolder": "No se ha podido listar la carpeta: {error}"
+  "error.listFolder": "No se ha podido listar la carpeta: {error}",
+  "menu.readingMode": "Modo lectura",
+  "menu.editingMode": "Modo edición"
 }

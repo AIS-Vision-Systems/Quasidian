@@ -11,6 +11,7 @@
   "command.openFolder": "Obre una carpeta…",
   "command.foldAll": "Plega tots els encapçalaments",
   "command.unfoldAll": "Desplega tots els encapçalaments",
+  "command.toggleFold": "Commuta el plegat de tots els encapçalaments",
   "command.commandPalette": "Paleta de comandes…",
   "properties.title": "Propietats",
   "properties.add": "Afegeix una propietat",
@@ -31,7 +32,6 @@
   "menu.copy": "Copia",
   "menu.paste": "Enganxa",
   "menu.selectAll": "Selecciona-ho tot",
-  "menu.addLink": "Afegeix un enllaç",
   "menu.format": "Format",
   "menu.formatBold": "Negreta",
   "menu.formatItalic": "Cursiva",
@@ -52,6 +52,7 @@
   "menu.insert": "Insereix",
   "menu.insertFootnote": "Nota al peu",
   "menu.insertCallout": "Callout",
+  "menu.insertWikilink": "Wikilink",
   "menu.insertMarkdownLink": "Enllaç markdown",
   "menu.insertHr": "Línia horitzontal",
   "menu.insertCodeBlock": "Bloc de codi",
@@ -203,5 +204,7 @@
   "error.openFile": "No s'ha pogut obrir el fitxer: {error}",
   "error.writeFile": "No s'ha pogut desar el fitxer: {error}",
   "error.createFile": "No s'ha pogut crear el fitxer: {error}",
-  "error.listFolder": "No s'ha pogut llistar la carpeta: {error}"
+  "error.listFolder": "No s'ha pogut llistar la carpeta: {error}",
+  "menu.readingMode": "Mode lectura",
+  "menu.editingMode": "Mode edició"
 }

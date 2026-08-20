@@ -11,12 +11,13 @@ Quasidian no té «vaults» ni configuració: **la carpeta del fitxer obert és 
 
 ## Modes d'edició i lectura
 
-`Ctrl+E` commuta entre **edició** (Live Preview: la sintaxi s'amaga fora de la línia activa) i **lectura** (HTML renderitzat, només les caselles de tasca són interactives). El botó del llibre a la barra del fitxer fa el mateix.
+`Ctrl+E` commuta entre **edició** (Live Preview: la sintaxi s'amaga fora de la línia activa) i **lectura** (HTML renderitzat, només les caselles de tasca són interactives). El botó del llibre a la barra del fitxer fa el mateix. El menú de tres punts del panell també commuta el mode i plega o desplega tots els encapçalaments, en tots dos modes.
 
 ## Enllaços i transclusions
 
 - `[[nota]]` enllaça una nota; `[[nota|àlies]]` mostra un altre text; `[[nota#secció]]` salta a un heading.
 - Clicar un enllaç l'obre (o **crea la nota** si no existeix). `Ctrl+clic` o clic del mig: pestanya nova.
+- Des del menú contextual, «Insereix ▸ Wikilink» escriu `[[]]` i obre l'autocompletat de notes.
 - **Previsualització**: passa el ratolí per sobre d'un enllaç en mode lectura (o `Ctrl`+ratolí en edició) per veure el contingut en una finestra emergent.
 - `![[nota]]` incrusta el contingut d'una altra nota (també `![[nota#secció]]` i imatges `![[imatge.png|500]]`).
 

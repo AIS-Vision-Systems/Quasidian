@@ -75,6 +75,7 @@ import {
   allHeadingFolds,
   foldedRangeStartingAt,
   foldRangeForLine,
+  foldToggleAction,
   sectionFolding,
   type FoldRange,
 } from "./folding";
@@ -179,6 +180,25 @@ function applyFormat(view: EditorView, open: string, close: string): void {
     scrollIntoView: true,
   });
   view.focus();
+}
+
+/**
+ * `[[|]]` at the cursor — the selection becomes the target, with the
+ * cursor left before `]]` — and the existing wikilink autocomplete
+ * pops open on the spot (m37).
+ */
+function insertWikilink(view: EditorView): void {
+  view.dispatch(
+    view.state.changeByRange((range) => ({
+      changes: [
+        { from: range.from, insert: "[[" },
+        { from: range.to, insert: "]]" },
+      ],
+      range: EditorSelection.cursor(range.to + 2),
+    })),
+  );
+  view.focus();
+  startCompletion(view);
 }
 
 /** `[text](|)` around the selection, cursor between the parens. */
@@ -319,11 +339,6 @@ function openEditorMenu(view: EditorView, x: number, y: number): void {
     },
     "separator",
     {
-      label: t("menu.addLink"),
-      icon: "link",
-      onClick: () => insertLink(view),
-    },
-    {
       label: t("menu.insert"),
       icon: "plus",
       submenu: [
@@ -341,6 +356,11 @@ function openEditorMenu(view: EditorView, x: number, y: number): void {
           label: t("menu.insertCallout"),
           icon: "quote",
           onClick: () => insertBlockSnippet(view, "> [!note] \n> \n", 10),
+        },
+        {
+          label: t("menu.insertWikilink"),
+          icon: "link",
+          onClick: () => insertWikilink(view),
         },
         {
           label: t("menu.insertMarkdownLink"),
@@ -605,6 +625,8 @@ export interface EditorHandle {
   setFolds(ranges: FoldRange[]): void;
   foldAllSections(): void;
   unfoldAllSections(): void;
+  /** Any fold active → unfold everything; none → fold everything. */
+  toggleAllSections(): void;
   /** Foldability and state of the line holding `pos` (reading mode). */
   foldInfoAt(pos: number): { folded: boolean } | null;
   /** Folds/unfolds the section of the line holding `pos`. */
@@ -1130,6 +1152,18 @@ export function createEditor(
     },
     unfoldAllSections(): void {
       unfoldAll(view);
+    },
+    toggleAllSections(): void {
+      if (foldToggleAction(view.state) === "unfold") {
+        unfoldAll(view);
+        return;
+      }
+      const effects = allHeadingFolds(view.state).map((range) =>
+        foldEffect.of(range),
+      );
+      if (effects.length > 0) {
+        view.dispatch({ effects });
+      }
     },
     foldInfoAt(pos: number): { folded: boolean } | null {
       const clamped = Math.min(Math.max(pos, 0), view.state.doc.length);
