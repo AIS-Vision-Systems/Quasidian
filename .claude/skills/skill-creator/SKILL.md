@@ -80,7 +80,7 @@ model: haiku
 
 ## After writing one
 
-1. Check it against what already exists — extending a skill beats adding a near-duplicate. Current skills: `milestone-workflow`, `i18n-text`, `settings-option`, `markdown-editor`, `release-version`, `docs-sync`, `commit-pr`, `skill-creator`. Current agents: `spec-navigator`, `invariant-reviewer`, `code-locator`.
+1. Check it against what already exists — extending a skill beats adding a near-duplicate. Current skills: `milestone-workflow`, `i18n-text`, `settings-option`, `markdown-editor`, `release-version`, `docs-sync`, `commit-pr`, `skill-creator`. Current agents: `spec-navigator`, `invariant-reviewer`, `code-locator`, `doc-writer`. Current rules: `pure-modules`, `markdown-layer`, `i18n-locales`, `tauri-shell`, `ui-layer`, `core-package`.
 2. If it introduces a new slash command a person will use often, add it to the list at the end of `CLAUDE.md`.
 3. Restart the session (or `/reload`) so the new skill or agent is registered.
 4. Commit as `chore(claude): …`. `.claude/` is committed; only `.claude/settings.local.json` is gitignored. The repo is **public** — never put personal paths, machine names or credentials in these files.
