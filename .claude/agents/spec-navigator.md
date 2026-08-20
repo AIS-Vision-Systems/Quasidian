@@ -2,7 +2,7 @@
 name: spec-navigator
 description: Extracts the requirements of a Quasidian milestone (or topic) from the Catalan specs in docs/SPEC*.md, plus the constraints earlier phases impose on it. Use this INSTEAD of reading the six spec documents yourself — they are long, in Catalan, and loading them costs tens of thousands of tokens. Trigger on "milestone N", "what does the spec say about X", or before starting any implementation work.
 tools: Read, Grep, Glob
-model: haiku
+model: sonnet
 ---
 
 # Spec navigator

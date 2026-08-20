@@ -2,7 +2,7 @@
 name: doc-writer
 description: Writes and maintains Quasidian's documentation from the code — the in-app user guide in three languages, the three READMEs, and the embeddable core package's docs and public API. Use when a change alters user-visible behavior, when documentation has drifted from the code, or when asked to document a feature, write a README or refresh the guide.
 tools: Read, Grep, Glob, Edit, Write, Bash
-model: sonnet
+model: opus
 ---
 
 # Documentation writer

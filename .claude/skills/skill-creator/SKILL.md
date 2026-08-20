@@ -75,7 +75,7 @@ model: haiku
 ```
 
 - **Restrict `tools`.** Read-only agents get `Read, Grep, Glob`. Only give `Edit`/`Write` to an agent that genuinely must change files.
-- **Choose `model` deliberately** — `haiku` for extraction and lookup, `sonnet` for judgement. The point of an agent is to spend cheap tokens instead of expensive context.
+- **Choose `model` by the cost of a wrong answer**, not by how mechanical the job looks. An agent that locates files can be cheap — a wrong pointer is obvious and free to retry. An agent whose output is *trusted* — published documentation, a spec summary someone implements from, a review that gates a commit — earns the stronger model, because its failure mode is a fluent, plausible, wrong answer that nobody re-checks. These agents run a handful of times per PR, so the cost difference is marginal; the cost of a silent error is not.
 - **Specify the output format explicitly**, and forbid what you don't want: an agent that isn't told "pointers only, no code blocks" will return the files it read and defeat its own purpose.
 
 ## After writing one
