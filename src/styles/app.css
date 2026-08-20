@@ -889,11 +889,9 @@ body.is-readable-line-length .cm-editor .cm-content {
   padding-left: 28px;
 }
 
-/* Scroll past end: the last line can reach the middle of the view. */
-.cm-editor .cm-content {
-  padding-bottom: 50vh;
-}
-
+/* Scroll past end, reading mode only. The editor's comes from the
+   scrollPastEnd() extension instead: vh padding on .cm-content changed
+   the document height behind CodeMirror's height model (m36). */
 .reading-view-content {
   padding-bottom: 50vh;
 }

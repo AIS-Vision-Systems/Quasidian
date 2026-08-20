@@ -38,8 +38,15 @@ import {
 
 // Marks reload/mirror transactions: no autosave, no re-mirroring.
 const quietReload = Annotation.define<boolean>();
-import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { EditorView, keymap, lineNumbers, scrollPastEnd } from "@codemirror/view";
 import { gutterLineStyles, widgetLineNumbers } from "./gutterLines";
+import {
+  initialResizeAnchor,
+  onBurstEnd,
+  onHostResize,
+  onUserScroll,
+  RESIZE_BURST_QUIET_MS,
+} from "./resizeAnchor";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import { t } from "../i18n/i18n";
@@ -895,6 +902,11 @@ export function createEditor(
           },
         }),
         EditorView.lineWrapping,
+        // Scroll past end lives inside CodeMirror's height model. The
+        // CSS it replaces (padding-bottom in vh units) changed the
+        // document height with the viewport behind the model's back,
+        // which broke scroll geometry on window resizes (m36).
+        scrollPastEnd(),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const quiet = update.transactions.some(
@@ -913,6 +925,119 @@ export function createEditor(
   // metrics; remeasure so line geometry stays exact.
   void document.fonts.ready.then(() => view.requestMeasure());
 
+  function topVisiblePos(): number {
+    // Height-based, not coordinate-based: posAtCoords needs a point
+    // over the content column, which readable line length margins
+    // break. The pixel fraction inside the top block is folded into
+    // the returned offset, so tall single-line blocks (note embeds,
+    // wrapped paragraphs) keep the point, not just the block start.
+    const rect = view.scrollDOM.getBoundingClientRect();
+    const y = rect.top + 1 - view.documentTop;
+    const block = view.lineBlockAtHeight(y);
+    const within =
+      block.height > 0
+        ? Math.max(0, Math.min((y - block.top) / block.height, 1))
+        : 0;
+    return Math.round(block.from + within * (block.to - block.from));
+  }
+
+  function scrollPosToTop(pos: number): void {
+    // Mirror of topVisiblePos: the intra-line offset maps back to a
+    // pixel fraction of the block's height. Recomputing from current
+    // geometry keeps this idempotent, so callers may re-apply it
+    // while CodeMirror refines estimated heights.
+    const clamped = Math.min(pos, view.state.doc.length);
+    const block = view.lineBlockAt(clamped);
+    const within =
+      block.to > block.from
+        ? Math.max(
+            0,
+            Math.min((clamped - block.from) / (block.to - block.from), 1),
+          )
+        : 0;
+    const rect = view.scrollDOM.getBoundingClientRect();
+    view.scrollDOM.scrollTop +=
+      view.documentTop + block.top + within * block.height - rect.top - 1;
+  }
+
+  // A window (or pane) resize reflows every wrapped line, so the pixel
+  // scroll offset stops matching the document position it showed. Hold
+  // the top-visible position through the resize burst — captured while
+  // the height model still reflects the old geometry — and re-apply it
+  // as CodeMirror re-measures, until the burst goes quiet (m36).
+  let resizeState = initialResizeAnchor();
+  let burstTimer: number | null = null;
+  let settleRaf: number | null = null;
+  let settleTimer: number | null = null;
+  const reapplyHeld = (): void => {
+    if (resizeState.holding !== null) {
+      scrollPosToTop(resizeState.holding);
+    }
+  };
+  const cancelSettle = (): void => {
+    if (burstTimer !== null) {
+      window.clearTimeout(burstTimer);
+      burstTimer = null;
+    }
+    if (settleRaf !== null) {
+      cancelAnimationFrame(settleRaf);
+      settleRaf = null;
+    }
+    if (settleTimer !== null) {
+      window.clearTimeout(settleTimer);
+      settleTimer = null;
+    }
+  };
+  const dropHeld = (): void => {
+    resizeState = onUserScroll(resizeState);
+    cancelSettle();
+  };
+  const hostObserver = new ResizeObserver((entries) => {
+    const rect = entries[entries.length - 1].contentRect;
+    const { state, action } = onHostResize(
+      resizeState,
+      rect.width,
+      rect.height,
+      topVisiblePos,
+    );
+    resizeState = state;
+    if (action.kind === "ignore") {
+      return;
+    }
+    view.requestMeasure();
+    if (action.kind === "anchor") {
+      reapplyHeld();
+      // Again after the measure pass and once heights have settled.
+      cancelSettle();
+      settleRaf = requestAnimationFrame(() => {
+        settleRaf = null;
+        reapplyHeld();
+      });
+      settleTimer = window.setTimeout(() => {
+        settleTimer = null;
+        reapplyHeld();
+      }, 120);
+      burstTimer = window.setTimeout(() => {
+        burstTimer = null;
+        reapplyHeld();
+        resizeState = onBurstEnd(resizeState);
+      }, RESIZE_BURST_QUIET_MS);
+    }
+  });
+  hostObserver.observe(parent);
+  // Direct scroll input drops the held anchor: never fight the user.
+  view.scrollDOM.addEventListener("wheel", dropHeld, { passive: true });
+  view.scrollDOM.addEventListener("mousedown", dropHeld);
+  view.scrollDOM.addEventListener("touchstart", dropHeld, { passive: true });
+  // Measurements taken while the webview was hidden (minimized, or the
+  // window not yet shown) can be stale without any resize firing.
+  const onVisible = (): void => {
+    if (document.visibilityState === "visible") {
+      view.requestMeasure();
+    }
+  };
+  document.addEventListener("visibilitychange", onVisible);
+
   return {
     setDoc(doc: string): void {
       view.setState(buildState(doc));
@@ -927,6 +1052,9 @@ export function createEditor(
       view.dispatch({ effects: refreshBlockDecorations.of(null) });
     },
     destroy(): void {
+      hostObserver.disconnect();
+      cancelSettle();
+      document.removeEventListener("visibilitychange", onVisible);
       view.destroy();
     },
     reloadDoc(contents: string): void {
@@ -947,39 +1075,8 @@ export function createEditor(
       });
       view.focus();
     },
-    topVisiblePos(): number {
-      // Height-based, not coordinate-based: posAtCoords needs a point
-      // over the content column, which readable line length margins
-      // break. The pixel fraction inside the top block is folded into
-      // the returned offset, so tall single-line blocks (note embeds,
-      // wrapped paragraphs) keep the point, not just the block start.
-      const rect = view.scrollDOM.getBoundingClientRect();
-      const y = rect.top + 1 - view.documentTop;
-      const block = view.lineBlockAtHeight(y);
-      const within =
-        block.height > 0
-          ? Math.max(0, Math.min((y - block.top) / block.height, 1))
-          : 0;
-      return Math.round(block.from + within * (block.to - block.from));
-    },
-    scrollPosToTop(pos: number): void {
-      // Mirror of topVisiblePos: the intra-line offset maps back to a
-      // pixel fraction of the block's height. Recomputing from current
-      // geometry keeps this idempotent, so callers may re-apply it
-      // while CodeMirror refines estimated heights.
-      const clamped = Math.min(pos, view.state.doc.length);
-      const block = view.lineBlockAt(clamped);
-      const within =
-        block.to > block.from
-          ? Math.max(
-              0,
-              Math.min((clamped - block.from) / (block.to - block.from), 1),
-            )
-          : 0;
-      const rect = view.scrollDOM.getBoundingClientRect();
-      view.scrollDOM.scrollTop +=
-        view.documentTop + block.top + within * block.height - rect.top - 1;
-    },
+    topVisiblePos,
+    scrollPosToTop,
     getSelection(): { anchor: number; head: number } {
       const { anchor, head } = view.state.selection.main;
       return { anchor, head };

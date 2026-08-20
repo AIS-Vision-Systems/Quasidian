@@ -4,6 +4,8 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { markdownExtensions } from "../markdown/parser";
 import {
+  bumpEmbedGeneration,
+  clearEmbedHtmlCache,
   computeDoneTaskLines,
   computeHeadingLines,
   computeHiddenRanges,
@@ -14,6 +16,9 @@ import {
   computeMathRanges,
   computeNoteEmbeds,
   computeTaskMarkers,
+  estimatedImageHeight,
+  getEmbedHtml,
+  setEmbedHtml,
   tableBlankGuard,
   type HiddenRange,
 } from "./livePreview";
@@ -513,5 +518,84 @@ describe("tableBlankGuard — the blank line after a table is protected", () => 
     const state = stateFor(doc);
     const tr = state.update({ changes: { from: 0, to: 21 } });
     expect(tr.state.doc.toString()).toBe(doc.slice(21));
+  });
+});
+
+describe("estimatedImageHeight — pre-measure estimate of an embed image", () => {
+  it("is unknown with no dimensions and no cached size", () => {
+    expect(estimatedImageHeight(null, undefined)).toBe(-1);
+    expect(estimatedImageHeight("a caption", undefined)).toBe(-1);
+  });
+
+  it("takes an explicit WxH height verbatim", () => {
+    expect(estimatedImageHeight("300x200", undefined)).toBe(200);
+    expect(estimatedImageHeight("300x200", { width: 600, height: 900 })).toBe(
+      200,
+    );
+  });
+
+  it("scales a width-only dimension by the cached aspect ratio", () => {
+    expect(estimatedImageHeight("300", { width: 600, height: 900 })).toBe(450);
+  });
+
+  it("is unknown for a width-only dimension without a cached size", () => {
+    expect(estimatedImageHeight("300", undefined)).toBe(-1);
+  });
+
+  it("uses the cached natural height when no dimensions are given", () => {
+    expect(estimatedImageHeight(null, { width: 600, height: 900 })).toBe(900);
+    expect(estimatedImageHeight("caption", { width: 600, height: 900 })).toBe(
+      900,
+    );
+  });
+
+  it("never divides by a zero cached width", () => {
+    expect(estimatedImageHeight("300", { width: 0, height: 900 })).toBe(-1);
+  });
+});
+
+describe("embed html cache — stale seeding across saves (m36)", () => {
+  it("misses on an unknown target", () => {
+    expect(getEmbedHtml("Missing", null)).toBeUndefined();
+  });
+
+  it("serves a fresh entry after set", () => {
+    setEmbedHtml("NoteA", null, "<p>a</p>");
+    expect(getEmbedHtml("NoteA", null)).toEqual({
+      html: "<p>a</p>",
+      fresh: true,
+    });
+  });
+
+  it("keys entries by target and alias independently", () => {
+    setEmbedHtml("NoteB", null, "<p>plain</p>");
+    setEmbedHtml("NoteB", "alias", "<p>aliased</p>");
+    expect(getEmbedHtml("NoteB", null)?.html).toBe("<p>plain</p>");
+    expect(getEmbedHtml("NoteB", "alias")?.html).toBe("<p>aliased</p>");
+  });
+
+  it("keeps the html but marks it stale after clearEmbedHtmlCache", () => {
+    setEmbedHtml("NoteC", null, "<p>c</p>");
+    clearEmbedHtmlCache();
+    expect(getEmbedHtml("NoteC", null)).toEqual({
+      html: "<p>c</p>",
+      fresh: false,
+    });
+  });
+
+  it("turns fresh again once re-set after a clear", () => {
+    setEmbedHtml("NoteD", null, "<p>old</p>");
+    clearEmbedHtmlCache();
+    setEmbedHtml("NoteD", null, "<p>new</p>");
+    expect(getEmbedHtml("NoteD", null)).toEqual({
+      html: "<p>new</p>",
+      fresh: true,
+    });
+  });
+
+  it("drops everything on bumpEmbedGeneration (settings changes)", () => {
+    setEmbedHtml("NoteE", null, "<p>e</p>");
+    bumpEmbedGeneration();
+    expect(getEmbedHtml("NoteE", null)).toBeUndefined();
   });
 });

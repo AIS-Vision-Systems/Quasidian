@@ -658,6 +658,30 @@ export function parseImageDimensions(
   };
 }
 
+/**
+ * Best-known height of an embed image before it is measured: exact
+ * from explicit `WxH` dimensions, scaled from the cached natural size
+ * when only the width is given, or unknown (-1). Mirrors the width and
+ * height attributes ImageWidget sets, so CodeMirror's height estimate
+ * matches the rendered box and the text never shifts when the image
+ * block is measured late (m36).
+ */
+export function estimatedImageHeight(
+  alias: string | null,
+  cached: { width: number; height: number } | undefined,
+): number {
+  const dimensions = parseImageDimensions(alias);
+  if (dimensions !== null) {
+    if (dimensions.height !== null) {
+      return dimensions.height;
+    }
+    return cached !== undefined && cached.width > 0
+      ? Math.round((dimensions.width * cached.height) / cached.width)
+      : -1;
+  }
+  return cached?.height ?? -1;
+}
+
 class ImageWidget extends WidgetType {
   constructor(
     readonly src: string | null,
@@ -673,6 +697,12 @@ class ImageWidget extends WidgetType {
       other.target === this.target &&
       other.alias === this.alias
     );
+  }
+
+  override get estimatedHeight(): number {
+    return this.src === null
+      ? -1
+      : estimatedImageHeight(this.alias, imageSizeCache.get(this.src));
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -814,14 +844,50 @@ export function bumpEmbedGeneration(): void {
   embedHtmlCache.clear();
 }
 
-// Filled HTML per (generation, target, alias): a widget recreated while
-// scrolling renders synchronously at its final height, so the scroll
-// position never jumps while embeds refill. Invalidated on generation
-// bumps and by the layout on saves and external folder changes.
-const embedHtmlCache = new Map<string, string>();
+// Filled HTML per (target, alias): a widget recreated while scrolling
+// renders synchronously at its final height, so the scroll position
+// never jumps while embeds refill. Saves and external folder changes
+// mark entries stale instead of dropping them: a stale entry still
+// seeds the widget's DOM at its last height while the fresh render
+// replaces it in place — height-neutral whenever the content did not
+// actually change, so the text never shifts at rest (m36). Generation
+// bumps (settings changes) drop everything.
+interface EmbedHtmlEntry {
+  freshness: number;
+  html: string;
+}
+
+const embedHtmlCache = new Map<string, EmbedHtmlEntry>();
+let embedFreshness = 0;
 
 export function clearEmbedHtmlCache(): void {
-  embedHtmlCache.clear();
+  embedFreshness++;
+}
+
+function embedHtmlKey(target: string, alias: string | null): string {
+  return `${target}|${alias ?? ""}`;
+}
+
+/** Cached embed HTML and whether a save has outdated it since. */
+export function getEmbedHtml(
+  target: string,
+  alias: string | null,
+): { html: string; fresh: boolean } | undefined {
+  const entry = embedHtmlCache.get(embedHtmlKey(target, alias));
+  return entry === undefined
+    ? undefined
+    : { html: entry.html, fresh: entry.freshness === embedFreshness };
+}
+
+export function setEmbedHtml(
+  target: string,
+  alias: string | null,
+  html: string,
+): void {
+  embedHtmlCache.set(embedHtmlKey(target, alias), {
+    freshness: embedFreshness,
+    html,
+  });
 }
 
 class NoteEmbedWidget extends WidgetType {
@@ -856,7 +922,6 @@ class NoteEmbedWidget extends WidgetType {
     const body = document.createElement("span");
     body.className = "cm-embed-note-body markdown-rendered";
     container.append(title, body);
-    const cacheKey = `${this.generation}:${this.target}|${this.alias ?? ""}`;
     const fillHooks: EmbedFillHooks = {
       resolveEmbedSrc: this.hooks.resolveEmbedSrc,
       renderEmbedNote: this.hooks.renderEmbedNote,
@@ -864,7 +929,7 @@ class NoteEmbedWidget extends WidgetType {
       onRendered: () => {
         // Nested transclusions keep deepening the content: keep the
         // cache at the latest markup.
-        embedHtmlCache.set(cacheKey, body.innerHTML);
+        setEmbedHtml(this.target, this.alias, body.innerHTML);
         view.requestMeasure();
       },
       onNavigate: this.hooks.onNavigate,
@@ -909,21 +974,28 @@ class NoteEmbedWidget extends WidgetType {
         this.hooks.onNavigate(link.dataset.target);
       }
     });
-    const cachedHtml = embedHtmlCache.get(cacheKey);
-    if (cachedHtml !== undefined) {
+    const cached = getEmbedHtml(this.target, this.alias);
+    if (cached !== undefined) {
       // Synchronous restore at the final height. Listeners never
       // survive HTML caching: re-wire the interactive bits.
-      body.innerHTML = cachedHtml;
+      body.innerHTML = cached.html;
       addCodePills(body);
       wirePropertiesCollapse(body);
       for (const image of body.querySelectorAll("img")) {
         image.addEventListener("load", () => view.requestMeasure());
       }
-      return container;
+      if (cached.fresh) {
+        return container;
+      }
+      // Stale (this note, or one it embeds, was saved since): fall
+      // through and refresh in place. Seeding first keeps the height
+      // stable whenever the content did not change.
     }
     void this.hooks.renderEmbedNote(this.target).then((result) => {
       if (result === null) {
         title.classList.add("cm-embed-missing");
+        // A stale seed of a target deleted since must not linger.
+        body.replaceChildren();
       } else {
         body.innerHTML = result.html;
         fillEmbedImages(body, this.hooks.resolveEmbedSrc);
@@ -943,7 +1015,7 @@ class NoteEmbedWidget extends WidgetType {
             : [current.toLowerCase(), result.path.toLowerCase()],
         );
         fillEmbedNotes(body, fillHooks, visited, 1);
-        embedHtmlCache.set(cacheKey, body.innerHTML);
+        setEmbedHtml(this.target, this.alias, body.innerHTML);
       }
       // The fill changed the widget height after CodeMirror measured it.
       view.requestMeasure();
