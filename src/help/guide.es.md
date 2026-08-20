@@ -11,12 +11,13 @@ Quasidian no tiene «vaults» ni configuración: **la carpeta del archivo abiert
 
 ## Modos de edición y lectura
 
-`Ctrl+E` conmuta entre **edición** (Live Preview: la sintaxis se oculta fuera de la línea activa) y **lectura** (HTML renderizado, solo las casillas de tarea son interactivas). El botón del libro en la barra del archivo hace lo mismo.
+`Ctrl+E` conmuta entre **edición** (Live Preview: la sintaxis se oculta fuera de la línea activa) y **lectura** (HTML renderizado, solo las casillas de tarea son interactivas). El botón del libro en la barra del archivo hace lo mismo. El menú de tres puntos del panel también conmuta el modo y pliega o despliega todos los encabezados, en ambos modos.
 
 ## Enlaces y transclusiones
 
 - `[[nota]]` enlaza una nota; `[[nota|alias]]` muestra otro texto; `[[nota#sección]]` salta a un heading.
 - Hacer clic en un enlace lo abre (o **crea la nota** si no existe). `Ctrl+clic` o clic central: pestaña nueva.
+- Desde el menú contextual, «Insertar ▸ Wikilink» escribe `[[]]` y abre el autocompletado de notas.
 - **Previsualización**: pasa el ratón sobre un enlace en modo lectura (o `Ctrl`+ratón en edición) para ver el contenido en una ventana emergente.
 - `![[nota]]` incrusta el contenido de otra nota (también `![[nota#sección]]` e imágenes `![[imagen.png|500]]`).
 

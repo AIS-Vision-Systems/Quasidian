@@ -138,7 +138,11 @@ import {
 } from "../ipc/settingsStore";
 import { editorConfigFrom } from "./applySettings";
 import { commandPaletteItems, type Command } from "./commands";
-import { openContextMenu, openPromptModal } from "./contextMenu";
+import {
+  openContextMenu,
+  openPromptModal,
+  type MenuEntry,
+} from "./contextMenu";
 import { openHelpModal } from "./helpModal";
 import { hideHoverPreview } from "./hoverPreview";
 import { createIcon } from "./icons";
@@ -407,7 +411,7 @@ export function mountLayout(root: HTMLElement): void {
     title.addEventListener("contextmenu", (event) => {
       if (openedPath !== null) {
         event.preventDefault();
-        openFileMenu(event.clientX, event.clientY, openedPath);
+        openFileMenu(event.clientX, event.clientY, openedPath, "title");
       }
     });
     const actions = document.createElement("div");
@@ -422,7 +426,7 @@ export function mountLayout(root: HTMLElement): void {
     more.addEventListener("click", () => {
       if (openedPath !== null) {
         const rect = more.getBoundingClientRect();
-        openFileMenu(rect.left, rect.bottom + 4, openedPath);
+        openFileMenu(rect.left, rect.bottom + 4, openedPath, "more");
       }
     });
     actions.append(mode, more);
@@ -1242,7 +1246,9 @@ export function mountLayout(root: HTMLElement): void {
   function setStatusMode(mode: EditorModeSetting | "image"): void {
     const image = mode === "image";
     modeButton.hidden = image;
-    modeHeaderButton.hidden = image;
+    // The class, not the hidden attribute: .view-header-button sets
+    // display, which beats the UA [hidden] rule in the cascade.
+    modeHeaderButton.classList.toggle("is-hidden", image);
     if (!image) {
       modeButton.textContent = t(
         mode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
@@ -2793,7 +2799,7 @@ export function mountLayout(root: HTMLElement): void {
     });
     item.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      openFileMenu(event.clientX, event.clientY, path);
+      openFileMenu(event.clientX, event.clientY, path, "sidebar");
     });
     return item;
   }
@@ -3557,10 +3563,52 @@ export function mountLayout(root: HTMLElement): void {
     ]);
   }
 
-  function openFileMenu(x: number, y: number, path: string): void {
+  /** Where the shared file menu was opened from (m37). */
+  type FileMenuOrigin = "sidebar" | "title" | "more";
+
+  function openFileMenu(
+    x: number,
+    y: number,
+    path: string,
+    origin: FileMenuOrigin,
+  ): void {
     const isOpenFile = openedPath !== null && samePath(path, openedPath);
     const image = isImageTarget(path);
+    // View section: only from a pane's three-dots button with a note
+    // open — never for images nor from the sidebar. Fold state is
+    // shared between modes, so the fold entries work in both.
+    const viewSection: MenuEntry[] =
+      origin === "more" && isOpenFile && !image
+        ? [
+            {
+              label:
+                currentMode === "edit"
+                  ? t("menu.readingMode")
+                  : t("menu.editingMode"),
+              icon: currentMode === "edit" ? "book-open" : "pencil",
+              onClick: () => void toggleMode(),
+            },
+            "separator",
+            {
+              label: t("command.foldAll"),
+              icon: "chevrons-down-up",
+              onClick: () => runFoldCommand(() => editor.foldAllSections()),
+            },
+            {
+              label: t("command.unfoldAll"),
+              icon: "chevrons-up-down",
+              onClick: () => runFoldCommand(() => editor.unfoldAllSections()),
+            },
+            {
+              label: t("command.toggleFold"),
+              icon: "chevron-down",
+              onClick: () => runFoldCommand(() => editor.toggleAllSections()),
+            },
+            "separator",
+          ]
+        : [];
     openContextMenu(x, y, [
+      ...viewSection,
       {
         label: t("menu.rename"),
         icon: "pencil",
@@ -3694,6 +3742,22 @@ export function mountLayout(root: HTMLElement): void {
     });
   }
 
+  /**
+   * Runs a fold command and keeps the open view in step: fold state
+   * lives in the editor and the reading render hides folded sections,
+   * so read mode re-renders in place, preserving its scroll (m37).
+   */
+  function runFoldCommand(action: () => void): void {
+    action();
+    if (currentMode === "read") {
+      const scroll = readingView.element.scrollTop;
+      readingView.render(editor.getDoc());
+      readingView.element.scrollTop = scroll;
+    } else {
+      editor.focus();
+    }
+  }
+
   const commands: Command[] = [
     {
       id: "open-file",
@@ -3737,10 +3801,7 @@ export function mountLayout(root: HTMLElement): void {
     {
       id: "fold-all",
       nameKey: "command.foldAll",
-      run: () => {
-        editor.foldAllSections();
-        editor.focus();
-      },
+      run: () => runFoldCommand(() => editor.foldAllSections()),
     },
     {
       id: "smart-fold-folders",
@@ -3750,10 +3811,12 @@ export function mountLayout(root: HTMLElement): void {
     {
       id: "unfold-all",
       nameKey: "command.unfoldAll",
-      run: () => {
-        editor.unfoldAllSections();
-        editor.focus();
-      },
+      run: () => runFoldCommand(() => editor.unfoldAllSections()),
+    },
+    {
+      id: "toggle-fold-all",
+      nameKey: "command.toggleFold",
+      run: () => runFoldCommand(() => editor.toggleAllSections()),
     },
     {
       id: "insert-table",

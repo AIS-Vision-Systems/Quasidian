@@ -140,6 +140,14 @@ export function foldedRangeStartingAt(
   return found[0] ?? null;
 }
 
+/**
+ * What the toggle-all command should do: any active fold means the
+ * user wants everything back open; a fully unfolded document folds.
+ */
+export function foldToggleAction(state: EditorState): "fold" | "unfold" {
+  return foldedRanges(state).size > 0 ? "unfold" : "fold";
+}
+
 /** Fold ranges of every heading section in the document. */
 export function allHeadingFolds(state: EditorState): FoldRange[] {
   const folds: FoldRange[] = [];

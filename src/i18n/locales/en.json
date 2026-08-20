@@ -11,6 +11,7 @@
   "command.openFolder": "Open a folder…",
   "command.foldAll": "Fold all headings",
   "command.unfoldAll": "Unfold all headings",
+  "command.toggleFold": "Toggle fold on all headings",
   "command.commandPalette": "Command palette…",
   "properties.title": "Properties",
   "properties.add": "Add property",
@@ -31,7 +32,6 @@
   "menu.copy": "Copy",
   "menu.paste": "Paste",
   "menu.selectAll": "Select all",
-  "menu.addLink": "Add link",
   "menu.format": "Format",
   "menu.formatBold": "Bold",
   "menu.formatItalic": "Italic",
@@ -52,6 +52,7 @@
   "menu.insert": "Insert",
   "menu.insertFootnote": "Footnote",
   "menu.insertCallout": "Callout",
+  "menu.insertWikilink": "Wikilink",
   "menu.insertMarkdownLink": "Markdown link",
   "menu.insertHr": "Horizontal rule",
   "menu.insertCodeBlock": "Code block",
@@ -203,5 +204,7 @@
   "error.openFile": "Could not open file: {error}",
   "error.writeFile": "Could not save file: {error}",
   "error.createFile": "Could not create file: {error}",
-  "error.listFolder": "Could not list folder: {error}"
+  "error.listFolder": "Could not list folder: {error}",
+  "menu.readingMode": "Reading mode",
+  "menu.editingMode": "Editing mode"
 }
