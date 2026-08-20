@@ -5,6 +5,8 @@ description: Keeping Quasidian's documentation in step with the code — the in-
 
 # Keeping the docs honest
 
+For anything beyond a one-line touch-up, delegate to the `doc-writer` agent: it verifies every claim against the code and reports what it could not confirm. This skill is the map of what needs updating; the agent does the writing.
+
 ## What is documentation here
 
 | Audience | Files | Update when |

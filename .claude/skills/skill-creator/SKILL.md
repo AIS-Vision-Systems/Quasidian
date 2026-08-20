@@ -9,12 +9,33 @@ description: How to add or edit a Claude Code skill, subagent or rule for the Qu
 
 | Kind of knowledge | Goes in | Why |
 |---|---|---|
-| An invariant that is always true | `CLAUDE.md` | Loaded every session. Costs tokens on every turn, so only rules that could be violated at any moment earn a line. |
+| An invariant that is always true | `CLAUDE.md` | Loaded every session, and re-injected after `/compact`. Costs tokens on every turn, so only rules that could be violated at any moment earn a line. |
+| A constraint that only applies to one layer | a path-scoped rule in `.claude/rules/` | Loads when Claude reads a file the `paths` globs cover. Free until then. |
 | A procedure with steps, run occasionally | a skill in `.claude/skills/` | Only the description is always loaded; the body loads when triggered. |
 | A search, audit or extraction that would flood the main context | a subagent in `.claude/agents/` | Returns a conclusion instead of the files it read. |
 | A one-off preference for this session | just say it | Not everything needs a file. |
 
-If you are unsure between a rule and a skill: a rule is a *constraint*, a skill is a *recipe*.
+If you are unsure between a rule and a skill: a rule is a *constraint*, a skill is a *recipe*. A rule fires because a file was opened; a skill fires because of what someone is trying to do. They overlap on purpose — the rule is the safety net for when the skill was never invoked.
+
+## Rule anatomy
+
+`.claude/rules/<kebab-name>.md`:
+
+```markdown
+---
+paths:
+  - "src/lib/**/*.ts"
+---
+
+# Title
+
+The constraints, and why each one exists.
+```
+
+- `paths` is a **YAML list of quoted globs**, matched from the project root. Use `src/lib/**/*.ts`, not `src/lib/**` — `**` alone matches directories.
+- **A rule with no `paths` loads every session**, exactly like `CLAUDE.md`. If you leave the frontmatter off by accident you have silently made the file always-on; that is the most common mistake.
+- Path-scoped rules load when Claude **reads** a matching file. They are also *not* re-injected after `/compact` — they reload the next time a matching file is read. So a constraint that must never be forgotten belongs in `CLAUDE.md`, with the detail here.
+- Keep the invariant in `CLAUDE.md` as one line and put the *how* and the *why* in the rule. Don't let the two contradict each other; if they do, Claude may pick either.
 
 ## Skill anatomy
 
@@ -54,12 +75,12 @@ model: haiku
 ```
 
 - **Restrict `tools`.** Read-only agents get `Read, Grep, Glob`. Only give `Edit`/`Write` to an agent that genuinely must change files.
-- **Choose `model` deliberately** — `haiku` for extraction and lookup, `sonnet` for judgement. The point of an agent is to spend cheap tokens instead of expensive context.
+- **Choose `model` by the cost of a wrong answer**, not by how mechanical the job looks. An agent that locates files can be cheap — a wrong pointer is obvious and free to retry. An agent whose output is *trusted* — published documentation, a spec summary someone implements from, a review that gates a commit — earns the stronger model, because its failure mode is a fluent, plausible, wrong answer that nobody re-checks. These agents run a handful of times per PR, so the cost difference is marginal; the cost of a silent error is not.
 - **Specify the output format explicitly**, and forbid what you don't want: an agent that isn't told "pointers only, no code blocks" will return the files it read and defeat its own purpose.
 
 ## After writing one
 
-1. Check it against what already exists — extending a skill beats adding a near-duplicate. Current skills: `milestone-workflow`, `i18n-text`, `settings-option`, `markdown-editor`, `release-version`, `docs-sync`, `commit-pr`, `skill-creator`. Current agents: `spec-navigator`, `invariant-reviewer`, `code-locator`.
+1. Check it against what already exists — extending a skill beats adding a near-duplicate. Current skills: `milestone-workflow`, `i18n-text`, `settings-option`, `markdown-editor`, `release-version`, `docs-sync`, `commit-pr`, `skill-creator`. Current agents: `spec-navigator`, `invariant-reviewer`, `code-locator`, `doc-writer`. Current rules: `pure-modules`, `markdown-layer`, `i18n-locales`, `tauri-shell`, `ui-layer`, `core-package`.
 2. If it introduces a new slash command a person will use often, add it to the list at the end of `CLAUDE.md`.
 3. Restart the session (or `/reload`) so the new skill or agent is registered.
 4. Commit as `chore(claude): …`. `.claude/` is committed; only `.claude/settings.local.json` is gitignored. The repo is **public** — never put personal paths, machine names or credentials in these files.

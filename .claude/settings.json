@@ -27,6 +27,13 @@
       "PowerShell(git log:*)",
       "PowerShell(git branch:*)"
     ],
+    "ask": [
+      "Bash(gh pr merge:*)",
+      "PowerShell(gh pr merge:*)",
+      "Bash(gh release:*)",
+      "Bash(git tag:*)",
+      "Bash(git push origin v:*)"
+    ],
     "deny": [
       "Edit(docs/SPEC.md)",
       "Edit(docs/SPEC2.md)",
