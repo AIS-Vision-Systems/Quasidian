@@ -24,6 +24,13 @@ import {
 } from "../ipc/fs";
 import { createEditor } from "../editor/editor";
 import {
+  initialResizeAnchor,
+  onBurstEnd,
+  onHostResize,
+  onUserScroll,
+  RESIZE_BURST_QUIET_MS,
+} from "../editor/resizeAnchor";
+import {
   bumpEmbedGeneration,
   clearEmbedHtmlCache,
   setInlineTitle,
@@ -324,6 +331,8 @@ export function mountLayout(root: HTMLElement): void {
     imageEl: HTMLImageElement;
     editor: EditorHandle;
     readingView: ReadingViewHandle;
+    /** Disconnects the reading view's resize re-anchoring (m36). */
+    disposeReadingResize: () => void;
     openedPath: string | null;
     mode: EditorModeSetting;
   }
@@ -474,6 +483,58 @@ export function mountLayout(root: HTMLElement): void {
     body.append(welcomeEl, host, emptyView, paneImageView, paneReading.element);
     root.append(header, paneFileBar, body);
 
+    // Reading mode reflows on window/pane resizes exactly like the
+    // editor: hold the top anchor through the burst and re-apply it
+    // (m36). The editor's own observer lives inside createEditor;
+    // scrollReadingToAnchorIn keeps re-applying while heights settle.
+    let readResize = initialResizeAnchor();
+    let readBurst: number | null = null;
+    const readReapply = (): void => {
+      if (readResize.holding !== null) {
+        scrollReadingToAnchorIn(
+          paneReading.element,
+          paneEditor.getDoc().length,
+          readResize.holding,
+        );
+      }
+    };
+    const readDrop = (): void => {
+      readResize = onUserScroll(readResize);
+      if (readBurst !== null) {
+        clearTimeout(readBurst);
+        readBurst = null;
+      }
+    };
+    const readObserver = new ResizeObserver((entries) => {
+      const rect = entries[entries.length - 1].contentRect;
+      const { state, action } = onHostResize(
+        readResize,
+        rect.width,
+        rect.height,
+        () =>
+          readingTopAnchorIn(paneReading.element, paneEditor.getDoc().length),
+      );
+      readResize = state;
+      if (action.kind !== "anchor") {
+        return;
+      }
+      readReapply();
+      if (readBurst !== null) {
+        clearTimeout(readBurst);
+      }
+      readBurst = window.setTimeout(() => {
+        readBurst = null;
+        readReapply();
+        readResize = onBurstEnd(readResize);
+      }, RESIZE_BURST_QUIET_MS);
+    });
+    readObserver.observe(paneReading.element);
+    paneReading.element.addEventListener("wheel", readDrop, { passive: true });
+    paneReading.element.addEventListener("mousedown", readDrop);
+    paneReading.element.addEventListener("touchstart", readDrop, {
+      passive: true,
+    });
+
     // Interacting anywhere in a pane makes it the active one — in the
     // capture phase, so every inner handler sees the new bindings.
     root.addEventListener(
@@ -505,6 +566,12 @@ export function mountLayout(root: HTMLElement): void {
       imageEl: paneImageEl,
       editor: paneEditor,
       readingView: paneReading,
+      disposeReadingResize: () => {
+        readObserver.disconnect();
+        if (readBurst !== null) {
+          clearTimeout(readBurst);
+        }
+      },
       openedPath: null,
       mode: "edit",
     };
@@ -1523,6 +1590,7 @@ export function mountLayout(root: HTMLElement): void {
     if (ui === undefined) {
       return;
     }
+    ui.disposeReadingResize();
     ui.editor.destroy();
     ui.root.remove();
     paneUis.delete(id);
@@ -1971,9 +2039,11 @@ export function mountLayout(root: HTMLElement): void {
    * order. Embedded notes are skipped (their offsets belong to another
    * document), as are elements hidden by folds.
    */
-  function readingAnchors(): { pos: number; el: HTMLElement }[] {
+  function readingAnchorsIn(
+    container: HTMLElement,
+  ): { pos: number; el: HTMLElement }[] {
     const anchors: { pos: number; el: HTMLElement }[] = [];
-    for (const el of readingView.element.querySelectorAll<HTMLElement>(
+    for (const el of container.querySelectorAll<HTMLElement>(
       "[data-pos]",
     )) {
       const pos = Number(el.dataset.pos);
@@ -2020,14 +2090,17 @@ export function mountLayout(root: HTMLElement): void {
    * block plus the fraction already scrolled past inside it. Null when
    * the view has no anchors (empty or unrendered).
    */
-  function readingTopAnchor(): number | null {
-    const containerTop = readingView.element.getBoundingClientRect().top;
-    const anchors = readingAnchors();
+  function readingTopAnchorIn(
+    container: HTMLElement,
+    docLength: number,
+  ): number | null {
+    const containerTop = container.getBoundingClientRect().top;
+    const anchors = readingAnchorsIn(container);
     for (let i = 0; i < anchors.length; i++) {
       const rect = anchors[i].el.getBoundingClientRect();
       if (rect.bottom > containerTop + 1) {
         const pos = anchors[i].pos;
-        const nextPos = anchors[i + 1]?.pos ?? editor.getDoc().length;
+        const nextPos = anchors[i + 1]?.pos ?? docLength;
         const within =
           rect.height > 0 && rect.top < containerTop
             ? Math.min((containerTop - rect.top) / rect.height, 1)
@@ -2043,10 +2116,14 @@ export function mountLayout(root: HTMLElement): void {
    * top, offset by the intra-block fraction, and keeps it anchored
    * while late content loads. False when the view has no usable anchor.
    */
-  function scrollReadingToAnchor(topPos: number): boolean {
+  function scrollReadingToAnchorIn(
+    container: HTMLElement,
+    docLength: number,
+    topPos: number,
+  ): boolean {
     let target: { pos: number; el: HTMLElement } | null = null;
-    let nextPos = editor.getDoc().length;
-    for (const anchor of readingAnchors()) {
+    let nextPos = docLength;
+    for (const anchor of readingAnchorsIn(container)) {
       if (anchor.pos > topPos) {
         nextPos = anchor.pos;
         break;
@@ -2056,7 +2133,6 @@ export function mountLayout(root: HTMLElement): void {
     if (target === null) {
       return false;
     }
-    const container = readingView.element;
     const el = target.el;
     const from = target.pos;
     const within =
@@ -2073,6 +2149,19 @@ export function mountLayout(root: HTMLElement): void {
     applyAnchor();
     keepAnchoredWhileLoading(container, applyAnchor);
     return true;
+  }
+
+  /** Bound-pane wrappers of the anchor helpers above. */
+  function readingTopAnchor(): number | null {
+    return readingTopAnchorIn(readingView.element, editor.getDoc().length);
+  }
+
+  function scrollReadingToAnchor(topPos: number): boolean {
+    return scrollReadingToAnchorIn(
+      readingView.element,
+      editor.getDoc().length,
+      topPos,
+    );
   }
 
   /** Editor twin of scrollReadingToAnchor (heights settle async). */
