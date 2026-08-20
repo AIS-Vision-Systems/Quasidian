@@ -1246,7 +1246,9 @@ export function mountLayout(root: HTMLElement): void {
   function setStatusMode(mode: EditorModeSetting | "image"): void {
     const image = mode === "image";
     modeButton.hidden = image;
-    modeHeaderButton.hidden = image;
+    // The class, not the hidden attribute: .view-header-button sets
+    // display, which beats the UA [hidden] rule in the cascade.
+    modeHeaderButton.classList.toggle("is-hidden", image);
     if (!image) {
       modeButton.textContent = t(
         mode === "edit" ? "statusBar.mode.edit" : "statusBar.mode.read",
