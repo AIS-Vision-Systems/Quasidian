@@ -10,6 +10,6 @@ Commercial licenses are granted on a per-agreement basis and can cover:
 
 To obtain a commercial license, contact **AIS Vision Systems**:
 
-- Email: <xavi@aisvision.com>
+- Email: <xavi.anguera@aisvision.com>
 
 Copyright © 2026 AIS Vision Systems. All rights reserved.
