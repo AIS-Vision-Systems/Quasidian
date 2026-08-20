@@ -55,7 +55,7 @@ Commit and open the PR following `/commit-pr`. Then:
 
 ```sh
 gh pr checks --watch          # the required check is named `test`
-gh pr merge --squash --delete-branch
+gh pr merge --merge --delete-branch    # merge commits, not squash — match the history
 git switch main && git pull && git branch -d feat/m<NN>-<slug>
 ```
 

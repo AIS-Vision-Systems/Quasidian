@@ -50,11 +50,13 @@ Write the summary for a reviewer who hasn't read the spec: what the user can now
 ```sh
 gh pr create --fill-first    # then edit the body to the template
 gh pr checks --watch         # required check: `test`
-gh pr merge --squash --delete-branch
+gh pr merge --merge --delete-branch
 git switch main && git pull && git branch -d <branch>
 ```
 
-Merging also needs a code-owner review. Delete the branch locally and on the remote once merged.
+**`--merge`, not `--squash`** — every PR in this repo's history is a merge commit, and the individual commits of a milestone are worth keeping. Don't collapse them.
+
+Merging also needs a code-owner review, and the maintainer cannot approve their own PR: a solo PR lands with `--admin`, which the `main` ruleset allows. Delete the branch locally and on the remote once merged.
 
 ## Reporting back to the user
 
