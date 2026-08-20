@@ -11,7 +11,7 @@ Quasidian no tiene «vaults» ni configuración: **la carpeta del archivo abiert
 
 ## Modos de edición y lectura
 
-`Ctrl+E` conmuta entre **edición** (Live Preview: la sintaxis se oculta fuera de la línea activa) y **lectura** (HTML renderizado, solo las casillas de tarea son interactivas). El botón del libro en la barra del archivo hace lo mismo. El menú de tres puntos del panel también conmuta el modo y pliega o despliega todos los encabezados, en ambos modos.
+`Ctrl+E` conmuta entre **edición** (Live Preview: la sintaxis se oculta fuera de la línea activa) y **lectura** (HTML renderizado, solo las casillas de tarea son interactivas). El botón del libro en la barra del archivo hace lo mismo. El menú de tres puntos del panel también conmuta el modo y pliega o despliega todos los encabezados, en ambos modos. Dentro del modo edición, el **modo fuente** (en el mismo menú o desde la paleta) muestra toda la sintaxis como texto plano con resaltado, por pestaña.
 
 ## Enlaces y transclusiones
 

@@ -12,6 +12,7 @@
   "command.foldAll": "Plega tots els encapçalaments",
   "command.unfoldAll": "Desplega tots els encapçalaments",
   "command.toggleFold": "Commuta el plegat de tots els encapçalaments",
+  "command.toggleSourceMode": "Commuta el mode font",
   "command.commandPalette": "Paleta de comandes…",
   "properties.title": "Propietats",
   "properties.add": "Afegeix una propietat",
@@ -205,6 +206,7 @@
   "error.writeFile": "No s'ha pogut desar el fitxer: {error}",
   "error.createFile": "No s'ha pogut crear el fitxer: {error}",
   "error.listFolder": "No s'ha pogut llistar la carpeta: {error}",
+  "menu.sourceMode": "Mode font",
   "menu.readingMode": "Mode lectura",
   "menu.editingMode": "Mode edició"
 }

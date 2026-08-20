@@ -92,6 +92,7 @@ import {
   livePreview,
   refreshBlockDecorations,
   requestAddProperty,
+  sourceMode,
 } from "./livePreview";
 
 // Renders markdown formatting (sizes, weights, code font) while Live Preview
@@ -619,6 +620,9 @@ export interface EditorHandle {
   focus(): void;
   /** Hot-applies configurable options without recreating the editor. */
   applyConfig(config: EditorConfig): void;
+  /** Source mode (m38): all syntax visible, no hides or block widgets. */
+  setSourceMode(on: boolean): void;
+  getSourceMode(): boolean;
   /** Currently folded ranges, for remembering them per file. */
   getFolds(): FoldRange[];
   /** Re-applies remembered folds (ranges outside the doc are dropped). */
@@ -648,6 +652,9 @@ export function createEditor(
   const indentCompartment = new Compartment();
   const spellcheckCompartment = new Compartment();
   const autoPairCompartment = new Compartment();
+  const sourceModeCompartment = new Compartment();
+  // Per-tab, not a setting: survives setDoc rebuilds via buildState.
+  let currentSourceMode = false;
 
   function lineNumbersExtension(c: EditorConfig) {
     return c.showLineNumbers
@@ -923,6 +930,7 @@ export function createEditor(
             return true;
           },
         }),
+        sourceModeCompartment.of(sourceMode.of(currentSourceMode)),
         EditorView.lineWrapping,
         // Scroll past end lives inside CodeMirror's height model. The
         // CSS it replaces (padding-bottom in vh units) changed the
@@ -1114,6 +1122,22 @@ export function createEditor(
     },
     focus(): void {
       view.focus();
+    },
+    setSourceMode(on: boolean): void {
+      currentSourceMode = on;
+      if (view.state.facet(sourceMode) !== on) {
+        view.dispatch({
+          effects: [
+            sourceModeCompartment.reconfigure(sourceMode.of(on)),
+            // The block field only rebuilds on doc/selection changes
+            // or this effect; a reconfigure alone would leave it stale.
+            refreshBlockDecorations.of(null),
+          ],
+        });
+      }
+    },
+    getSourceMode(): boolean {
+      return view.state.facet(sourceMode);
     },
     applyConfig(next: EditorConfig): void {
       config = next;

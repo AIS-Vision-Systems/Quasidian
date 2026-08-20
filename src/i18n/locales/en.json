@@ -12,6 +12,7 @@
   "command.foldAll": "Fold all headings",
   "command.unfoldAll": "Unfold all headings",
   "command.toggleFold": "Toggle fold on all headings",
+  "command.toggleSourceMode": "Toggle source mode",
   "command.commandPalette": "Command palette…",
   "properties.title": "Properties",
   "properties.add": "Add property",
@@ -205,6 +206,7 @@
   "error.writeFile": "Could not save file: {error}",
   "error.createFile": "Could not create file: {error}",
   "error.listFolder": "Could not list folder: {error}",
+  "menu.sourceMode": "Source mode",
   "menu.readingMode": "Reading mode",
   "menu.editingMode": "Editing mode"
 }

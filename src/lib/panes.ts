@@ -257,11 +257,12 @@ export function serializeSession(
   state: SplitState,
   modeOf: (tab: Tab) => SessionMode,
   extras: SessionExtras = {},
+  sourceOf: (tab: Tab) => boolean = () => false,
 ): SessionData {
   const panes: SessionPane[] = [];
   let active = 0;
   for (const pane of state.panes) {
-    const tabs = serializeTabs(pane.workspace, modeOf);
+    const tabs = serializeTabs(pane.workspace, modeOf, sourceOf);
     if (tabs.tabs.length === 0) {
       continue; // panes holding only empty tabs are not persisted
     }
