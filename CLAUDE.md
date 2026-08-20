@@ -54,6 +54,7 @@ Quasidian is a minimalist desktop markdown editor that mimics Obsidian's look an
 
 - One milestone per PR, in spec order. Don't start milestone N+1 features while implementing milestone N.
 - Conventional commits in English (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `ci:`). `main` takes no direct pushes — everything goes through a PR.
+- Committing, pushing a branch and opening a PR are autonomous. **Merging a PR, tagging a version and publishing a release are not** — they need the maintainer's explicit go-ahead, every time.
 - When adding a settings option: extend the typed schema + defaults + settings modal + i18n keys for all three languages, in the same PR.
 - Every change to the parser **or to the dual-mode decorations** ships tests for both editing decorations and reading-mode HTML output, so the two modes can't diverge.
 - A version bump touches five files: `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and both lockfiles.

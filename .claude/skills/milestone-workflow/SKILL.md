@@ -55,6 +55,11 @@ Commit and open the PR following `/commit-pr`. Then:
 
 ```sh
 gh pr checks --watch          # the required check is named `test`
+```
+
+Stop there and hand the PR to the maintainer. **Merging is never autonomous** — ask, wait for the go-ahead, and only then:
+
+```sh
 gh pr merge --merge --delete-branch    # merge commits, not squash — match the history
 git switch main && git pull && git branch -d feat/m<NN>-<slug>
 ```

@@ -54,6 +54,8 @@ gh pr merge --merge --delete-branch
 git switch main && git pull && git branch -d <branch>
 ```
 
+**Merging is never autonomous.** Committing, pushing a branch and opening a PR are yours to do. Merging is the maintainer's call — present the PR and wait for an explicit go-ahead. The same holds for tagging a version and publishing a release.
+
 **`--merge`, not `--squash`** — every PR in this repo's history is a merge commit, and the individual commits of a milestone are worth keeping. Don't collapse them.
 
 Merging also needs a code-owner review, and the maintainer cannot approve their own PR: a solo PR lands with `--admin`, which the `main` ruleset allows. Delete the branch locally and on the remote once merged.
