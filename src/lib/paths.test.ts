@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { basename, dirname, joinPath, normalizePath, samePath } from "./paths";
+import {
+  basename,
+  copyName,
+  dirname,
+  joinPath,
+  normalizePath,
+  samePath,
+} from "./paths";
 
 describe("dirname", () => {
   it("handles unix separators", () => {
@@ -74,5 +81,37 @@ describe("samePath", () => {
     expect(samePath("C:\\notes\\nota.md", "C:/notes/nota.md")).toBe(true);
     expect(samePath("C:/notes/sub/../nota.md", "C:\\notes\\nota.md")).toBe(true);
     expect(samePath("C:/notes/a.md", "C:/notes/b.md")).toBe(false);
+  });
+});
+
+describe("copyName", () => {
+  it("starts at the first suffix", () => {
+    expect(copyName("Nota.md", () => false)).toBe("Nota 1.md");
+  });
+
+  it("takes the first free suffix, skipping taken ones", () => {
+    const existing = new Set(["Nota 1.md", "Nota 2.md"]);
+    expect(copyName("Nota.md", (c) => existing.has(c))).toBe("Nota 3.md");
+  });
+
+  it("fills gaps in the numbering", () => {
+    const existing = new Set(["Nota 1.md", "Nota 3.md"]);
+    expect(copyName("Nota.md", (c) => existing.has(c))).toBe("Nota 2.md");
+  });
+
+  it("keeps the image extension", () => {
+    expect(copyName("foto.png", () => false)).toBe("foto 1.png");
+  });
+
+  it("suffixes names without an extension at the end", () => {
+    expect(copyName("LEGIRME", () => false)).toBe("LEGIRME 1");
+  });
+
+  it("treats a leading dot as name, not extension", () => {
+    expect(copyName(".gitignore", () => false)).toBe(".gitignore 1");
+  });
+
+  it("keeps inner dots in the stem", () => {
+    expect(copyName("v1.2 notes.md", () => false)).toBe("v1.2 notes 1.md");
   });
 });

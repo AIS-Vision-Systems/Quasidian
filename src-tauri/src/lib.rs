@@ -94,6 +94,18 @@ fn rename_file(from: String, to: String) -> Result<(), String> {
     std::fs::rename(&from, &to).map_err(|e| e.to_string())
 }
 
+/// Byte-for-byte copy for "make a copy" (m39): reading and writing as
+/// text would corrupt binaries (images). Never overwrites.
+#[tauri::command]
+fn copy_file(from: String, to: String) -> Result<(), String> {
+    if std::path::Path::new(&to).exists() {
+        return Err("destination already exists".into());
+    }
+    std::fs::copy(&from, &to)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn delete_file(path: String) -> Result<(), String> {
     std::fs::remove_file(&path).map_err(|e| e.to_string())
@@ -157,6 +169,7 @@ pub fn run() {
             write_file_atomic,
             ensure_dir,
             rename_file,
+            copy_file,
             delete_file,
             list_folder,
             watch_folder,

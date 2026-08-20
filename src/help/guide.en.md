@@ -7,7 +7,7 @@ Quasidian has no vaults and no configuration: **the folder of the open file is y
 - **Global search**: `Ctrl+Shift+F` or the sidebar magnifier.
 - **Quick switcher**: `Ctrl+O` — jump to any note by name or by its aliases.
 - **Command palette**: `Ctrl+P` — every available action.
-- Right-click a file: rename (incoming links repoint themselves), copy the path, show in the system explorer, export to PDF or delete.
+- Right-click a file: rename (incoming links repoint themselves), make a copy (`Name 1.md`…), move it to another vault folder (path links repoint), copy the path, open it with the default app, show in the system explorer, export to PDF or delete.
 
 ## Editing and reading modes
 

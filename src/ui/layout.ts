@@ -11,6 +11,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n/i18n";
 import {
+  copyFile,
   deleteFile,
   listFolder,
   openFolderDialog,
@@ -42,6 +43,7 @@ import { createBacklinkIndex } from "../lib/backlinkIndex";
 import { createSearchIndex, type SearchMatch } from "../lib/searchIndex";
 import {
   basename,
+  copyName,
   dirname,
   joinPath,
   normalizePath,
@@ -3368,6 +3370,14 @@ export function mountLayout(root: HTMLElement): void {
         ? name
         : `${name}${extension}`,
     );
+    await relocateFile(path, target);
+  }
+
+  /**
+   * Moves `path` to `target` (a rename, or a move to another vault
+   * folder — m39), repointing links, tabs, session and open views.
+   */
+  async function relocateFile(path: string, target: string): Promise<void> {
     // Files linking here, resolved with the pre-rename index and listing.
     const linkers =
       currentFolder === null
@@ -3462,6 +3472,90 @@ export function mountLayout(root: HTMLElement): void {
       await refreshFolder(currentFolder);
       await rebuildIndex();
     }
+  }
+
+  /**
+   * "Make a copy" (m39): first free "Nom N.ext" beside the original,
+   * byte-copied in Rust (text round-trips corrupt images), then opened.
+   */
+  async function makeCopyFromMenu(path: string): Promise<void> {
+    // The copy must match what the user sees: flush a dirty buffer.
+    if (
+      openedPath !== null &&
+      samePath(path, openedPath) &&
+      autosave.isDirty()
+    ) {
+      await saveNow();
+    }
+    const folder = dirname(path);
+    let names: Set<string>;
+    try {
+      names = new Set(
+        (await listFolder(folder)).map((entry) => entry.name.toLowerCase()),
+      );
+    } catch (error) {
+      setStatusError(t("error.copyFile", { error: String(error) }));
+      return;
+    }
+    const target = joinPath(
+      folder,
+      copyName(basename(path), (candidate) =>
+        names.has(candidate.toLowerCase()),
+      ),
+    );
+    try {
+      await copyFile(path, target);
+    } catch (error) {
+      setStatusError(t("error.copyFile", { error: String(error) }));
+      return;
+    }
+    if (currentFolder !== null) {
+      await refreshFolder(currentFolder);
+      await rebuildIndex();
+    }
+    await openFile(target);
+  }
+
+  /**
+   * "Move file to…" (m39): fuzzy picker over every vault folder by
+   * relative path — vault mode only, flat folders have no destinations.
+   */
+  function moveFileFromMenu(path: string): void {
+    if (vaultRoot === null) {
+      return;
+    }
+    const root = vaultRoot;
+    const currentDir = dirname(path);
+    const folders = [root, ...collectTreeDirs(vaultTree)].filter(
+      (dir) => !samePath(dir, currentDir),
+    );
+    openPalette({
+      placeholder: t("moveFile.placeholder"),
+      emptyLabel: t("palette.noResults"),
+      items: folders.map((dir) => ({
+        id: dir,
+        label: samePath(dir, root) ? "/" : relativePath(root, dir),
+      })),
+      onSelect(item) {
+        void moveFileTo(path, item.id);
+      },
+      onClose() {
+        editor.focus();
+      },
+    });
+  }
+
+  /** Same volume by definition of vault: a rename into `folder`. */
+  async function moveFileTo(path: string, folder: string): Promise<void> {
+    const target = joinPath(folder, basename(path));
+    const collision = [...folderFiles, ...folderImages].some((file) =>
+      samePath(file.path, target),
+    );
+    if (collision) {
+      setStatusError(t("error.moveFileExists", { name: basename(path) }));
+      return;
+    }
+    await relocateFile(path, target);
   }
 
   async function deleteFromMenu(path: string): Promise<void> {
@@ -3646,6 +3740,21 @@ export function mountLayout(root: HTMLElement): void {
         icon: "pencil",
         onClick: () => void renameFromMenu(path),
       },
+      {
+        label: t("menu.makeCopy"),
+        icon: "copy",
+        onClick: () => void makeCopyFromMenu(path),
+      },
+      // Flat folders have no destinations to move to (m39).
+      ...(vaultRoot !== null
+        ? ([
+            {
+              label: t("menu.moveFile"),
+              icon: "corner-up-right",
+              onClick: () => moveFileFromMenu(path),
+            },
+          ] satisfies MenuEntry[])
+        : []),
       ...(isOpenFile && !image
         ? [
             {

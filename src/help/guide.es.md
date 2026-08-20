@@ -7,7 +7,7 @@ Quasidian no tiene «vaults» ni configuración: **la carpeta del archivo abiert
 - **Búsqueda global**: `Ctrl+Mayús+F` o la lupa de la barra lateral.
 - **Quick switcher**: `Ctrl+O` — salta a cualquier nota por su nombre o sus alias.
 - **Paleta de comandos**: `Ctrl+P` — todas las acciones disponibles.
-- Clic derecho sobre un archivo: renombrar (los enlaces entrantes se reapuntan solos), copiar la ruta, mostrar en el explorador, exportar a PDF o eliminar.
+- Clic derecho sobre un archivo: renombrar (los enlaces entrantes se reapuntan solos), hacer una copia (`Nombre 1.md`…), moverlo a otra carpeta del vault (los enlaces por ruta se reapuntan), copiar la ruta, abrirlo con la aplicación por defecto, mostrar en el explorador, exportar a PDF o eliminar.
 
 ## Modos de edición y lectura
 
