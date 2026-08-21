@@ -18,7 +18,11 @@ body {
   display: grid;
   height: 100%;
   grid-template-columns: var(--left-panel-width, 260px) 1fr auto;
-  grid-template-rows: 1fr auto;
+  /* minmax(0, 1fr), not bare 1fr: a bare fr track's minimum is the
+     items' min-content size, so any panel with enough content (a long
+     backlink list, a tall note) would inflate the whole row past the
+     viewport and no inner scrollbar could ever appear. */
+  grid-template-rows: minmax(0, 1fr) auto;
   grid-template-areas:
     "sidebar main backlinks"
     "statusbar statusbar statusbar";
@@ -44,6 +48,9 @@ body {
   background-color: var(--background-secondary);
   border-right: 1px solid var(--background-modifier-border);
   overflow-y: hidden;
+  /* Same shrinkability as .backlinks-panel: the row must never grow
+     with the file list. */
+  min-height: 0;
 }
 
 .sidebar-header {
@@ -492,6 +499,10 @@ button:focus-visible {
   background-color: var(--background-secondary);
   border-left: 1px solid var(--background-modifier-border);
   overflow-y: hidden;
+  /* Grid items default to min-height auto: enough backlinks would
+     inflate the row past the viewport and the inner list could never
+     scroll. Shrinkable panel = working scrollbar. */
+  min-height: 0;
 }
 
 .backlinks-panel.is-hidden {
@@ -542,6 +553,15 @@ button:focus-visible {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
+}
+
+/* Entries must overflow and scroll, never squash: flex children
+   default to flex-shrink 1, which silently compressed 61 backlinks
+   into 13px slivers inside the height-constrained list — so nothing
+   ever overflowed and no scrollbar could appear. */
+.backlinks-list > *,
+.file-list > * {
+  flex-shrink: 0;
 }
 
 .backlinks-empty {
