@@ -18,7 +18,11 @@ body {
   display: grid;
   height: 100%;
   grid-template-columns: var(--left-panel-width, 260px) 1fr auto;
-  grid-template-rows: 1fr auto;
+  /* minmax(0, 1fr), not bare 1fr: a bare fr track's minimum is the
+     items' min-content size, so any panel with enough content (a long
+     backlink list, a tall note) would inflate the whole row past the
+     viewport and no inner scrollbar could ever appear. */
+  grid-template-rows: minmax(0, 1fr) auto;
   grid-template-areas:
     "sidebar main backlinks"
     "statusbar statusbar statusbar";
