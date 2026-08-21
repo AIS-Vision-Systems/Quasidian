@@ -65,9 +65,11 @@
 
   --text-selection: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
   --text-on-accent: rgba(255, 255, 255, 0.9);
-  --scrollbar-active-thumb-bg: rgba(255, 255, 255, 0.2);
+  /* Obsidian's contrast (0.2 rest / 0.4 active): the previous 0.1
+     thumb was nearly invisible on the dark panels. */
+  --scrollbar-active-thumb-bg: rgba(255, 255, 255, 0.4);
   --scrollbar-bg: rgba(255, 255, 255, 0.05);
-  --scrollbar-thumb-bg: rgba(255, 255, 255, 0.1);
+  --scrollbar-thumb-bg: rgba(255, 255, 255, 0.2);
 }
 
 .theme-light {
@@ -103,9 +105,9 @@
 
   --text-selection: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
   --text-on-accent: #ffffff;
-  --scrollbar-active-thumb-bg: rgba(0, 0, 0, 0.2);
+  --scrollbar-active-thumb-bg: rgba(0, 0, 0, 0.4);
   --scrollbar-bg: rgba(0, 0, 0, 0.05);
-  --scrollbar-thumb-bg: rgba(0, 0, 0, 0.1);
+  --scrollbar-thumb-bg: rgba(0, 0, 0, 0.2);
 }
 
 ::selection {
@@ -122,6 +124,7 @@
   border-radius: 5px;
 }
 
+::-webkit-scrollbar-thumb:hover,
 ::-webkit-scrollbar-thumb:active {
   background-color: var(--scrollbar-active-thumb-bg);
 }
