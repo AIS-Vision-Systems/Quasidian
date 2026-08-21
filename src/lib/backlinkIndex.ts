@@ -3,8 +3,8 @@
 // targets are stored per file and resolved at query time with the current
 // folder listing, so renames and creations never leave stale resolutions.
 import { markdownParser } from "../markdown/parser";
-import { normalizePath, samePath } from "./paths";
-import { resolveWikilink, type FolderFile } from "./wikilinks";
+import { normalizePath } from "./paths";
+import { createWikilinkResolver, type FolderFile } from "./wikilinks";
 
 /**
  * Collects link targets from a document using the shared Lezer tree:
@@ -71,21 +71,33 @@ export function createBacklinkIndex(): BacklinkIndex {
 
     backlinksOf(path, folder, folderFiles, defaultExtension = ".md") {
       const self = normalizePath(path);
+      // One resolution per distinct target: folder, listing and
+      // extension are fixed for the whole query, and vaults repeat
+      // the same targets across many notes. Resolving every
+      // occurrence anew scanned the file list once per link —
+      // O(links × files) on each backlinks refresh, the dominant
+      // cost of a tab switch in a large vault (perf).
+      const resolver = createWikilinkResolver(
+        folder,
+        folderFiles,
+        defaultExtension,
+      );
+      const resolved = new Map<string, string | null>();
+      const resolvesHere = (target: string): boolean => {
+        let hit = resolved.get(target);
+        if (hit === undefined) {
+          const resolution = resolver.resolve(target);
+          hit = resolution === null ? null : normalizePath(resolution.path);
+          resolved.set(target, hit);
+        }
+        return hit !== null && hit === self;
+      };
       const result: string[] = [];
       for (const [key, file] of files) {
         if (key === self) {
           continue;
         }
-        const linksHere = file.targets.some((target) => {
-          const resolution = resolveWikilink(
-            target,
-            folder,
-            folderFiles,
-            defaultExtension,
-          );
-          return resolution !== null && samePath(resolution.path, path);
-        });
-        if (linksHere) {
+        if (file.targets.some(resolvesHere)) {
           result.push(file.path);
         }
       }

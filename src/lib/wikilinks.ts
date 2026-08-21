@@ -58,46 +58,93 @@ function bestCandidate(candidates: FolderFile[]): FolderFile | undefined {
   })[0];
 }
 
+/**
+ * Resolver over one folder listing with the name and alias lookups
+ * prebuilt, for bulk resolution (the backlink query resolves every
+ * target of every note — a full list scan per link made tab switches
+ * in a large vault pay for it visibly). `resolveWikilink` delegates
+ * here, so both paths share one set of semantics.
+ */
+export function createWikilinkResolver(
+  folder: string,
+  folderFiles: FolderFile[],
+  defaultExtension: string = MARKDOWN_EXTENSION,
+): { resolve(target: string): WikilinkResolution | null } {
+  // A file "nota.md" registers under "nota.md" and "nota": exactly the
+  // two spellings a bare-name target may use.
+  const byName = new Map<string, FolderFile[]>();
+  const byAlias = new Map<string, FolderFile[]>();
+  const add = (map: Map<string, FolderFile[]>, key: string, file: FolderFile) => {
+    const bucket = map.get(key);
+    if (bucket === undefined) {
+      map.set(key, [file]);
+    } else {
+      bucket.push(file);
+    }
+  };
+  for (const file of folderFiles) {
+    const lower = file.name.toLowerCase();
+    add(byName, lower, file);
+    if (lower.endsWith(MARKDOWN_EXTENSION)) {
+      add(byName, lower.slice(0, -MARKDOWN_EXTENSION.length), file);
+    }
+    for (const alias of file.aliases ?? []) {
+      add(byAlias, alias.toLowerCase(), file);
+    }
+  }
+
+  function resolve(target: string): WikilinkResolution | null {
+    // Heading anchors never take part in file resolution; a bare
+    // "#secció" (same-file anchor) resolves to nothing here — callers
+    // handle it.
+    const trimmed = splitAnchor(target).note;
+    if (trimmed === "") {
+      return null;
+    }
+
+    if (!/[/\\]/.test(trimmed)) {
+      // Bare name: case-insensitive match against the vault's markdown
+      // files, with or without the extension spelled out. Duplicate
+      // names in a recursive vault resolve to the shallowest path.
+      const lower = trimmed.toLowerCase();
+      const match = bestCandidate(byName.get(lower) ?? []);
+      if (match !== undefined) {
+        return { path: match.path, exists: true };
+      }
+      // Frontmatter aliases resolve after real names.
+      const aliasMatch = bestCandidate(byAlias.get(lower) ?? []);
+      if (aliasMatch !== undefined) {
+        return { path: aliasMatch.path, exists: true };
+      }
+      const fileName = hasExtension(trimmed)
+        ? trimmed
+        : trimmed + defaultExtension;
+      return { path: normalizePath(joinPath(folder, fileName)), exists: false };
+    }
+    return resolvePathTarget(trimmed, folder, folderFiles, defaultExtension);
+  }
+
+  return { resolve };
+}
+
 export function resolveWikilink(
   target: string,
   folder: string,
   folderFiles: FolderFile[],
   defaultExtension: string = MARKDOWN_EXTENSION,
 ): WikilinkResolution | null {
-  // Heading anchors never take part in file resolution; a bare "#secció"
-  // (same-file anchor) resolves to nothing here — callers handle it.
-  const trimmed = splitAnchor(target).note;
-  if (trimmed === "") {
-    return null;
-  }
+  return createWikilinkResolver(folder, folderFiles, defaultExtension).resolve(
+    target,
+  );
+}
 
-  if (!/[/\\]/.test(trimmed)) {
-    // Bare name: case-insensitive match against the vault's markdown
-    // files, with or without the extension spelled out. Duplicate names
-    // in a recursive vault resolve to the shallowest path.
-    const lower = trimmed.toLowerCase();
-    const matches = folderFiles.filter((file) => {
-      const name = file.name.toLowerCase();
-      return name === lower || name === lower + MARKDOWN_EXTENSION;
-    });
-    const match = bestCandidate(matches);
-    if (match !== undefined) {
-      return { path: match.path, exists: true };
-    }
-    // Frontmatter aliases resolve after real names, case-insensitively.
-    const aliasMatch = bestCandidate(
-      folderFiles.filter((file) =>
-        (file.aliases ?? []).some((alias) => alias.toLowerCase() === lower),
-      ),
-    );
-    if (aliasMatch !== undefined) {
-      return { path: aliasMatch.path, exists: true };
-    }
-    const fileName = hasExtension(trimmed)
-      ? trimmed
-      : trimmed + defaultExtension;
-    return { path: normalizePath(joinPath(folder, fileName)), exists: false };
-  }
+/** Slash-form targets: subpath disambiguation, then relative/full. */
+function resolvePathTarget(
+  trimmed: string,
+  folder: string,
+  folderFiles: FolderFile[],
+  defaultExtension: string,
+): WikilinkResolution {
 
   const withExtension = hasExtension(trimmed)
     ? trimmed
