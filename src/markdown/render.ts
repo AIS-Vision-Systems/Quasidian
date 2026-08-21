@@ -5,7 +5,7 @@
 import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import type { SyntaxNode } from "@lezer/common";
-import { t } from "../i18n/i18n";
+import { ct as t } from "../lib/coreStrings";
 import {
   parseFrontmatter,
   type FrontmatterData,

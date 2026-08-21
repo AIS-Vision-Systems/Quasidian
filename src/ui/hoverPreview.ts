@@ -4,7 +4,7 @@
 // inside a popup opens a child without closing the parent; leaving all
 // popups closes the whole chain. Unresolved targets show a
 // "not created yet" message. Clicking a link inside a popup navigates.
-import { t } from "../i18n/i18n";
+import { ct as t } from "../lib/coreStrings";
 import {
   addCodePills,
   fillEmbedImages,

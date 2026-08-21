@@ -2,11 +2,16 @@ import "katex/dist/katex.min.css";
 import "./styles/theme.css";
 import "./styles/app.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { t } from "./i18n/i18n";
+import { setCoreTranslator } from "./lib/coreStrings";
 import { loadSettings, subscribeSettings } from "./ipc/settingsStore";
 import { applyAppearance, applyLanguage } from "./ui/applySettings";
 import { mountLayout } from "./ui/layout";
 
 async function init(): Promise<void> {
+  // The editor core ships English defaults for its strings; the app
+  // plugs its translator in so they follow the locale (m41).
+  setCoreTranslator(t);
   const settings = await loadSettings();
   applyLanguage(settings);
   applyAppearance(settings);

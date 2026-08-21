@@ -168,13 +168,28 @@ const ICON_PATHS: Record<IconName, string> = {
     '<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
 };
 
+// Injectable icon provider (m41): the built-in SVG set is the
+// default; an embedder can substitute inner SVG markup per icon.
+// Returning null falls back to the built-in paths.
+let iconProvider: ((name: IconName) => string | null) | null = null;
+
+export function setIconProvider(
+  provider: ((name: IconName) => string | null) | null,
+): void {
+  iconProvider = provider;
+}
+
+function iconPaths(name: IconName): string {
+  return iconProvider?.(name) ?? ICON_PATHS[name];
+}
+
 /** The same icon as a plain SVG markup string (for HTML renderers). */
 export function iconMarkup(name: IconName): string {
   return (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" ' +
     'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
     'stroke-linejoin="round" class="app-icon" aria-hidden="true">' +
-    ICON_PATHS[name] +
+    iconPaths(name) +
     "</svg>"
   );
 }
@@ -190,6 +205,6 @@ export function createIcon(name: IconName): SVGSVGElement {
   svg.setAttribute("stroke-linejoin", "round");
   svg.setAttribute("aria-hidden", "true");
   svg.classList.add("app-icon");
-  svg.innerHTML = ICON_PATHS[name];
+  svg.innerHTML = iconPaths(name);
   return svg;
 }

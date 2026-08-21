@@ -49,7 +49,7 @@ import {
 } from "./resizeAnchor";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
-import { t } from "../i18n/i18n";
+import { ct as t } from "../lib/coreStrings";
 import { footnoteTag } from "../markdown/footnotes";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
