@@ -555,6 +555,15 @@ button:focus-visible {
   overflow-y: auto;
 }
 
+/* Entries must overflow and scroll, never squash: flex children
+   default to flex-shrink 1, which silently compressed 61 backlinks
+   into 13px slivers inside the height-constrained list — so nothing
+   ever overflowed and no scrollbar could appear. */
+.backlinks-list > *,
+.file-list > * {
+  flex-shrink: 0;
+}
+
 .backlinks-empty {
   color: var(--text-faint);
   font-size: var(--font-ui-small);
