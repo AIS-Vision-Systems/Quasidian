@@ -44,6 +44,12 @@ export interface FilesSettings {
   /** Extension used when creating notes from wikilinks. */
   defaultExtension: string;
   /**
+   * Scan hidden (dot) folders in vault mode: they join the tree and
+   * the indexes. IGNORED_DIRS, `.git` and `.obsidian` stay excluded
+   * regardless, and marker detection never depends on this (m40).
+   */
+  showHiddenFolders: boolean;
+  /**
    * Reopen the files of a vault's last session (tabs, active tab,
    * modes) when that vault is opened. Sessions are kept per vault;
    * panel sizes and the right view restore regardless.
@@ -90,6 +96,7 @@ export const DEFAULT_SETTINGS: Settings = {
   files: {
     confirmDelete: true,
     defaultExtension: ".md",
+    showHiddenFolders: true,
     restoreSession: true,
   },
   updates: {
@@ -214,6 +221,10 @@ export function mergeSettings(raw: unknown): Settings {
       defaultExtension: pickString(
         files.defaultExtension,
         d.files.defaultExtension,
+      ),
+      showHiddenFolders: pickBoolean(
+        files.showHiddenFolders,
+        d.files.showHiddenFolders,
       ),
       restoreSession: pickBoolean(
         files.restoreSession,
