@@ -29,6 +29,11 @@ export function renameFile(from: string, to: string): Promise<void> {
   return invoke("rename_file", { from, to });
 }
 
+/** Byte-for-byte copy (binaries stay intact); never overwrites. */
+export function copyFile(from: string, to: string): Promise<void> {
+  return invoke("copy_file", { from, to });
+}
+
 export function deleteFile(path: string): Promise<void> {
   return invoke("delete_file", { path });
 }

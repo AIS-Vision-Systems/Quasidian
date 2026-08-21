@@ -57,3 +57,25 @@ export function normalizePath(path: string): string {
 export function samePath(a: string, b: string): boolean {
   return normalizePath(a) === normalizePath(b);
 }
+
+/**
+ * File name for a copy of `name` beside the original: "Nom 1.md",
+ * "Nom 2.md"… — the first free numeric suffix (m39). `taken` reports
+ * whether a candidate name is already used; the caller decides case
+ * sensitivity. Names without an extension get the suffix at the end;
+ * a leading dot (".gitignore") counts as the name, not an extension.
+ */
+export function copyName(
+  name: string,
+  taken: (candidate: string) => boolean,
+): string {
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const extension = dot > 0 ? name.slice(dot) : "";
+  for (let counter = 1; ; counter++) {
+    const candidate = `${stem} ${counter}${extension}`;
+    if (!taken(candidate)) {
+      return candidate;
+    }
+  }
+}
