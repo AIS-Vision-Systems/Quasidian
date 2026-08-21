@@ -186,6 +186,8 @@
   "settings.defaultExtension.desc": "Extensió en crear notes des d'un wikilink",
   "settings.restoreSession.name": "Restaura la sessió",
   "settings.restoreSession.desc": "En obrir un vault o carpeta, reobre els fitxers de la seva última sessió (un fitxer obert des del sistema s'hi afegeix)",
+  "settings.showHiddenFolders.name": "Mostra les carpetes ocultes",
+  "settings.showHiddenFolders.desc": "Inclou les carpetes que comencen per punt a l'arbre i als índexs del vault (node_modules i similars, i el contingut de .git i .obsidian, queden sempre fora)",
   "tabs.close": "Tanca la pestanya",
   "tabs.new": "Pestanya nova",
   "tabs.splitRight": "Obre a la dreta",

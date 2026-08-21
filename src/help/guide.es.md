@@ -4,6 +4,8 @@
 
 Quasidian no tiene «vaults» ni configuración: **la carpeta del archivo abierto es tu espacio de trabajo**. Abre una carpeta o un archivo `.md` con los botones de la barra lateral; la lista muestra las notas de la carpeta (sin subcarpetas). Los enlaces, los backlinks y la búsqueda se resuelven dentro de esa carpeta.
 
+Si la carpeta — o un ancestro — contiene un marcador de proyecto (`CLAUDE.md`, `.claude`, `AGENTS.md`, `.codex`, `.obsidian` o la carpeta `.git`), esa carpeta pasa a ser la raíz de un **vault recursivo**: el árbol muestra las subcarpetas y los enlaces, los backlinks y la búsqueda abarcan todo el proyecto. Las carpetas ocultas (que empiezan por punto) se incluyen por defecto — desactiva «Mostrar las carpetas ocultas» en la configuración para dejarlas fuera. El contenido de `.git` y `.obsidian` no se escanea nunca.
+
 - **Búsqueda global**: `Ctrl+Mayús+F` o la lupa de la barra lateral.
 - **Quick switcher**: `Ctrl+O` — salta a cualquier nota por su nombre o sus alias.
 - **Paleta de comandos**: `Ctrl+P` — todas las acciones disponibles.

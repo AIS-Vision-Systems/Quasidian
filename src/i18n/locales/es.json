@@ -184,6 +184,8 @@
   "settings.confirmDelete.desc": "Pide confirmación antes de borrar archivos",
   "settings.restoreSession.name": "Restaurar la sesión",
   "settings.restoreSession.desc": "Al abrir un vault o carpeta, reabre los archivos de su última sesión (un archivo abierto desde el sistema se añade)",
+  "settings.showHiddenFolders.name": "Mostrar las carpetas ocultas",
+  "settings.showHiddenFolders.desc": "Incluye las carpetas que empiezan por punto en el árbol y en los índices del vault (node_modules y similares, y el contenido de .git y .obsidian, quedan siempre fuera)",
   "tabs.close": "Cerrar la pestaña",
   "tabs.new": "Pestaña nueva",
   "tabs.splitRight": "Abrir a la derecha",

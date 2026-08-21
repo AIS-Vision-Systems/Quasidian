@@ -5,7 +5,7 @@
 // on a case-sensitive filesystem two folders differing only in case
 // would share a key, which we accept for consistency.
 import { dirname, normalizePath } from "./paths";
-import { detectVault } from "./vault";
+import { detectVault, type MarkerProbe } from "./vault";
 import { parseSessionExtras, type PanelSizes, type RightPanelView } from "./workspace";
 
 /** 32-bit FNV-1a hash of `text`, as 8 hex characters. */
@@ -48,7 +48,7 @@ export function scopeOf(root: string): ScopeInfo {
 export async function resolveScope(
   path: string,
   kind: "file" | "folder",
-  contains: (dir: string, name: string) => Promise<boolean>,
+  contains: MarkerProbe,
   excludedRoot?: string,
 ): Promise<ScopeInfo> {
   const folder = kind === "file" ? dirname(path) : path;
