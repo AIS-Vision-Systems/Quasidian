@@ -120,3 +120,47 @@ export async function detectVault(
   }
   return found;
 }
+
+export interface ScanEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+}
+
+/**
+ * Breadth-first scan of a vault tree with the filesystem injected.
+ * Every level lists all of its folders **in parallel**, so the wall
+ * time scales with the tree's depth, not with its folder count — a
+ * sequential walk froze large vaults for seconds (perf). `scannable`
+ * decides which directories are descended into (and collected); files
+ * are always collected. An unreadable folder is skipped, never fatal.
+ */
+export async function scanVaultTree(
+  root: string,
+  list: (path: string) => Promise<ScanEntry[]>,
+  scannable: (name: string) => boolean,
+  maxDepth: number = MAX_VAULT_DEPTH,
+): Promise<ScanEntry[]> {
+  const collected: ScanEntry[] = [];
+  let level: string[] = [root];
+  for (let depth = 0; level.length > 0; depth++) {
+    const listings = await Promise.all(
+      level.map((path) => list(path).catch(() => [] as ScanEntry[])),
+    );
+    const next: string[] = [];
+    for (const entries of listings) {
+      for (const entry of entries) {
+        if (entry.isDir) {
+          if (depth < maxDepth && scannable(entry.name)) {
+            collected.push(entry);
+            next.push(entry.path);
+          }
+        } else {
+          collected.push(entry);
+        }
+      }
+    }
+    level = next;
+  }
+  return collected;
+}

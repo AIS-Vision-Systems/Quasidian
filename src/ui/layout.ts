@@ -64,7 +64,7 @@ import {
   detectVault,
   isExcludedDir,
   isHiddenDir,
-  MAX_VAULT_DEPTH,
+  scanVaultTree,
   type VaultMode,
 } from "../lib/vault";
 import {
@@ -2673,48 +2673,56 @@ export function mountLayout(root: HTMLElement): void {
     return resolveScope(path, kind, folderContains, await excludedVaultRoot);
   }
 
-  /** Breadth-first vault scan honoring the ignore rules and depth cap. */
-  async function scanVault(root: string): Promise<FileEntry[]> {
-    const collected: FileEntry[] = [];
-    const queue: { path: string; depth: number }[] = [
-      { path: root, depth: 0 },
-    ];
-    while (queue.length > 0) {
-      const { path, depth } = queue.shift() as {
-        path: string;
-        depth: number;
-      };
-      let entries: FileEntry[];
-      try {
-        entries = await listFolder(path);
-      } catch {
-        continue; // unreadable subfolder: skip, never fail the vault
-      }
-      for (const entry of entries) {
-        if (entry.isDir) {
-          // IGNORED_DIRS never scan; hidden (dot) folders only when
-          // the user opts in. Marker detection is independent of the
-          // setting — it probes names, not this scan (m40).
-          const scannable =
-            !isExcludedDir(entry.name) &&
-            (getSettings().files.showHiddenFolders ||
-              !isHiddenDir(entry.name));
-          if (depth < MAX_VAULT_DEPTH && scannable) {
-            collected.push(entry);
-            queue.push({ path: entry.path, depth: depth + 1 });
-          }
-        } else {
-          collected.push(entry);
-        }
-      }
-    }
-    return collected;
+  /**
+   * Breadth-first vault scan honoring the ignore rules and depth cap.
+   * Level-parallel: wall time scales with the tree's depth, not its
+   * folder count (perf). IGNORED_DIRS never scan; hidden (dot)
+   * folders only when the user opts in. Marker detection is
+   * independent of the setting — it probes names, not this scan (m40).
+   */
+  function scanVault(root: string): Promise<FileEntry[]> {
+    return scanVaultTree(
+      root,
+      listFolder,
+      (name) =>
+        !isExcludedDir(name) &&
+        (getSettings().files.showHiddenFolders || !isHiddenDir(name)),
+    );
   }
+
+  // Concurrent refreshes of one scope share a single listing: session
+  // restore loads several tabs back to back, and each would otherwise
+  // run its own full vault scan (perf).
+  let scanInFlight: { key: string; promise: Promise<FileEntry[]> } | null =
+    null;
+
+  function listScope(scope: string, recursive: boolean): Promise<FileEntry[]> {
+    const key = `${normalizePath(scope).toLowerCase()}|${recursive}`;
+    if (scanInFlight !== null && scanInFlight.key === key) {
+      return scanInFlight.promise;
+    }
+    const promise = (recursive ? scanVault(scope) : listFolder(scope)).finally(
+      () => {
+        if (scanInFlight !== null && scanInFlight.key === key) {
+          scanInFlight = null;
+        }
+      },
+    );
+    scanInFlight = { key, promise };
+    return promise;
+  }
+
+  // Refreshes run detached since loadFile stopped awaiting them: a
+  // slow, superseded scan must never land after a newer one and drag
+  // the folder state, watcher and sidebar back to the old scope. Each
+  // call takes a ticket; only the newest may commit anything.
+  let refreshEpoch = 0;
 
   async function refreshFolder(
     folderPath: string,
     options?: { redetect?: boolean },
   ): Promise<void> {
+    const epoch = ++refreshEpoch;
     // Multi-folder modes: a marker in the folder or an ancestor roots a
     // recursive vault there. Detection reruns when leaving the current
     // vault or when a folder is opened explicitly.
@@ -2729,6 +2737,9 @@ export function mountLayout(root: HTMLElement): void {
         folderContains,
         await excludedVaultRoot,
       );
+      if (epoch !== refreshEpoch) {
+        return; // superseded while detecting
+      }
       vaultRoot = info?.root ?? null;
       vaultMode = info?.mode ?? null;
       vaultProbeBase = folderPath;
@@ -2738,11 +2749,15 @@ export function mountLayout(root: HTMLElement): void {
     const scope = vaultRoot ?? folderPath;
     let entries: FileEntry[];
     try {
-      entries =
-        vaultRoot === null ? await listFolder(scope) : await scanVault(scope);
+      entries = await listScope(scope, vaultRoot !== null);
     } catch (error) {
-      setListMessage(t("error.listFolder", { error: String(error) }));
+      if (epoch === refreshEpoch) {
+        setListMessage(t("error.listFolder", { error: String(error) }));
+      }
       return;
+    }
+    if (epoch !== refreshEpoch) {
+      return; // superseded while listing
     }
     const markdownFiles = entries
       .filter((entry) => !entry.isDir && entry.name.toLowerCase().endsWith(".md"))
@@ -3056,11 +3071,49 @@ export function mountLayout(root: HTMLElement): void {
     viewTitle.textContent = noteName;
     // Before setDoc: the block-decorations field reads it on rebuild.
     setInlineTitle(getSettings().appearance.inlineTitle ? noteName : null);
-    // The folder state must exist before setDoc: embed widgets resolve
-    // their sources against it while building decorations.
-    await refreshFolder(dirname(path));
-    // Window title "vault - note" (vault root name in vault mode);
-    // cosmetic, so failures are ignored.
+    // A warm scope never rescans on open: the watcher keeps the
+    // listing fresh, and re-scanning a large vault on every tab
+    // switch janked the UI even when detached (an IPC storm plus a
+    // full sidebar rebuild on the main thread). Cold scopes (first
+    // open, another folder or vault) refresh detached — the note
+    // never waits; whatever depended on the listing (wikilink
+    // resolution, embeds, backlinks, the window title) rebuilds when
+    // the scan lands.
+    const folder = dirname(path);
+    const warmScope =
+      currentFolder !== null &&
+      (vaultRoot !== null
+        ? insideVault(folder)
+        : samePath(folder, currentFolder));
+    if (!warmScope) {
+      const scopeBefore = currentFolder;
+      void refreshFolder(folder).then(() => {
+        if (openedPath === null || !samePath(openedPath, path)) {
+          return; // another file took over while the scan ran
+        }
+        void getCurrentWindow()
+          .setTitle(`${basename(vaultRoot ?? folder)} - ${noteName}`)
+          .catch(() => undefined);
+        const scopeChanged =
+          scopeBefore === null ||
+          currentFolder === null ||
+          !samePath(scopeBefore, currentFolder);
+        if (scopeChanged) {
+          // Embeds and wikilinks resolved against the previous (or
+          // no) listing: rebuild them against the fresh one.
+          bumpEmbedGeneration();
+          editor.refreshBlocks();
+          if (currentMode === "read") {
+            const scroll = readingView.element.scrollTop;
+            readingView.render(editor.getDoc());
+            readingView.element.scrollTop = scroll;
+          }
+          renderBacklinks();
+        }
+      });
+    }
+    // Provisional title from what is known now; corrected above.
+    // Cosmetic, so failures are ignored.
     void getCurrentWindow()
       .setTitle(`${basename(vaultRoot ?? dirname(path))} - ${noteName}`)
       .catch(() => undefined);
@@ -3136,7 +3189,24 @@ export function mountLayout(root: HTMLElement): void {
     const name = imageBaseName(path);
     viewTitle.textContent = name;
     setInlineTitle(null);
-    await refreshFolder(dirname(path));
+    // Like notes: warm scopes skip the rescan, cold ones refresh
+    // detached (perf).
+    const imageFolder = dirname(path);
+    const warmImageScope =
+      currentFolder !== null &&
+      (vaultRoot !== null
+        ? insideVault(imageFolder)
+        : samePath(imageFolder, currentFolder));
+    if (!warmImageScope) {
+      void refreshFolder(imageFolder).then(() => {
+        if (openedPath !== null && samePath(openedPath, path)) {
+          void getCurrentWindow()
+            .setTitle(`${basename(vaultRoot ?? imageFolder)} - ${name}`)
+            .catch(() => undefined);
+          renderBacklinks();
+        }
+      });
+    }
     void getCurrentWindow()
       .setTitle(`${basename(vaultRoot ?? dirname(path))} - ${name}`)
       .catch(() => undefined);

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolveWikilink, splitAnchor, type FolderFile } from "./wikilinks";
+import {
+  createWikilinkResolver,
+  resolveWikilink,
+  splitAnchor,
+  type FolderFile,
+} from "./wikilinks";
 
 const folder = "C:\\notes";
 const files: FolderFile[] = [
@@ -186,6 +191,47 @@ describe("resolveWikilink — default extension setting", () => {
   it("still matches existing .md files by bare name", () => {
     expect(resolveWikilink("altra", folder, files, ".markdown")).toEqual({
       path: "C:\\notes\\altra.md",
+      exists: true,
+    });
+  });
+});
+
+describe("createWikilinkResolver — indexed bulk resolution (perf)", () => {
+  const files = [
+    { name: "Nota.md", path: "C:/v/Nota.md" },
+    { name: "Dup.md", path: "C:/v/a/b/Dup.md" },
+    { name: "Dup.md", path: "C:/v/a/Dup.md" },
+    { name: "Altra.md", path: "C:/v/Altra.md", aliases: ["Sobrenom"] },
+  ];
+
+  it("matches resolveWikilink on every target form", () => {
+    const resolver = createWikilinkResolver("C:/v", files);
+    for (const target of [
+      "Nota",
+      "nota.md",
+      "Dup",
+      "Sobrenom",
+      "Inexistent",
+      "a/Dup",
+      "../fora/Nota",
+      "#anchor",
+      "Nota#Secció",
+    ]) {
+      expect(resolver.resolve(target)).toEqual(
+        resolveWikilink(target, "C:/v", files),
+      );
+    }
+  });
+
+  it("keeps shallowest-path resolution for duplicate names", () => {
+    const resolver = createWikilinkResolver("C:/v", files);
+    expect(resolver.resolve("Dup")?.path).toBe("C:/v/a/Dup.md");
+  });
+
+  it("resolves aliases after real names", () => {
+    const resolver = createWikilinkResolver("C:/v", files);
+    expect(resolver.resolve("Sobrenom")).toEqual({
+      path: "C:/v/Altra.md",
       exists: true,
     });
   });
