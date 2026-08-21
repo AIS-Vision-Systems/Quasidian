@@ -58,7 +58,10 @@ export interface FilesSettings {
 }
 
 export interface UpdatesSettings {
-  /** Check for a newer version at startup (never installs anything). */
+  /**
+   * Check for a newer version at startup. Installing is always a
+   * separate, explicit user action (m43) — never automatic.
+   */
   checkAutomatically: boolean;
 }
 

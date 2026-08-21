@@ -119,7 +119,18 @@ import {
   saveUiState,
   saveVaultSession,
 } from "../ipc/sessionStore";
-import { checkForUpdate } from "../ipc/updates";
+import {
+  checkForUpdateFlow,
+  installUpdate,
+  relaunchApp,
+  type Update,
+} from "../ipc/updates";
+import {
+  afterCheck,
+  afterInstallPhase,
+  noticeLabel,
+  type UpdateUiState,
+} from "../lib/updateFlow";
 import {
   emptyUiState,
   parseScopeEntry,
@@ -704,15 +715,39 @@ export function mountLayout(root: HTMLElement): void {
   helpButton.addEventListener("click", () => openHelpModal());
   const statusError = document.createElement("span");
   statusError.className = "status-bar-error";
-  // Discreet startup notice when a newer version exists (check-only);
-  // clicking opens the download page.
+  // Discreet startup notice when a newer version exists. Where the
+  // signed updater applies, clicking walks update → restart, one
+  // explicit click per step (m43); elsewhere it opens the download
+  // page like before.
   const statusUpdate = document.createElement("button");
   statusUpdate.className = "status-bar-update";
   statusUpdate.hidden = true;
-  let availableUpdate: { version: string; url: string } | null = null;
+  let updateState: UpdateUiState = { kind: "idle" };
+  // The plugin's handle rides beside the pure state.
+  let pendingUpdate: Update | null = null;
   statusUpdate.addEventListener("click", () => {
-    if (availableUpdate !== null) {
-      void openUrl(availableUpdate.url).catch(() => undefined);
+    if (updateState.kind === "manual") {
+      void openUrl(updateState.url).catch(() => undefined);
+      return;
+    }
+    if (updateState.kind === "installed") {
+      void relaunchApp().catch(() => undefined);
+      return;
+    }
+    if (updateState.kind === "installable" && pendingUpdate !== null) {
+      const update = pendingUpdate;
+      pendingUpdate = null;
+      void (async () => {
+        const ok = await installUpdate(update, (phase) => {
+          updateState = afterInstallPhase(phase);
+          renderUpdateNotice();
+        });
+        if (!ok) {
+          updateState = { kind: "idle" };
+          renderUpdateNotice();
+          setStatusError(t("updates.installError"));
+        }
+      })();
     }
   });
   const statusBacklinks = document.createElement("button");
@@ -4558,25 +4593,33 @@ export function mountLayout(root: HTMLElement): void {
       }
     });
     // Startup update check (main window, when enabled): silent while
-    // up to date, a discreet status-bar notice otherwise.
+    // up to date, a discreet status-bar notice otherwise. Nothing ever
+    // installs without the user's explicit click on the notice.
     if (isMainWindow && getSettings().updates.checkAutomatically) {
-      const result = await checkForUpdate();
-      if (result.status === "outdated") {
-        availableUpdate = {
+      const result = await checkForUpdateFlow();
+      if (result.status === "installable") {
+        pendingUpdate = result.update;
+        updateState = afterCheck({
+          status: "installable",
+          version: result.version,
+        });
+        renderUpdateNotice();
+      } else if (result.status === "manual") {
+        updateState = afterCheck({
+          status: "manual",
           version: result.latest.version,
           url: result.latest.url,
-        };
+        });
         renderUpdateNotice();
       }
     }
   })();
 
   function renderUpdateNotice(): void {
-    statusUpdate.hidden = availableUpdate === null;
-    if (availableUpdate !== null) {
-      statusUpdate.textContent = t("updates.available", {
-        version: availableUpdate.version,
-      });
+    const label = noticeLabel(updateState);
+    statusUpdate.hidden = label === null;
+    if (label !== null) {
+      statusUpdate.textContent = t(label.key, label.params);
     }
   }
 

@@ -177,6 +177,11 @@ pub fn run() {
         )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Signed updates (m43): check/download/install driven from the
+        // frontend, always behind an explicit user confirmation there.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        // Only for relaunching after an update is installed.
+        .plugin(tauri_plugin_process::init())
         .manage(WatcherState::default())
         .invoke_handler(tauri::generate_handler![
             read_file,

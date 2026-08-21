@@ -23,7 +23,9 @@
     ],
     "security": {
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; connect-src ipc: http://ipc.localhost 'self' https://api.github.com; font-src 'self' data:",
-      "dangerousDisableAssetCspModification": ["style-src"],
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ],
       "devCsp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; connect-src ipc: http://ipc.localhost 'self' ws://localhost:1420 ws://localhost:1421 https://api.github.com; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
@@ -35,10 +37,12 @@
     "active": true,
     "targets": "all",
     "publisher": "AIS Vision Systems",
-    "copyright": "© 2026 AIS Vision Systems",
+    "copyright": "\u00a9 2026 AIS Vision Systems",
     "fileAssociations": [
       {
-        "ext": ["md"],
+        "ext": [
+          "md"
+        ],
         "name": "Markdown",
         "description": "Markdown document",
         "mimeType": "text/markdown"
@@ -58,6 +62,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwNzM0OEIwMEE0MDgzMgpSV1F5Q0tRQWl6UUhDSEdOOGF1ei9lYjV4eWZyUlQ1blhJRG8xVWNWWHorMnFqZzdLVDJ3ZElKcgo=",
+      "endpoints": [
+        "https://github.com/AIS-Vision-Systems/Quasidian/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

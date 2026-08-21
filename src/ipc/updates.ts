@@ -36,3 +36,86 @@ export async function checkForUpdate(): Promise<UpdateCheck> {
     return { status: "error" };
   }
 }
+
+// --- Signed updater flow (m43) ---
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+
+export type { Update };
+
+export type UpdateFlow =
+  | { status: "current"; version: string }
+  | { status: "installable"; current: string; version: string; update: Update }
+  | { status: "manual"; current: string; latest: LatestInfo }
+  | { status: "error" };
+
+/**
+ * Signed-updater check with a manual fallback: installs the updater
+ * supports (NSIS on Windows, AppImage on Linux) get an installable
+ * update; a .deb — or any updater failure, including releases from
+ * before the manifest existed — degrades to the check-only API flow.
+ * Nothing ever installs without an explicit user action downstream.
+ */
+export async function checkForUpdateFlow(): Promise<UpdateFlow> {
+  const current = await getVersion();
+  try {
+    const update = await check();
+    if (update !== null) {
+      return { status: "installable", current, version: update.version, update };
+    }
+    return { status: "current", version: current };
+  } catch {
+    const legacy = await checkForUpdate();
+    if (legacy.status === "outdated") {
+      return { status: "manual", current, latest: legacy.latest };
+    }
+    return legacy.status === "current"
+      ? { status: "current", version: current }
+      : { status: "error" };
+  }
+}
+
+export type InstallPhase =
+  | { phase: "downloading"; percent: number | null }
+  | { phase: "installed" }
+  | { phase: "error" };
+
+/**
+ * Downloads and installs `update`, reporting progress. Only ever
+ * called from an explicit user click; resolving true means the app
+ * is ready to be relaunched (also a user decision).
+ */
+export async function installUpdate(
+  update: Update,
+  onPhase: (phase: InstallPhase) => void,
+): Promise<boolean> {
+  try {
+    let total: number | null = null;
+    let received = 0;
+    onPhase({ phase: "downloading", percent: null });
+    await update.downloadAndInstall((event) => {
+      if (event.event === "Started") {
+        total = event.data.contentLength ?? null;
+      } else if (event.event === "Progress") {
+        received += event.data.chunkLength;
+        onPhase({
+          phase: "downloading",
+          percent:
+            total !== null && total > 0
+              ? Math.min(100, Math.round((received / total) * 100))
+              : null,
+        });
+      }
+    });
+    onPhase({ phase: "installed" });
+    return true;
+  } catch {
+    onPhase({ phase: "error" });
+    return false;
+  }
+}
+
+/** Restarts the app to run the freshly installed version. */
+export function relaunchApp(): Promise<void> {
+  return relaunch();
+}
