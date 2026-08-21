@@ -45,8 +45,8 @@ export interface FilesSettings {
   defaultExtension: string;
   /**
    * Scan hidden (dot) folders in vault mode: they join the tree and
-   * the indexes. IGNORED_DIRS stay excluded regardless, and marker
-   * detection never depends on this (m40).
+   * the indexes. IGNORED_DIRS, `.git` and `.obsidian` stay excluded
+   * regardless, and marker detection never depends on this (m40).
    */
   showHiddenFolders: boolean;
   /**
@@ -96,7 +96,7 @@ export const DEFAULT_SETTINGS: Settings = {
   files: {
     confirmDelete: true,
     defaultExtension: ".md",
-    showHiddenFolders: false,
+    showHiddenFolders: true,
     restoreSession: true,
   },
   updates: {

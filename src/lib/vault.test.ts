@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { detectVault, isExcludedDir, isHiddenDir } from "./vault";
 
-/** Simulated filesystem: folder path → names it contains. */
+/**
+ * Simulated filesystem: folder path → names it contains. A trailing
+ * "/" marks a directory entry; plain names are files (dir-only marker
+ * probes only match the former).
+ */
 function fs(layout: Record<string, string[]>) {
-  return (dir: string, name: string): Promise<boolean> =>
-    Promise.resolve((layout[dir] ?? []).includes(name));
+  return (dir: string, name: string, dirOnly = false): Promise<boolean> => {
+    const entries = layout[dir] ?? [];
+    return Promise.resolve(
+      entries.includes(name + "/") || (!dirOnly && entries.includes(name)),
+    );
+  };
 }
 
 describe("detectVault", () => {
@@ -109,11 +117,11 @@ describe("isExcludedDir / isHiddenDir — the two criteria, apart (m40)", () => 
     expect(isExcludedDir("notes")).toBe(false);
   });
 
-  it("always excludes .git contents — never user notes, huge inside", () => {
+  it("always excludes .git and .obsidian contents — tool internals", () => {
     expect(isExcludedDir(".git")).toBe(true);
     expect(isExcludedDir(".GIT")).toBe(true);
+    expect(isExcludedDir(".obsidian")).toBe(true);
     // Other dot folders stay a setting decision, not an exclusion.
-    expect(isExcludedDir(".obsidian")).toBe(false);
     expect(isExcludedDir(".claude")).toBe(false);
   });
 
@@ -136,10 +144,8 @@ describe("detectVault — .obsidian and .git markers (m40)", () => {
     });
   });
 
-  it("a .git marker roots a git vault (file or folder alike)", async () => {
-    // The probe matches names only, so a .git *file* (worktrees,
-    // submodules) counts exactly like the directory.
-    const contains = fs({ "C:/proj": [".git"] });
+  it("a .git directory roots a git vault", async () => {
+    const contains = fs({ "C:/proj": [".git/"] });
     expect(await detectVault("C:/proj/docs", contains)).toEqual({
       root: "C:/proj",
       mode: "git",
@@ -147,13 +153,32 @@ describe("detectVault — .obsidian and .git markers (m40)", () => {
     });
   });
 
+  it("a .git *file* (worktree/submodule pointer) never marks", async () => {
+    const contains = fs({ "C:/repo/sub": [".git"] });
+    expect(await detectVault("C:/repo/sub", contains)).toBeNull();
+  });
+
+  it("a submodule joins the containing checkout's vault", async () => {
+    const contains = fs({
+      "C:/repo": [".git/"],
+      "C:/repo/sub": [".git"],
+    });
+    const info = await detectVault("C:/repo/sub/docs", contains);
+    expect(info?.root).toBe("C:/repo");
+  });
+
+  it("other markers still count as files (only .git is dir-only)", async () => {
+    const contains = fs({ "C:/notes": [".obsidian"] });
+    expect((await detectVault("C:/notes", contains))?.mode).toBe("obsidian");
+  });
+
   it(".obsidian outranks .git within one folder", async () => {
-    const contains = fs({ "C:/proj": [".git", ".obsidian"] });
+    const contains = fs({ "C:/proj": [".git/", ".obsidian"] });
     expect((await detectVault("C:/proj", contains))?.mode).toBe("obsidian");
   });
 
   it("existing markers outrank the new ones within one folder", async () => {
-    const contains = fs({ "C:/proj": [".git", "CLAUDE.md"] });
+    const contains = fs({ "C:/proj": [".git/", "CLAUDE.md"] });
     expect((await detectVault("C:/proj", contains))?.mode).toBe("claude");
   });
 
@@ -161,7 +186,7 @@ describe("detectVault — .obsidian and .git markers (m40)", () => {
     // A CLAUDE project nested inside a git checkout: the checkout is
     // the vault, whatever the nested marker says.
     const contains = fs({
-      "C:/repo": [".git"],
+      "C:/repo": [".git/"],
       "C:/repo/proj": ["CLAUDE.md"],
     });
     const info = await detectVault("C:/repo/proj/docs", contains);
@@ -169,7 +194,7 @@ describe("detectVault — .obsidian and .git markers (m40)", () => {
   });
 
   it("a .git under the excluded root still never wins", async () => {
-    const contains = fs({ "C:/Users/xavia": [".git"] });
+    const contains = fs({ "C:/Users/xavia": [".git/"] });
     expect(
       await detectVault(
         "C:/Users/xavia/Documents/notes",

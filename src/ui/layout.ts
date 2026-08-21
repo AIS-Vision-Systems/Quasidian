@@ -2648,11 +2648,18 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   /** Marker probe for vault detection, backed by the folder listing. */
-  async function folderContains(dir: string, name: string): Promise<boolean> {
+  async function folderContains(
+    dir: string,
+    name: string,
+    dirOnly = false,
+  ): Promise<boolean> {
     try {
       const entries = await listFolder(dir);
       const lower = name.toLowerCase();
-      return entries.some((entry) => entry.name.toLowerCase() === lower);
+      return entries.some(
+        (entry) =>
+          entry.name.toLowerCase() === lower && (!dirOnly || entry.isDir),
+      );
     } catch {
       return false;
     }

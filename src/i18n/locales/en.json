@@ -185,7 +185,7 @@
   "settings.restoreSession.name": "Restore session",
   "settings.restoreSession.desc": "When opening a vault or folder, reopen the files of its last session (a file opened from the system is added on top)",
   "settings.showHiddenFolders.name": "Show hidden folders",
-  "settings.showHiddenFolders.desc": "Include dot-folders in the vault tree and indexes (node_modules and the like always stay out)",
+  "settings.showHiddenFolders.desc": "Include dot-folders in the vault tree and indexes (node_modules and the like, plus the contents of .git and .obsidian, always stay out)",
   "tabs.close": "Close tab",
   "tabs.new": "New tab",
   "tabs.splitRight": "Open to the right",

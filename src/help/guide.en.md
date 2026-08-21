@@ -4,7 +4,7 @@
 
 Quasidian has no vaults and no configuration: **the folder of the open file is your workspace**. Open a folder or a `.md` file with the sidebar buttons; the list shows the folder's notes (no subfolders). Links, backlinks and search resolve inside that folder.
 
-If the folder — or an ancestor — holds a project marker (`CLAUDE.md`, `.claude`, `AGENTS.md`, `.codex`, `.obsidian` or `.git`, even as a file), that folder becomes the root of a **recursive vault**: the tree shows subfolders, and links, backlinks and search span the whole project. Hidden folders (starting with a dot) are not scanned by default; the marker still works. Turn on "Show hidden folders" in the settings to include them.
+If the folder — or an ancestor — holds a project marker (`CLAUDE.md`, `.claude`, `AGENTS.md`, `.codex`, `.obsidian` or the `.git` folder), that folder becomes the root of a **recursive vault**: the tree shows subfolders, and links, backlinks and search span the whole project. Hidden folders (starting with a dot) are included by default — turn off "Show hidden folders" in the settings to leave them out. The contents of `.git` and `.obsidian` are never scanned.
 
 - **Global search**: `Ctrl+Shift+F` or the sidebar magnifier.
 - **Quick switcher**: `Ctrl+O` — jump to any note by name or by its aliases.

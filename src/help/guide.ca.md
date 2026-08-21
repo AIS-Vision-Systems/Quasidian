@@ -4,7 +4,7 @@
 
 Quasidian no té «vaults» ni configuració: **la carpeta del fitxer obert és el teu espai de treball**. Obre una carpeta o un fitxer `.md` amb els botons de la barra lateral; la llista mostra les notes de la carpeta (sense subcarpetes). Els enllaços, els backlinks i la cerca es resolen dins d'aquesta carpeta.
 
-Si la carpeta — o un avantpassat — conté un marcador de projecte (`CLAUDE.md`, `.claude`, `AGENTS.md`, `.codex`, `.obsidian` o `.git`, encara que sigui un fitxer), aquella carpeta passa a ser l'arrel d'un **vault recursiu**: l'arbre mostra les subcarpetes i els enllaços, els backlinks i la cerca abasten tot el projecte. Les carpetes ocultes (que comencen per punt) no s'escanegen per defecte; el marcador funciona igualment. Activa «Mostra les carpetes ocultes» a la configuració per incloure-les.
+Si la carpeta — o un avantpassat — conté un marcador de projecte (`CLAUDE.md`, `.claude`, `AGENTS.md`, `.codex`, `.obsidian` o la carpeta `.git`), aquella carpeta passa a ser l'arrel d'un **vault recursiu**: l'arbre mostra les subcarpetes i els enllaços, els backlinks i la cerca abasten tot el projecte. Les carpetes ocultes (que comencen per punt) s'hi inclouen per defecte — desactiva «Mostra les carpetes ocultes» a la configuració per deixar-les fora. El contingut de `.git` i `.obsidian` no s'escaneja mai.
 
 - **Cerca global**: `Ctrl+Maj+F` o la lupa de la barra lateral.
 - **Quick switcher**: `Ctrl+O` — salta a qualsevol nota pel nom o pels seus àlies.
