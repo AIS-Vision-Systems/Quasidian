@@ -3071,36 +3071,47 @@ export function mountLayout(root: HTMLElement): void {
     viewTitle.textContent = noteName;
     // Before setDoc: the block-decorations field reads it on rebuild.
     setInlineTitle(getSettings().appearance.inlineTitle ? noteName : null);
-    // The note never waits for the folder scan — a cold vault takes a
-    // while to list. Show it now against the current (possibly stale
-    // or empty) listing and, when the scan lands, rebuild whatever
-    // depended on it: wikilink resolution, embeds, backlinks and the
-    // window title. Warm scopes settle almost immediately (perf).
-    const scopeBefore = currentFolder;
-    void refreshFolder(dirname(path)).then(() => {
-      if (openedPath === null || !samePath(openedPath, path)) {
-        return; // another file took over while the scan ran
-      }
-      void getCurrentWindow()
-        .setTitle(`${basename(vaultRoot ?? dirname(path))} - ${noteName}`)
-        .catch(() => undefined);
-      const scopeChanged =
-        scopeBefore === null ||
-        currentFolder === null ||
-        !samePath(scopeBefore, currentFolder);
-      if (scopeChanged) {
-        // Embeds and wikilinks resolved against the previous (or no)
-        // listing: rebuild them against the fresh one.
-        bumpEmbedGeneration();
-        editor.refreshBlocks();
-        if (currentMode === "read") {
-          const scroll = readingView.element.scrollTop;
-          readingView.render(editor.getDoc());
-          readingView.element.scrollTop = scroll;
+    // A warm scope never rescans on open: the watcher keeps the
+    // listing fresh, and re-scanning a large vault on every tab
+    // switch janked the UI even when detached (an IPC storm plus a
+    // full sidebar rebuild on the main thread). Cold scopes (first
+    // open, another folder or vault) refresh detached — the note
+    // never waits; whatever depended on the listing (wikilink
+    // resolution, embeds, backlinks, the window title) rebuilds when
+    // the scan lands.
+    const folder = dirname(path);
+    const warmScope =
+      currentFolder !== null &&
+      (vaultRoot !== null
+        ? insideVault(folder)
+        : samePath(folder, currentFolder));
+    if (!warmScope) {
+      const scopeBefore = currentFolder;
+      void refreshFolder(folder).then(() => {
+        if (openedPath === null || !samePath(openedPath, path)) {
+          return; // another file took over while the scan ran
         }
-        renderBacklinks();
-      }
-    });
+        void getCurrentWindow()
+          .setTitle(`${basename(vaultRoot ?? folder)} - ${noteName}`)
+          .catch(() => undefined);
+        const scopeChanged =
+          scopeBefore === null ||
+          currentFolder === null ||
+          !samePath(scopeBefore, currentFolder);
+        if (scopeChanged) {
+          // Embeds and wikilinks resolved against the previous (or
+          // no) listing: rebuild them against the fresh one.
+          bumpEmbedGeneration();
+          editor.refreshBlocks();
+          if (currentMode === "read") {
+            const scroll = readingView.element.scrollTop;
+            readingView.render(editor.getDoc());
+            readingView.element.scrollTop = scroll;
+          }
+          renderBacklinks();
+        }
+      });
+    }
     // Provisional title from what is known now; corrected above.
     // Cosmetic, so failures are ignored.
     void getCurrentWindow()
@@ -3178,15 +3189,24 @@ export function mountLayout(root: HTMLElement): void {
     const name = imageBaseName(path);
     viewTitle.textContent = name;
     setInlineTitle(null);
-    // Like notes, images never wait for the folder scan (perf).
-    void refreshFolder(dirname(path)).then(() => {
-      if (openedPath !== null && samePath(openedPath, path)) {
-        void getCurrentWindow()
-          .setTitle(`${basename(vaultRoot ?? dirname(path))} - ${name}`)
-          .catch(() => undefined);
-        renderBacklinks();
-      }
-    });
+    // Like notes: warm scopes skip the rescan, cold ones refresh
+    // detached (perf).
+    const imageFolder = dirname(path);
+    const warmImageScope =
+      currentFolder !== null &&
+      (vaultRoot !== null
+        ? insideVault(imageFolder)
+        : samePath(imageFolder, currentFolder));
+    if (!warmImageScope) {
+      void refreshFolder(imageFolder).then(() => {
+        if (openedPath !== null && samePath(openedPath, path)) {
+          void getCurrentWindow()
+            .setTitle(`${basename(vaultRoot ?? imageFolder)} - ${name}`)
+            .catch(() => undefined);
+          renderBacklinks();
+        }
+      });
+    }
     void getCurrentWindow()
       .setTitle(`${basename(vaultRoot ?? dirname(path))} - ${name}`)
       .catch(() => undefined);
