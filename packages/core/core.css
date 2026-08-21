@@ -1,0 +1,1392 @@
+/*
+ * @aisvision/quasidian-core — component styles: everything the
+ * core's DOM needs (the CM6 editor and Live Preview widgets, the
+ * reading render, embeds, callouts, tables, footnotes, the
+ * properties widget, context menus, hover previews and icons).
+ * Colors come exclusively from the variables in theme.css; load
+ * that first, then this sheet. Split from the app's stylesheet in
+ * milestone 41 — the host app keeps only its own chrome.
+ */
+/* --- Context menu and prompt modal --- */
+
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 200px;
+  padding: 4px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--modal-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px var(--shadow-color);
+  /* Obsidian-sized menu text; the UI-small size read too small. */
+  font-size: var(--font-ui-medium);
+  color: var(--text-normal);
+}
+
+.context-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.context-menu-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.context-menu-item.is-danger {
+  color: var(--text-error);
+}
+
+.context-menu-item.is-disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.context-menu-item.is-disabled:hover {
+  background-color: transparent;
+}
+
+.context-menu-icon {
+  display: inline-flex;
+  width: 16px;
+  color: var(--text-muted);
+}
+
+.context-menu-item.is-danger .context-menu-icon {
+  color: var(--text-error);
+}
+
+.context-menu-icon .app-icon,
+.context-menu-arrow .app-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.context-menu-label {
+  flex: 1;
+}
+
+.context-menu-arrow {
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.context-menu-submenu {
+  display: none;
+  position: absolute;
+  left: calc(100% - 4px);
+  top: -5px;
+}
+
+.context-menu-submenu.opens-left {
+  left: auto;
+  right: calc(100% - 4px);
+}
+
+.context-menu-item:hover > .context-menu-submenu {
+  display: block;
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background-color: var(--background-modifier-border);
+}
+
+.prompt-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, 90vw);
+  padding: 16px;
+  background-color: var(--background-primary);
+  border: 1px solid var(--modal-border);
+  border-radius: 10px;
+  box-shadow: 0 10px 40px var(--shadow-color);
+}
+
+.prompt-modal-title {
+  color: var(--text-normal);
+}
+
+.prompt-modal-input {
+  padding: 6px 10px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+  font-size: var(--font-text-size);
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.prompt-modal-accept {
+  align-self: flex-end;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-family: var(--font-interface);
+  cursor: pointer;
+}
+
+.prompt-modal-accept:hover {
+  background-color: var(--interactive-accent-hover);
+}
+
+/* Inline lucide-style icons: size follows the button, color the text.
+   The 18px default matches Obsidian's bar buttons; icons embedded in
+   content (chevrons, pills…) set their own smaller sizes. */
+.app-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.search-close .app-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* A small strip left of the text keeps the view menu reachable even
+   with line numbers off and full-width lines (the scroller padding is
+   outside .cm-content, so right-clicking it opens the view menu). */
+.cm-editor .cm-scroller {
+  padding-left: 14px;
+}
+
+.workspace-tab-pin .app-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.workspace-tab-close .app-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.cm-editor {
+  height: 100%;
+  font-size: var(--font-text-size);
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+.cm-editor .cm-scroller {
+  font-family: var(--font-text);
+  line-height: 1.6;
+}
+
+.cm-editor .cm-content {
+  padding: 24px 32px;
+  caret-color: var(--text-normal);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+body.is-readable-line-length .cm-editor .cm-content {
+  max-width: 46em;
+  margin: 0 auto;
+}
+
+.cm-editor .cm-gutters {
+  background-color: transparent;
+  border-right: none;
+  color: var(--text-faint);
+}
+
+/*
+ * Line numbers follow their line's text. Heading lines carry top
+ * padding on the content side; the gutter element replicates it (plus
+ * half the extra height of the bigger heading row, so the number sits
+ * centered on the heading text). CodeMirror sets each element's height
+ * explicitly, so border-box keeps the columns in sync.
+ */
+.cm-editor .cm-lineNumbers .cm-gutterElement {
+  box-sizing: border-box;
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h1 {
+  padding-top: calc(var(--font-text-size) * 2.24);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h2 {
+  padding-top: calc(var(--font-text-size) * 1.88);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h3 {
+  padding-top: calc(var(--font-text-size) * 1.54);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h4 {
+  padding-top: calc(var(--font-text-size) * 1.21);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h5 {
+  padding-top: calc(var(--font-text-size) * 1);
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterline-h6 {
+  padding-top: calc(var(--font-text-size) * 0.9);
+}
+
+/* Innards of code blocks and quotes only number themselves while the
+   cursor is inside; transparent (not hidden) keeps the gutter width. */
+.cm-editor .cm-lineNumbers .cm-gutterline-quiet {
+  color: transparent;
+}
+
+/* The callout box pads its first line; its number follows suit. */
+.cm-editor .cm-lineNumbers .cm-gutterline-callout {
+  padding-top: 10px;
+}
+
+/* Room for the inline fold chevrons hanging left of the text. */
+.cm-editor .cm-content {
+  padding-left: 28px;
+}
+
+/* Fold chevrons ride inside the line, so they sit at the text's height
+   and reveal on per-line hover; folded ones stay visible. */
+.cm-editor .cm-fold-chevron {
+  display: inline-block;
+  width: 0;
+  position: relative;
+}
+
+.cm-editor .cm-fold-chevron .app-icon {
+  position: absolute;
+  left: -24px;
+  bottom: 0.1em;
+  width: 15px;
+  height: 15px;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.cm-editor .cm-line:hover .cm-fold-chevron .app-icon {
+  opacity: 1;
+}
+
+.cm-editor .cm-fold-chevron.is-folded .app-icon {
+  opacity: 1;
+  color: var(--text-muted);
+}
+
+.cm-editor .cm-foldPlaceholder {
+  padding: 0 6px;
+  margin: 0 4px;
+  background-color: var(--background-modifier-hover);
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.cm-editor .cm-cursor {
+  border-left-color: var(--text-normal);
+}
+
+.cm-editor .cm-blockquote-line {
+  border-left: 2px solid var(--interactive-accent);
+  padding-left: 12px;
+  /* Quote text is muted via the line (not the highlight tag) so callout
+     lines can restore the normal color without inner spans winning. */
+  color: var(--text-muted);
+}
+
+.cm-editor .cm-codeblock-line {
+  background-color: var(--code-background);
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.cm-editor .cm-codeblock-begin {
+  border-radius: 4px 4px 0 0;
+}
+
+.cm-editor .cm-codeblock-end {
+  border-radius: 0 0 4px 4px;
+}
+
+.cm-editor .cm-codeblock-open {
+  position: relative;
+}
+
+.cm-editor .cm-codeblock-open .code-lang-pill {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cm-editor .cm-list-bullet {
+  display: inline-block;
+  width: 2ch;
+  text-indent: 0;
+  color: var(--text-muted);
+  /* Bigger dot without touching the 2ch layout box. */
+  transform: scale(1.35);
+  transform-origin: 0.4ch center;
+}
+
+/* Leading whitespace of list lines at a fixed width (2ch per column, an
+   Obsidian-like visual step), so marker columns and indent guides stay
+   put in proportional fonts. No overflow:hidden — it would move the
+   inline-block baseline to its bottom edge and inflate the line height. */
+.cm-editor .cm-list-ws {
+  display: inline-block;
+  text-indent: 0;
+  white-space: pre;
+}
+
+/* Ordered markers at 1ch per char, so "1. " really measures 3 columns
+   and wrapped text meets the first letter exactly. */
+.cm-editor .cm-list-number {
+  display: inline-block;
+  text-indent: 0;
+  white-space: pre;
+  color: var(--text-muted);
+}
+
+.cm-editor .cm-task-done {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.cm-editor .cm-hr {
+  display: inline-block;
+  width: 100%;
+  border-top: 1px solid var(--hr-color);
+  vertical-align: middle;
+}
+
+/* Vertical breathing room for headings, mirrored in reading mode. */
+.cm-editor .cm-heading-1 {
+  padding-top: calc(var(--font-text-size) * 1.6);
+  padding-bottom: calc(var(--font-text-size) * 0.5);
+}
+
+.cm-editor .cm-heading-2 {
+  padding-top: calc(var(--font-text-size) * 1.4);
+  padding-bottom: calc(var(--font-text-size) * 0.45);
+}
+
+.cm-editor .cm-heading-3 {
+  padding-top: calc(var(--font-text-size) * 1.2);
+  padding-bottom: calc(var(--font-text-size) * 0.4);
+}
+
+.cm-editor .cm-heading-4 {
+  padding-top: calc(var(--font-text-size) * 1);
+  padding-bottom: calc(var(--font-text-size) * 0.35);
+}
+
+.cm-editor .cm-heading-5,
+.cm-editor .cm-heading-6 {
+  padding-top: calc(var(--font-text-size) * 0.9);
+  padding-bottom: calc(var(--font-text-size) * 0.3);
+}
+
+/*
+ * List lines hang-indent so wrapped text aligns with the first letter,
+ * and sit 1em off the margin. --list-indent is the marker width in ch,
+ * set per line by the Live Preview plugin; alignment is exact for
+ * top-level bullets (2ch widget) and approximate for nested markers in
+ * proportional fonts.
+ */
+.cm-editor .cm-list-line {
+  padding-left: calc(1em + var(--list-indent, 2ch));
+  text-indent: calc(-1 * var(--list-indent, 2ch));
+}
+
+/* Spacing via padding, never margin: CodeMirror measures offsetHeight
+   and margins would desync the gutter and coordinate mapping. */
+.cm-math-block {
+  display: inline-block;
+  width: 100%;
+  margin: 0;
+  padding: 0.25em 0;
+  text-align: center;
+}
+
+.cm-math-standalone {
+  display: block;
+  margin: 0;
+  padding: 0.5em 0;
+  text-align: center;
+}
+
+.markdown-rendered .math-block {
+  display: block;
+  margin: 0.5em 0;
+  text-align: center;
+}
+
+/* inline-block (not block): a block box inside a text line desyncs the
+   editor's line geometry and gutter. */
+.cm-embed-note {
+  display: inline-block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 2px solid var(--interactive-accent);
+  border-radius: 4px;
+  background-color: var(--code-background);
+}
+
+.markdown-rendered .embed-note {
+  display: block;
+  margin: 4px 0;
+  padding: 8px 12px;
+  border-left: 2px solid var(--interactive-accent);
+  border-radius: 4px;
+  background-color: var(--code-background);
+}
+
+.cm-embed-note-title,
+.embed-note-title {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-accent);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+.cm-embed-note-title:hover,
+.embed-note-title:hover {
+  text-decoration: underline;
+}
+
+.cm-embed-note-body,
+.embed-note-body {
+  display: block;
+}
+
+.cm-embed-note-body p,
+.embed-note-body p {
+  margin: 0 0 0.5em;
+}
+
+.cm-table-widget {
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+/* height auto always: the width/height attributes still provide the
+   intrinsic aspect ratio (no layout jumps), and a width constrained by
+   the pane never distorts the image. */
+.cm-editor .cm-embed-image,
+.markdown-rendered img.internal-embed {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  vertical-align: bottom;
+}
+
+/* Cap the height only when no explicit size is set, and keep the aspect
+   ratio when only a width is given — a |500 wider than the natural size
+   must scale, never distort. */
+.cm-editor .cm-embed-image:not([width]),
+.markdown-rendered img.internal-embed:not([width]) {
+  max-height: 420px;
+}
+
+.cm-embed-missing,
+.embed-missing {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.cm-task-checkbox {
+  margin: 0 2px 0 0;
+  accent-color: var(--interactive-accent);
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+/* Code token palette for reading mode (classHighlighter tok-* classes). */
+
+.markdown-rendered .tok-keyword {
+  color: var(--color-6);
+}
+
+.markdown-rendered .tok-string,
+.markdown-rendered .tok-string2 {
+  color: var(--color-4);
+}
+
+.markdown-rendered .tok-comment {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.markdown-rendered .tok-number,
+.markdown-rendered .tok-bool,
+.markdown-rendered .tok-atom,
+.markdown-rendered .tok-literal {
+  color: var(--color-7);
+}
+
+.markdown-rendered .tok-typeName,
+.markdown-rendered .tok-className,
+.markdown-rendered .tok-namespace,
+.markdown-rendered .tok-propertyName {
+  color: var(--color-2);
+}
+
+.markdown-rendered .tok-function {
+  color: var(--color-6);
+}
+
+.markdown-rendered .tok-operator,
+.markdown-rendered .tok-punctuation {
+  color: var(--text-muted);
+}
+
+.cm-editor .cm-link {
+  color: var(--text-accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.cm-editor .cm-link:hover {
+  color: var(--text-accent-hover);
+}
+
+.cm-tooltip.cm-tooltip-autocomplete {
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+}
+
+.cm-tooltip-autocomplete ul li[aria-selected] {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+/* --- Settings modal --- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--background-modifier-cover);
+  z-index: 90;
+}
+
+.markdown-rendered > :first-child {
+  margin-top: 0;
+}
+
+/* Sizes and spacing mirror the editor: same scale, and margins in
+   base-font units so both modes breathe identically. */
+.markdown-rendered h1,
+.markdown-rendered h2,
+.markdown-rendered h3,
+.markdown-rendered h4,
+.markdown-rendered h5,
+.markdown-rendered h6 {
+  color: var(--text-normal);
+}
+
+.markdown-rendered h1 {
+  font-size: 1.802em;
+  margin: calc(var(--font-text-size) * 1.6) 0 calc(var(--font-text-size) * 0.5);
+}
+
+.markdown-rendered h2 {
+  font-size: 1.602em;
+  margin: calc(var(--font-text-size) * 1.4) 0 calc(var(--font-text-size) * 0.45);
+}
+
+.markdown-rendered h3 {
+  font-size: 1.424em;
+  margin: calc(var(--font-text-size) * 1.2) 0 calc(var(--font-text-size) * 0.4);
+}
+
+.markdown-rendered h4 {
+  font-size: 1.266em;
+  margin: calc(var(--font-text-size) * 1) 0 calc(var(--font-text-size) * 0.35);
+}
+
+.markdown-rendered h5 {
+  font-size: 1.125em;
+  margin: calc(var(--font-text-size) * 0.9) 0 calc(var(--font-text-size) * 0.3);
+}
+
+.markdown-rendered h6 {
+  font-size: 1em;
+  margin: calc(var(--font-text-size) * 0.9) 0 calc(var(--font-text-size) * 0.3);
+  color: var(--text-muted);
+}
+
+.markdown-rendered p {
+  margin: 0 0 1em;
+}
+
+.markdown-rendered blockquote {
+  margin: 0 0 1em;
+  padding-left: 12px;
+  border-left: 2px solid var(--interactive-accent);
+  color: var(--text-muted);
+}
+
+.markdown-rendered blockquote p {
+  margin-bottom: 0.5em;
+}
+
+.markdown-rendered code {
+  padding: 1px 4px;
+  background-color: var(--code-background);
+  border-radius: 4px;
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+}
+
+.markdown-rendered mark {
+  background-color: var(--text-highlight-bg);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.markdown-rendered pre {
+  position: relative;
+  margin: 0 0 1em;
+  padding: 12px;
+  background-color: var(--code-background);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.markdown-rendered pre code {
+  padding: 0;
+  background: none;
+}
+
+/* --- Interactive table editor (Live Preview widget) --- */
+
+.table-editor td[contenteditable],
+.table-editor th[contenteditable] {
+  min-width: 60px;
+  outline: none;
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.table-editor td[contenteditable]:focus,
+.table-editor th[contenteditable]:focus {
+  background-color: var(--background-modifier-hover);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
+.table-editor .table-handle-row th,
+.table-editor .table-row-handle-cell {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.table-editor .table-corner {
+  width: 14px;
+}
+
+.table-col-handle,
+.table-row-handle {
+  display: block;
+  padding: 0;
+  background-color: var(--background-modifier-border);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease, background-color 0.1s ease;
+}
+
+.table-col-handle {
+  width: 100%;
+  height: 8px;
+  margin-bottom: 3px;
+}
+
+.table-row-handle {
+  width: 8px;
+  height: 100%;
+  min-height: 20px;
+  margin-right: 3px;
+}
+
+.table-editor:hover .table-col-handle,
+.table-editor:hover .table-row-handle {
+  opacity: 1;
+}
+
+.table-col-handle:hover,
+.table-row-handle:hover {
+  background-color: var(--interactive-accent);
+  cursor: grab;
+}
+
+/* Dragging a row/column: tinted source, insertion bar, floating ghost. */
+.table-editor .drag-source {
+  background-color: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+}
+
+.table-drop-indicator {
+  position: absolute;
+  z-index: 5;
+  background-color: var(--interactive-accent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.table-drag-ghost {
+  position: fixed;
+  z-index: 100;
+  margin: 0;
+  background-color: var(--interactive-accent);
+  border: none;
+  border-radius: 4px;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Quick add buttons on the table's right/bottom edges. */
+.table-wrap {
+  position: relative;
+  display: inline-block;
+  padding-right: 20px;
+  padding-bottom: 20px;
+}
+
+/* The wrap's padding provides the block spacing; without this the
+   table's own bottom margin pushes the add-row button too far down.
+   (span-qualified so it outranks `.markdown-rendered table`.) */
+span.table-wrap > table {
+  margin: 0;
+}
+
+.table-edge-add {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background-color: var(--background-modifier-hover);
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.table-wrap:hover .table-edge-add {
+  opacity: 1;
+}
+
+.table-edge-add:hover {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.table-edge-add-col {
+  top: 14px;
+  right: 0;
+  bottom: 22px;
+  width: 15px;
+}
+
+.table-edge-add-row {
+  left: 17px;
+  right: 22px;
+  bottom: 0;
+  height: 15px;
+}
+
+/* Language pill on code blocks: shows the language (or a copy glyph)
+   and copies the block on click. Shared by reading mode and Live Preview. */
+.code-lang-pill {
+  position: absolute;
+  right: 8px;
+  padding: 2px 8px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.code-lang-pill:hover {
+  color: var(--text-normal);
+}
+
+.code-lang-pill .app-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.markdown-rendered pre .code-lang-pill {
+  top: 6px;
+}
+
+.markdown-rendered a {
+  color: var(--text-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.markdown-rendered a:hover {
+  color: var(--text-accent-hover);
+}
+
+/* Links whose note does not exist: dimmed lilac, no underline. */
+.markdown-rendered a.internal-link.is-unresolved {
+  color: color-mix(in srgb, var(--text-accent) 50%, transparent);
+  text-decoration: none;
+}
+
+.cm-editor .cm-link-unresolved,
+.cm-editor .cm-link-unresolved .cm-link {
+  color: color-mix(in srgb, var(--text-accent) 50%, transparent);
+  text-decoration: none;
+}
+
+/* Transclusion stopped by depth or cycle: just the dimmed target. */
+.markdown-rendered .embed-cycle {
+  color: var(--text-faint);
+}
+
+/* Page-preview popup (hover / Ctrl+hover on wikilinks). */
+.hover-preview-missing {
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  text-align: center;
+}
+
+.hover-preview {
+  position: fixed;
+  z-index: 95;
+  width: min(440px, 60vw);
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 12px 16px;
+  background-color: var(--background-primary);
+  border: 1px solid var(--modal-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px var(--shadow-color);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: calc(var(--font-text-size) * 0.93);
+  line-height: 1.5;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.markdown-rendered ul,
+.markdown-rendered ol {
+  margin: 0 0 1em;
+  padding-left: 1.7em;
+}
+
+/* Same disc at every level, muted markers, like the editor's bullets. */
+.markdown-rendered ul {
+  list-style-type: disc;
+}
+
+.markdown-rendered li::marker {
+  color: var(--text-muted);
+}
+
+/* Nested lists: compact spacing and an indent guide per level. */
+.markdown-rendered li > ul,
+.markdown-rendered li > ol {
+  margin-bottom: 0;
+  border-left: 1px solid var(--indentation-guide);
+}
+
+.markdown-rendered li > p {
+  margin: 0;
+}
+
+.markdown-rendered li.task-list-item {
+  list-style: none;
+  position: relative;
+}
+
+.markdown-rendered li.task-list-item:has(.task-checkbox:checked) {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* The checkbox hangs in the list padding like a marker, so task text
+   sits at the same column as bullet text. */
+.markdown-rendered .task-checkbox {
+  position: absolute;
+  left: -1.6em;
+  top: 0.25em;
+  margin: 0;
+  accent-color: var(--interactive-accent);
+  cursor: pointer;
+}
+
+.markdown-rendered hr {
+  margin: 1.5em 0;
+  border: none;
+  border-top: 1px solid var(--hr-color);
+}
+
+.markdown-rendered table {
+  margin: 0 0 1em;
+  border-collapse: collapse;
+}
+
+.markdown-rendered th,
+.markdown-rendered td {
+  padding: 4px 10px;
+  border: 1px solid var(--hr-color);
+}
+
+.markdown-rendered th {
+  background-color: var(--background-secondary);
+}
+
+.markdown-rendered img {
+  max-width: 100%;
+}
+
+/* --- Frontmatter properties (reading mode and editor widget) --- */
+
+.frontmatter-props {
+  margin: 0 0 1.2em;
+  padding: 10px 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  font-size: var(--font-ui-small);
+}
+
+/* Spacing on the widget root as padding, never margin on the child:
+   child margins collapse out of the root and CodeMirror's height
+   measurement misses them, shifting the gutter and cursor mapping. */
+.cm-frontmatter-widget {
+  padding: 4px 0 12px;
+}
+
+.cm-frontmatter-widget .frontmatter-props {
+  margin: 0;
+  cursor: pointer;
+}
+
+.props-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.frontmatter-props .props-header {
+  cursor: pointer;
+}
+
+.props-chevron {
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.props-chevron .app-icon {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.1s ease;
+}
+
+.frontmatter-props.is-collapsed .props-chevron .app-icon,
+.cm-frontmatter-widget.is-collapsed .props-chevron .app-icon {
+  transform: rotate(-90deg);
+}
+
+.frontmatter-props.is-collapsed .props-body,
+.cm-frontmatter-widget.is-collapsed .props-body {
+  display: none;
+}
+
+.props-title {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.props-key-icon {
+  display: inline-flex;
+  margin-right: 6px;
+  vertical-align: -2px;
+  color: var(--text-faint);
+}
+
+.props-key-icon .app-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.props-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.props-key {
+  min-width: 80px;
+  color: var(--text-muted);
+}
+
+.props-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.props-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  background-color: var(--background-modifier-hover);
+  border-radius: 10px;
+  color: var(--text-accent);
+}
+
+.props-value {
+  color: var(--text-normal);
+}
+
+.props-remove {
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.props-remove:hover {
+  color: var(--text-error);
+}
+
+.props-add {
+  margin-top: 6px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-faint);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+.props-add:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.cm-frontmatter-widget .props-value {
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+}
+
+.cm-frontmatter-widget .props-value:hover {
+  border-bottom-color: var(--text-faint);
+}
+
+.props-new-value,
+.props-new-key,
+.props-new-first,
+.props-edit-value {
+  padding: 1px 6px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.props-new-value {
+  min-width: 60px;
+  color: var(--text-faint);
+}
+
+.props-new-value:focus,
+.props-new-key:focus,
+.props-new-first:focus,
+.props-edit-value:focus {
+  background-color: var(--background-secondary);
+  border-color: var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+.props-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.props-add-row.is-hidden {
+  display: none;
+}
+
+.props-add-row input {
+  background-color: var(--background-secondary);
+  border-color: var(--background-modifier-border);
+}
+
+/* --- Callouts (reading mode + hover popups) --- */
+
+.callout {
+  margin: 0 0 1em;
+  padding: 14px 16px;
+  background-color: rgba(var(--callout-color), 0.18);
+  border-radius: 10px;
+}
+
+.callout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--callout-color));
+  font-weight: 600;
+}
+
+.callout-title .app-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.callout-content {
+  margin-top: 6px;
+}
+
+.callout-content > :last-child {
+  margin-bottom: 0;
+}
+
+/* Foldable callouts: chevron in the title, content hidden when
+   collapsed. */
+.callout-fold {
+  display: inline-flex;
+  margin-left: 6px;
+  cursor: pointer;
+  color: rgb(var(--callout-color));
+}
+
+.callout-fold .app-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.1s ease;
+}
+
+.callout.is-collapsed .callout-fold .app-icon {
+  transform: rotate(-90deg);
+}
+
+.callout.is-collapsed .callout-content {
+  display: none;
+}
+
+/* Editing mode: the same rounded box as reading mode, drawn with line
+   decorations (corner classes on the first and last lines). */
+.cm-editor .cm-callout-line {
+  background-color: rgba(var(--callout-color), 0.18);
+  border-left: none;
+  padding-left: 16px;
+  padding-right: 16px;
+  color: var(--text-normal);
+}
+
+.cm-editor .cm-callout-first {
+  border-radius: 10px 10px 0 0;
+  padding-top: 10px;
+}
+
+.cm-editor .cm-callout-last {
+  border-radius: 0 0 10px 10px;
+  padding-bottom: 10px;
+}
+
+/* A collapsed (or single-line) callout is first and last at once. */
+.cm-editor .cm-callout-first.cm-callout-last {
+  border-radius: 10px;
+}
+
+/* List lines keep their hanging indent inside the callout's padding
+   (this rule is later than both, so neither padding wins alone). */
+.cm-editor .cm-callout-line.cm-list-line {
+  padding-left: calc(16px + 1em + var(--list-indent, 2ch));
+}
+
+.cm-editor .cm-callout-icon {
+  display: inline-flex;
+  margin-right: 6px;
+  vertical-align: -2px;
+  color: rgb(var(--callout-color));
+}
+
+.cm-editor .cm-callout-icon .app-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.cm-editor .cm-callout-title {
+  color: rgb(var(--callout-color));
+  font-weight: 600;
+}
+
+.cm-editor .cm-callout-fold {
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: -3px;
+  cursor: pointer;
+  color: rgb(var(--callout-color));
+}
+
+.cm-editor .cm-callout-fold .app-icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* --- Footnotes --- */
+
+.footnote-ref {
+  line-height: 1;
+}
+
+.footnote-ref .footnote-link {
+  font-size: 0.85em;
+}
+
+/* Footnote section at the bottom of the note, after a separator. */
+.footnotes {
+  margin-top: 2em;
+}
+
+.footnotes .footnotes-sep {
+  margin: 0 0 0.8em;
+}
+
+.footnotes-list {
+  margin: 0;
+  padding-left: 1.6em;
+  color: var(--text-muted);
+  font-size: calc(var(--font-text-size) * 0.9);
+}
+
+.footnotes-list .footnote-def {
+  margin: 0 0 0.4em;
+}
+
+.footnotes-list .footnote-def::marker {
+  color: var(--text-faint);
+}
+
+.footnote-back {
+  font-size: 0.85em;
+  text-decoration: none;
+}
+
+/* Reading-mode section folding. */
+.markdown-rendered .is-foldable {
+  position: relative;
+}
+
+.markdown-rendered .is-fold-hidden {
+  display: none;
+}
+
+/* --- View menu check marks --- */
+
+.context-menu-check {
+  display: inline-flex;
+  margin-left: 12px;
+  color: var(--text-muted);
+}
+
+.context-menu-check .app-icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* --- Inline title (both modes) --- */
+
+.inline-title {
+  font-size: 1.802em;
+  font-weight: 700;
+  color: var(--text-normal);
+  margin: 0 0 0.4em;
+  outline: none;
+  cursor: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* The global user-select: none would block the caret. */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.cm-editor .cm-inline-title {
+  font-family: inherit;
+  /* The .inline-title bottom margin as padding: CodeMirror measures
+     offsetHeight and an unmeasured margin desyncs gutter and cursor. */
+  margin: 0;
+  padding: 2px 0 calc(6px + 0.4em);
+}
+
+.markdown-rendered h1.inline-title {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.outline-chevron .app-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* The inline-title input mirrors the H1 look while editing. */
+.inline-title-input {
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  -webkit-user-select: text;
+  user-select: text;
+}

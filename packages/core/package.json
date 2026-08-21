@@ -18,11 +18,13 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./theme.css": "./theme.css"
+    "./theme.css": "./theme.css",
+    "./core.css": "./core.css"
   },
   "files": [
     "dist",
     "theme.css",
+    "core.css",
     "LICENSE.md",
     "LICENSE-COMMERCIAL.md"
   ],

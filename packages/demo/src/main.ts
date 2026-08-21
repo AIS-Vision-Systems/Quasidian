@@ -3,8 +3,14 @@
 // right. No filesystem: the hooks resolve nothing, which is exactly
 // what a fresh embedder starts from.
 import "@aisvision/quasidian-core/theme.css";
+import "@aisvision/quasidian-core/core.css";
 import "katex/dist/katex.min.css";
-import { createEditor, renderToHtml } from "@aisvision/quasidian-core";
+import {
+  createEditor,
+  highlightCodeBlocks,
+  renderMathElements,
+  renderToHtml,
+} from "@aisvision/quasidian-core";
 
 const SAMPLE = `# Quasidian core
 
@@ -28,12 +34,21 @@ const preview = document.getElementById("preview");
 if (editorHost === null || preview === null) {
   throw new Error("demo hosts missing");
 }
+const previewHost: HTMLElement = preview;
+
+// renderToHtml emits the structure; math and code highlighting fill
+// in afterwards, exactly like the app's reading mode does.
+function renderPreview(doc: string): void {
+  previewHost.innerHTML = renderToHtml(doc);
+  renderMathElements(previewHost);
+  highlightCodeBlocks(previewHost);
+}
 
 const editor = createEditor(
   editorHost,
   {
     onDocChanged(doc) {
-      preview.innerHTML = renderToHtml(doc);
+      renderPreview(doc);
     },
     onSaveRequested() {},
     onToggleModeRequested() {},
@@ -56,4 +71,4 @@ const editor = createEditor(
 );
 
 editor.setDoc(SAMPLE);
-preview.innerHTML = renderToHtml(SAMPLE);
+renderPreview(SAMPLE);

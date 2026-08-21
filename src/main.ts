@@ -1,5 +1,6 @@
 import "katex/dist/katex.min.css";
 import "@aisvision/quasidian-core/theme.css";
+import "@aisvision/quasidian-core/core.css";
 import "./styles/app.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "./i18n/i18n";

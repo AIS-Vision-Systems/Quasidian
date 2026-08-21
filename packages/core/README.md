@@ -19,6 +19,7 @@ npm install @aisvision/quasidian-core
 
 ```ts
 import "@aisvision/quasidian-core/theme.css"; // Obsidian-style variables
+import "@aisvision/quasidian-core/core.css"; // component styles
 import "katex/dist/katex.min.css";
 import { createEditor, renderToHtml } from "@aisvision/quasidian-core";
 
