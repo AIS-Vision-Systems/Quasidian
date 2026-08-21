@@ -34,6 +34,11 @@ export function copyFile(from: string, to: string): Promise<void> {
   return invoke("copy_file", { from, to });
 }
 
+/** Widens the asset-protocol scope to `path` (vaults recurse). */
+export function allowAssetDir(path: string, recursive: boolean): Promise<void> {
+  return invoke("allow_asset_dir", { path, recursive });
+}
+
 export function deleteFile(path: string): Promise<void> {
   return invoke("delete_file", { path });
 }

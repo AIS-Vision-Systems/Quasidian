@@ -1,7 +1,7 @@
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,6 +94,21 @@ fn rename_file(from: String, to: String) -> Result<(), String> {
     std::fs::rename(&from, &to).map_err(|e| e.to_string())
 }
 
+/// Widens the asset-protocol scope to an opened folder at runtime
+/// (m42): the static scope in tauri.conf.json is empty, so only
+/// folders the user actually opens are ever readable through the
+/// protocol. Vaults widen recursively.
+#[tauri::command]
+fn allow_asset_dir(
+    app: tauri::AppHandle,
+    path: String,
+    recursive: bool,
+) -> Result<(), String> {
+    app.asset_protocol_scope()
+        .allow_directory(std::path::Path::new(&path), recursive)
+        .map_err(|e| e.to_string())
+}
+
 /// Byte-for-byte copy for "make a copy" (m39): reading and writing as
 /// text would corrupt binaries (images). Never overwrites.
 #[tauri::command]
@@ -170,6 +185,7 @@ pub fn run() {
             ensure_dir,
             rename_file,
             copy_file,
+            allow_asset_dir,
             delete_file,
             list_folder,
             watch_folder,
