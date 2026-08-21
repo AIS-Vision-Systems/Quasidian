@@ -2,19 +2,18 @@
 // except task-list checkboxes. Internal links navigate with the same
 // resolution logic as the editor; external links open in the system
 // browser.
-import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   arePropertiesCollapsed,
   setPropertiesCollapsed,
-} from "@aisvision/quasidian-core";
-import { renderToHtml } from "@aisvision/quasidian-core";
-import { createIcon } from "@aisvision/quasidian-core";
-import { buildInlineTitleElement } from "@aisvision/quasidian-core";
+} from "../editor/livePreview";
+import { renderToHtml } from "../markdown/render";
+import { createIcon } from "./icons";
+import { buildInlineTitleElement } from "./inlineTitle";
 import {
   scheduleHoverHide,
   scheduleHoverShow,
   scheduleHtmlHover,
-} from "@aisvision/quasidian-core";
+} from "./hoverPreview";
 import {
   addCodePills,
   fillEmbedImages,
@@ -23,7 +22,7 @@ import {
   markUnresolvedLinks,
   renderMathElements,
   type EmbedNoteResult,
-} from "@aisvision/quasidian-core";
+} from "./renderedContent";
 
 export interface ReadingViewHooks {
   /** `newTab` is set on Ctrl+click / middle-click. */
@@ -50,6 +49,8 @@ export interface ReadingViewHooks {
   inlineTitle(): string | null;
   /** Commits an inline-title edit as a file rename. */
   onInlineTitleRename(name: string): void;
+  /** Opens an http(s) link in the host's browser of choice. */
+  onExternalLink(url: string): void;
 }
 
 export interface ReadingViewHandle {
@@ -204,7 +205,7 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
         return;
       }
       if (href !== null && /^https?:\/\//i.test(href)) {
-        void openUrl(href);
+        hooks.onExternalLink(href);
       }
       return;
     }

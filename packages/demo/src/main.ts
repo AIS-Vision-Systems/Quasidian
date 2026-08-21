@@ -1,28 +1,31 @@
 // Minimal embedding of @aisvision/quasidian-core: the Live Preview
-// editor on the left, the reading render (same Lezer tree) on the
-// right. No filesystem: the hooks resolve nothing, which is exactly
-// what a fresh embedder starts from.
+// editor on the left, the interactive reading view on the right —
+// both fed by the same document and the same Lezer tree. No
+// filesystem: the hooks resolve nothing, which is exactly what a
+// fresh embedder starts from.
 import "@aisvision/quasidian-core/theme.css";
 import "@aisvision/quasidian-core/core.css";
 import "katex/dist/katex.min.css";
 import {
   createEditor,
-  highlightCodeBlocks,
-  renderMathElements,
-  renderToHtml,
+  createReadingView,
+  type EditorHandle,
 } from "@aisvision/quasidian-core";
 
 const SAMPLE = `# Quasidian core
 
 A **markdown** editor with [[wikilinks]], ==highlights==, inline math
-$e^{i\pi} + 1 = 0$ and the rest of the Obsidian dialect.
+$e^{i\\pi} + 1 = 0$ and the rest of the Obsidian dialect.
 
-> [!tip] Live Preview
+> [!tip]- Live Preview
 > Syntax hides away from the active line on the left; the right side
-> is the reading render, fed by the same syntax tree.
+> is the reading view, fed by the same syntax tree. This callout is
+> foldable — click its chevron.
 
-- [ ] a task
-- a list item
+## Try both sides
+
+- [ ] toggle this task on either side
+- fold this heading with the chevron on the right
 
 | a | b |
 | --- | --- |
@@ -30,25 +33,52 @@ $e^{i\pi} + 1 = 0$ and the rest of the Obsidian dialect.
 `;
 
 const editorHost = document.getElementById("editor");
-const preview = document.getElementById("preview");
-if (editorHost === null || preview === null) {
+const previewHost = document.getElementById("preview");
+if (editorHost === null || previewHost === null) {
   throw new Error("demo hosts missing");
 }
-const previewHost: HTMLElement = preview;
 
-// renderToHtml emits the structure; math and code highlighting fill
-// in afterwards, exactly like the app's reading mode does.
-function renderPreview(doc: string): void {
-  previewHost.innerHTML = renderToHtml(doc);
-  renderMathElements(previewHost);
-  highlightCodeBlocks(previewHost);
-}
+// The two views close over each other: `editor` is assigned right
+// after createEditor returns, before any hook can fire.
+let editor: EditorHandle;
 
-const editor = createEditor(
+const reading = createReadingView({
+  onInternalLink() {},
+  onTaskToggle(pos, checked) {
+    // The document is the single source of truth: write the marker
+    // through the editor and re-render the reading side from it.
+    editor.replaceRange(pos, pos + 3, checked ? "[x]" : "[ ]");
+    void reading.render(editor.getDoc());
+  },
+  resolveEmbedSrc: () => null,
+  renderEmbedNote: () => Promise.resolve(null),
+  isResolved: () => false,
+  currentFilePath: () => null,
+  // Fold state lives in the editor, so both views stay in step.
+  foldInfoAt: (pos) => editor.foldInfoAt(pos),
+  onToggleFold(pos) {
+    editor.toggleFoldAt(pos);
+    void reading.render(editor.getDoc());
+  },
+  onCalloutToggle(pos, fold) {
+    editor.replaceRange(pos, pos + 1, fold ? "-" : "+");
+    void reading.render(editor.getDoc());
+  },
+  showProperties: () => true,
+  inlineTitle: () => null,
+  onInlineTitleRename() {},
+  onExternalLink(url) {
+    window.open(url, "_blank", "noopener");
+  },
+});
+reading.element.classList.remove("is-hidden");
+previewHost.append(reading.element);
+
+editor = createEditor(
   editorHost,
   {
     onDocChanged(doc) {
-      renderPreview(doc);
+      void reading.render(doc);
     },
     onSaveRequested() {},
     onToggleModeRequested() {},
@@ -71,4 +101,4 @@ const editor = createEditor(
 );
 
 editor.setDoc(SAMPLE);
-renderPreview(SAMPLE);
+void reading.render(SAMPLE);

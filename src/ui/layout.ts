@@ -131,7 +131,7 @@ import {
   type UiState,
 } from "../lib/vaultSession";
 import type { EditorHandle } from "@aisvision/quasidian-core";
-import type { ReadingViewHandle } from "./readingView";
+import type { ReadingViewHandle } from "@aisvision/quasidian-core";
 import { renderToHtml } from "@aisvision/quasidian-core";
 import { isExternalTarget, isImageTarget } from "@aisvision/quasidian-core";
 import {
@@ -152,7 +152,7 @@ import { createIcon } from "@aisvision/quasidian-core";
 import { copyText } from "@aisvision/quasidian-core";
 import { openPalette } from "./palette";
 import { exportNoteToPdf } from "./printExport";
-import { createReadingView } from "./readingView";
+import { createReadingView } from "@aisvision/quasidian-core";
 import { openSettingsModal } from "./settingsModal";
 
 export function mountLayout(root: HTMLElement): void {
@@ -1195,6 +1195,9 @@ export function mountLayout(root: HTMLElement): void {
       if (openedPath !== null) {
         void renameNoteTo(openedPath, name);
       }
+    },
+    onExternalLink(url) {
+      void openUrl(url);
     },
     });
   }

@@ -60,6 +60,11 @@ export {
   scheduleHtmlHover,
 } from "./ui/hoverPreview";
 export { buildInlineTitleElement } from "./ui/inlineTitle";
+export {
+  createReadingView,
+  type ReadingViewHandle,
+  type ReadingViewHooks,
+} from "./ui/readingView";
 
 // --- Chrome the editor experience needs (menus, icons) ---
 export {
