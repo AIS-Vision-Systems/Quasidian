@@ -29,7 +29,7 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import katex from "katex";
-import { t } from "../i18n/i18n";
+import { ct as t } from "../lib/coreStrings";
 import {
   parseFrontmatter,
   serializeFrontmatter,
@@ -41,6 +41,7 @@ import {
   calloutIcon,
   parseCalloutHeader,
 } from "../markdown/callouts";
+import { cachedImageSize, cacheImageSize } from "./imageSizeCache";
 import {
   applyTableOp,
   parseTableSource,
@@ -730,7 +731,7 @@ class ImageWidget extends WidgetType {
   override get estimatedHeight(): number {
     return this.src === null
       ? -1
-      : estimatedImageHeight(this.alias, imageSizeCache.get(this.src));
+      : estimatedImageHeight(this.alias, cachedImageSize(this.src));
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -748,16 +749,14 @@ class ImageWidget extends WidgetType {
     // size is cached so a widget recreated while scrolling takes its
     // final box synchronously and the scroll position never jumps.
     image.addEventListener("load", () => {
-      if (!imageSizeCache.has(src)) {
-        imageSizeCache.set(src, {
-          width: image.naturalWidth,
-          height: image.naturalHeight,
-        });
-      }
+      cacheImageSize(src, {
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
       view.requestMeasure();
     });
     image.src = src;
-    const cached = imageSizeCache.get(src);
+    const cached = cachedImageSize(src);
     const dimensions = parseImageDimensions(this.alias);
     if (dimensions === null) {
       image.alt = this.alias ?? this.target;
@@ -777,26 +776,6 @@ class ImageWidget extends WidgetType {
       }
     }
     return image;
-  }
-}
-
-// Natural sizes of loaded embed images, per resolved src. Shared with
-// reading mode so both modes take the final box synchronously and
-// scroll anchoring measures a stable layout.
-const imageSizeCache = new Map<string, { width: number; height: number }>();
-
-export function cachedImageSize(
-  src: string,
-): { width: number; height: number } | undefined {
-  return imageSizeCache.get(src);
-}
-
-export function cacheImageSize(
-  src: string,
-  size: { width: number; height: number },
-): void {
-  if (!imageSizeCache.has(src)) {
-    imageSizeCache.set(src, size);
   }
 }
 

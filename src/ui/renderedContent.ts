@@ -5,8 +5,8 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { classHighlighter, highlightCode } from "@lezer/highlight";
 import katex from "katex";
-import { cacheImageSize, cachedImageSize } from "../editor/livePreview";
-import { t } from "../i18n/i18n";
+import { cacheImageSize, cachedImageSize } from "../editor/imageSizeCache";
+import { ct as t } from "../lib/coreStrings";
 import { createIcon } from "./icons";
 
 export function fillEmbedImages(
