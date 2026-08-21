@@ -11,6 +11,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n/i18n";
 import {
+  allowAssetDir,
   copyFile,
   deleteFile,
   listFolder,
@@ -2762,6 +2763,14 @@ export function mountLayout(root: HTMLElement): void {
     if (epoch !== refreshEpoch) {
       return; // superseded while listing
     }
+    // The asset protocol starts with an empty scope (m42): widen it to
+    // this scope BEFORE the listing commits — callers await or chain
+    // off this function precisely to resolve embed sources, so the
+    // widening must land first or a cold open races it.
+    await allowAssetDir(scope, vaultRoot !== null).catch(() => undefined);
+    if (epoch !== refreshEpoch) {
+      return; // superseded while widening the asset scope
+    }
     const markdownFiles = entries
       .filter((entry) => !entry.isDir && entry.name.toLowerCase().endsWith(".md"))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -3216,6 +3225,9 @@ export function mountLayout(root: HTMLElement): void {
     editorHost.classList.add("is-hidden");
     readingView.element.classList.add("is-hidden");
     imageView.classList.remove("is-hidden");
+    // A cold open outruns the detached folder refresh: make sure the
+    // image's own folder is inside the asset scope before loading it.
+    await allowAssetDir(dirname(path), false).catch(() => undefined);
     imageEl.src = convertFileSrc(path);
     imageEl.alt = name;
     refreshStatusChrome();

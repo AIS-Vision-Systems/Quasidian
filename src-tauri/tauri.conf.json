@@ -22,10 +22,12 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; connect-src ipc: http://ipc.localhost 'self' https://api.github.com; font-src 'self' data:",
+      "dangerousDisableAssetCspModification": ["style-src"],
+      "devCsp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; connect-src ipc: http://ipc.localhost 'self' ws://localhost:1420 ws://localhost:1421 https://api.github.com; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": []
       }
     }
   },
