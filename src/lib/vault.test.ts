@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { detectVault, isExcludedDir, isHiddenDir } from "./vault";
+import {
+  detectVault,
+  isExcludedDir,
+  isHiddenDir,
+  scanVaultTree,
+} from "./vault";
 
 /**
  * Simulated filesystem: folder path → names it contains. A trailing
@@ -202,5 +207,95 @@ describe("detectVault — .obsidian and .git markers (m40)", () => {
         "C:/Users/xavia",
       ),
     ).toBeNull();
+  });
+});
+
+describe("scanVaultTree — level-parallel vault scan (perf)", () => {
+  interface Layout {
+    [dir: string]: { name: string; isDir?: boolean }[];
+  }
+
+  function lister(layout: Layout, log?: string[]) {
+    return (path: string) => {
+      log?.push(path);
+      const entries = layout[path];
+      if (entries === undefined) {
+        return Promise.reject(new Error("unreadable"));
+      }
+      return Promise.resolve(
+        entries.map((e) => ({
+          name: e.name,
+          path: `${path}/${e.name}`,
+          isDir: e.isDir === true,
+        })),
+      );
+    };
+  }
+
+  const anyDir = () => true;
+
+  it("collects files and scannable dirs breadth-first", async () => {
+    const layout: Layout = {
+      root: [{ name: "a.md" }, { name: "sub", isDir: true }],
+      "root/sub": [{ name: "b.md" }],
+    };
+    const entries = await scanVaultTree("root", lister(layout), anyDir);
+    expect(entries.map((e) => e.name)).toEqual(["a.md", "sub", "b.md"]);
+  });
+
+  it("lists each level's folders in one parallel round", async () => {
+    const log: string[] = [];
+    const layout: Layout = {
+      root: [
+        { name: "x", isDir: true },
+        { name: "y", isDir: true },
+      ],
+      "root/x": [{ name: "a.md" }],
+      "root/y": [{ name: "b.md" }],
+    };
+    await scanVaultTree("root", lister(layout, log), anyDir);
+    // Level order: the root alone, then both children together.
+    expect(log).toEqual(["root", "root/x", "root/y"]);
+  });
+
+  it("skips non-scannable dirs entirely (not collected, not descended)", async () => {
+    const layout: Layout = {
+      root: [
+        { name: "node_modules", isDir: true },
+        { name: "notes", isDir: true },
+      ],
+      "root/notes": [{ name: "a.md" }],
+      "root/node_modules": [{ name: "junk.md" }],
+    };
+    const entries = await scanVaultTree(
+      "root",
+      lister(layout),
+      (name) => name !== "node_modules",
+    );
+    expect(entries.map((e) => e.name)).toEqual(["notes", "a.md"]);
+  });
+
+  it("stops descending at the depth cap", async () => {
+    const layout: Layout = {
+      root: [{ name: "l1", isDir: true }],
+      "root/l1": [{ name: "l2", isDir: true }],
+      "root/l1/l2": [{ name: "deep.md" }],
+    };
+    const entries = await scanVaultTree("root", lister(layout), anyDir, 1);
+    // l1 is collected and listed; l2 sits at the cap: neither.
+    expect(entries.map((e) => e.name)).toEqual(["l1"]);
+  });
+
+  it("skips unreadable folders without failing the scan", async () => {
+    const layout: Layout = {
+      root: [
+        { name: "broken", isDir: true },
+        { name: "ok", isDir: true },
+      ],
+      "root/ok": [{ name: "a.md" }],
+      // "root/broken" missing: the lister rejects for it.
+    };
+    const entries = await scanVaultTree("root", lister(layout), anyDir);
+    expect(entries.map((e) => e.name)).toEqual(["broken", "ok", "a.md"]);
   });
 });
