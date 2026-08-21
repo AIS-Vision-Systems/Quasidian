@@ -17,7 +17,12 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Workspace: the app resolves the core package from its source. */
+    "paths": {
+      "@aisvision/quasidian-core": ["./packages/core/src/index.ts"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "packages/core/src", "packages/demo/src"]
 }

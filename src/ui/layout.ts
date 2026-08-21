@@ -23,22 +23,22 @@ import {
   writeFile,
   type FileEntry,
 } from "../ipc/fs";
-import { createEditor } from "../editor/editor";
+import { createEditor } from "@aisvision/quasidian-core";
 import {
   initialResizeAnchor,
   onBurstEnd,
   onHostResize,
   onUserScroll,
   RESIZE_BURST_QUIET_MS,
-} from "../editor/resizeAnchor";
+} from "@aisvision/quasidian-core";
 import {
   bumpEmbedGeneration,
   clearEmbedHtmlCache,
   setInlineTitle,
   setInlineTitleRename,
   setKnownPropertyKeys,
-} from "../editor/livePreview";
-import { createAutosaveScheduler } from "../editor/autosave";
+} from "@aisvision/quasidian-core";
+import { createAutosaveScheduler } from "@aisvision/quasidian-core";
 import { createBacklinkIndex } from "../lib/backlinkIndex";
 import { createSearchIndex, type SearchMatch } from "../lib/searchIndex";
 import {
@@ -51,7 +51,7 @@ import {
 } from "../lib/paths";
 import type { EditorModeSetting } from "../lib/settings";
 import { extractLinkTargets } from "../lib/backlinkIndex";
-import { parseFrontmatter } from "../lib/frontmatter";
+import { parseFrontmatter } from "@aisvision/quasidian-core";
 import { computeOutline, findHeading, sectionSlice } from "../lib/outline";
 import { applyRewrites, renameLinkTargets } from "../lib/renameLinks";
 import { countCharacters, countWords } from "../lib/text";
@@ -130,10 +130,10 @@ import {
   type ScopeInfo,
   type UiState,
 } from "../lib/vaultSession";
-import type { EditorHandle } from "../editor/editor";
-import type { ReadingViewHandle } from "./readingView";
-import { renderToHtml } from "../markdown/render";
-import { isExternalTarget, isImageTarget } from "../markdown/wikilinks";
+import type { EditorHandle } from "@aisvision/quasidian-core";
+import type { ReadingViewHandle } from "@aisvision/quasidian-core";
+import { renderToHtml } from "@aisvision/quasidian-core";
+import { isExternalTarget, isImageTarget } from "@aisvision/quasidian-core";
 import {
   getSettings,
   subscribeSettings,
@@ -145,14 +145,14 @@ import {
   openContextMenu,
   openPromptModal,
   type MenuEntry,
-} from "./contextMenu";
+} from "@aisvision/quasidian-core";
 import { openHelpModal } from "./helpModal";
-import { hideHoverPreview } from "./hoverPreview";
-import { createIcon } from "./icons";
-import { copyText } from "./renderedContent";
+import { hideHoverPreview } from "@aisvision/quasidian-core";
+import { createIcon } from "@aisvision/quasidian-core";
+import { copyText } from "@aisvision/quasidian-core";
 import { openPalette } from "./palette";
 import { exportNoteToPdf } from "./printExport";
-import { createReadingView } from "./readingView";
+import { createReadingView } from "@aisvision/quasidian-core";
 import { openSettingsModal } from "./settingsModal";
 
 export function mountLayout(root: HTMLElement): void {
@@ -1195,6 +1195,9 @@ export function mountLayout(root: HTMLElement): void {
       if (openedPath !== null) {
         void renameNoteTo(openedPath, name);
       }
+    },
+    onExternalLink(url) {
+      void openUrl(url);
     },
     });
   }

@@ -1,7 +1,7 @@
 // Pure module: no Tauri, no DOM. Rewrites wikilink/embed targets that
 // resolve to a renamed file so they point at its new name, walking the
 // shared Lezer tree — never a second parser.
-import { markdownParser } from "../markdown/parser";
+import { markdownParser } from "@aisvision/quasidian-core";
 import { basename, samePath } from "./paths";
 import { resolveWikilink, splitAnchor, type FolderFile } from "./wikilinks";
 

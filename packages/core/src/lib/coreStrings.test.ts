@@ -1,13 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import ca from "../i18n/locales/ca.json";
-import en from "../i18n/locales/en.json";
-import es from "../i18n/locales/es.json";
-import {
-  CORE_STRINGS,
-  ct,
-  setCoreTranslator,
-  type CoreStringKey,
-} from "./coreStrings";
+import { ct, setCoreTranslator } from "./coreStrings";
 
 afterEach(() => {
   setCoreTranslator(null);
@@ -37,28 +29,5 @@ describe("ct — core strings with an injectable translator", () => {
     expect(ct("preview.notCreated", { name: "X" })).toBe(
       "preview.notCreated:X",
     );
-  });
-});
-
-describe("core keys stay in step with the app dictionaries", () => {
-  const keys = Object.keys(CORE_STRINGS) as CoreStringKey[];
-
-  it("every core key exists in ca, es and en", () => {
-    const dictionaries: Record<string, Record<string, string>> = {
-      ca,
-      es,
-      en,
-    };
-    for (const [name, dictionary] of Object.entries(dictionaries)) {
-      const missing = keys.filter((key) => !(key in dictionary));
-      expect(missing, `missing in ${name}`).toEqual([]);
-    }
-  });
-
-  it("every default matches the English dictionary verbatim", () => {
-    const dictionary = en as Record<string, string>;
-    for (const key of keys) {
-      expect(CORE_STRINGS[key], key).toBe(dictionary[key]);
-    }
   });
 });

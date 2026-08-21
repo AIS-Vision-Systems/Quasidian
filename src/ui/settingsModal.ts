@@ -9,7 +9,7 @@ import {
 } from "../ipc/settingsStore";
 import { getVersion } from "@tauri-apps/api/app";
 import { DEFAULT_SETTINGS, type Settings } from "../lib/settings";
-import { createIcon } from "./icons";
+import { createIcon } from "@aisvision/quasidian-core";
 import { createUpdateCheck } from "./updateCheck";
 
 type SectionId = "general" | "appearance" | "editor" | "files";

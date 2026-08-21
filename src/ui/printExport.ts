@@ -9,8 +9,8 @@ import {
   markUnresolvedLinks,
   renderMathElements,
   type EmbedFillHooks,
-} from "./renderedContent";
-import { renderToHtml } from "../markdown/render";
+} from "@aisvision/quasidian-core";
+import { renderToHtml } from "@aisvision/quasidian-core";
 
 /** Resolves once every image below `root` has loaded (or failed). */
 function waitForImages(root: HTMLElement, timeoutMs: number): Promise<void> {
