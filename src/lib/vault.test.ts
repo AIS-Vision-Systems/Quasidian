@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectVault, isIgnoredDir } from "./vault";
+import { detectVault, isExcludedDir, isHiddenDir } from "./vault";
 
 /** Simulated filesystem: folder path → names it contains. */
 function fs(layout: Record<string, string[]>) {
@@ -101,12 +101,81 @@ describe("detectVault", () => {
   });
 });
 
-describe("isIgnoredDir", () => {
-  it("skips dot directories and the ignore list", () => {
-    expect(isIgnoredDir(".git")).toBe(true);
-    expect(isIgnoredDir(".claude")).toBe(true);
-    expect(isIgnoredDir("node_modules")).toBe(true);
-    expect(isIgnoredDir("Target")).toBe(true);
-    expect(isIgnoredDir("notes")).toBe(false);
+describe("isExcludedDir / isHiddenDir — the two criteria, apart (m40)", () => {
+  it("always excludes the ignore list, case-insensitively", () => {
+    expect(isExcludedDir("node_modules")).toBe(true);
+    expect(isExcludedDir("Target")).toBe(true);
+    expect(isExcludedDir("dist")).toBe(true);
+    expect(isExcludedDir("notes")).toBe(false);
+  });
+
+  it("always excludes .git contents — never user notes, huge inside", () => {
+    expect(isExcludedDir(".git")).toBe(true);
+    expect(isExcludedDir(".GIT")).toBe(true);
+    // Other dot folders stay a setting decision, not an exclusion.
+    expect(isExcludedDir(".obsidian")).toBe(false);
+    expect(isExcludedDir(".claude")).toBe(false);
+  });
+
+  it("flags dot folders as hidden, nothing else", () => {
+    expect(isHiddenDir(".git")).toBe(true);
+    expect(isHiddenDir(".claude")).toBe(true);
+    expect(isHiddenDir(".obsidian")).toBe(true);
+    expect(isHiddenDir("node_modules")).toBe(false);
+    expect(isHiddenDir("notes")).toBe(false);
+  });
+});
+
+describe("detectVault — .obsidian and .git markers (m40)", () => {
+  it("an .obsidian folder roots an obsidian vault", async () => {
+    const contains = fs({ "C:/notes": [".obsidian", "a.md"] });
+    expect(await detectVault("C:/notes/sub", contains)).toEqual({
+      root: "C:/notes",
+      mode: "obsidian",
+      marker: ".obsidian",
+    });
+  });
+
+  it("a .git marker roots a git vault (file or folder alike)", async () => {
+    // The probe matches names only, so a .git *file* (worktrees,
+    // submodules) counts exactly like the directory.
+    const contains = fs({ "C:/proj": [".git"] });
+    expect(await detectVault("C:/proj/docs", contains)).toEqual({
+      root: "C:/proj",
+      mode: "git",
+      marker: ".git",
+    });
+  });
+
+  it(".obsidian outranks .git within one folder", async () => {
+    const contains = fs({ "C:/proj": [".git", ".obsidian"] });
+    expect((await detectVault("C:/proj", contains))?.mode).toBe("obsidian");
+  });
+
+  it("existing markers outrank the new ones within one folder", async () => {
+    const contains = fs({ "C:/proj": [".git", "CLAUDE.md"] });
+    expect((await detectVault("C:/proj", contains))?.mode).toBe("claude");
+  });
+
+  it("the farthest ancestor still wins across marker kinds", async () => {
+    // A CLAUDE project nested inside a git checkout: the checkout is
+    // the vault, whatever the nested marker says.
+    const contains = fs({
+      "C:/repo": [".git"],
+      "C:/repo/proj": ["CLAUDE.md"],
+    });
+    const info = await detectVault("C:/repo/proj/docs", contains);
+    expect(info).toEqual({ root: "C:/repo", mode: "git", marker: ".git" });
+  });
+
+  it("a .git under the excluded root still never wins", async () => {
+    const contains = fs({ "C:/Users/xavia": [".git"] });
+    expect(
+      await detectVault(
+        "C:/Users/xavia/Documents/notes",
+        contains,
+        "C:/Users/xavia",
+      ),
+    ).toBeNull();
   });
 });

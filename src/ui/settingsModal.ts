@@ -449,6 +449,13 @@ export function openSettingsModal(): void {
         ),
       ),
       row(
+        "settings.showHiddenFolders.name",
+        "settings.showHiddenFolders.desc",
+        toggle(f.showHiddenFolders, (showHiddenFolders) =>
+          patch({ showHiddenFolders }),
+        ),
+      ),
+      row(
         "settings.restoreSession.name",
         "settings.restoreSession.desc",
         toggle(f.restoreSession, (restoreSession) =>

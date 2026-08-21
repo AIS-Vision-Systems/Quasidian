@@ -62,7 +62,8 @@ import {
 } from "../lib/wikilinks";
 import {
   detectVault,
-  isIgnoredDir,
+  isExcludedDir,
+  isHiddenDir,
   MAX_VAULT_DEPTH,
   type VaultMode,
 } from "../lib/vault";
@@ -2684,7 +2685,14 @@ export function mountLayout(root: HTMLElement): void {
       }
       for (const entry of entries) {
         if (entry.isDir) {
-          if (depth < MAX_VAULT_DEPTH && !isIgnoredDir(entry.name)) {
+          // IGNORED_DIRS never scan; hidden (dot) folders only when
+          // the user opts in. Marker detection is independent of the
+          // setting — it probes names, not this scan (m40).
+          const scannable =
+            !isExcludedDir(entry.name) &&
+            (getSettings().files.showHiddenFolders ||
+              !isHiddenDir(entry.name));
+          if (depth < MAX_VAULT_DEPTH && scannable) {
             collected.push(entry);
             queue.push({ path: entry.path, depth: depth + 1 });
           }
@@ -4209,9 +4217,39 @@ export function mountLayout(root: HTMLElement): void {
   });
 
   // Hot-apply settings changes to the editor, autosave and static labels.
+  let lastShowHiddenFolders = getSettings().files.showHiddenFolders;
   subscribeSettings((settings) => {
     autosaveOptions.enabled = settings.editor.autosave;
     autosaveOptions.intervalMs = settings.editor.autosaveIntervalMs;
+    // Hidden folders join or leave the scan: re-scan and re-index the
+    // open scope on change. Flat mode lists no folders, so only vault
+    // mode actually changes (m40).
+    if (settings.files.showHiddenFolders !== lastShowHiddenFolders) {
+      lastShowHiddenFolders = settings.files.showHiddenFolders;
+      const folder = currentFolder;
+      if (folder !== null) {
+        void (async () => {
+          const known = new Set(
+            collectTreeDirs(vaultTree).map((dir) => normalizePath(dir)),
+          );
+          await refreshFolder(folder);
+          // Newly-surfaced folders honor the smart collapse like on a
+          // first open: content-less branches start folded.
+          let changed = false;
+          for (const dir of collapsedByDefault(vaultTree)) {
+            const key = normalizePath(dir);
+            if (!known.has(key) && !collapsedDirs.has(key)) {
+              collapsedDirs.add(key);
+              changed = true;
+            }
+          }
+          if (changed) {
+            renderVaultTree();
+          }
+          await rebuildIndex();
+        })();
+      }
+    }
     // Before applyConfig: its dispatch rebuilds embed widgets, which
     // must pick up the new generation (e.g. showProperties changes).
     bumpEmbedGeneration();

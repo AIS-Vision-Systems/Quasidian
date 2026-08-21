@@ -1,17 +1,23 @@
-// Pure module: no Tauri, no DOM. Multi-folder vault modes (CLAUDE/GPT):
-// a marker file in the opened folder — or any ancestor — turns that
-// folder into the root of a recursive, Obsidian-style vault. Without a
-// marker the app keeps its flat single-folder behavior.
+// Pure module: no Tauri, no DOM. Multi-folder vault modes: a marker
+// file in the opened folder — or any ancestor — turns that folder into
+// the root of a recursive, Obsidian-style vault. Without a marker the
+// app keeps its flat single-folder behavior.
 import { dirname, normalizePath } from "./paths";
 
-export type VaultMode = "claude" | "gpt";
+export type VaultMode = "claude" | "gpt" | "obsidian" | "git";
 
-/** Marker names probed per folder, in priority order. Easy to adjust. */
+/**
+ * Marker names probed per folder, in priority order. A marker counts
+ * whether it is a folder or a file — `.git` is a file in worktrees
+ * and submodules — since the probe only matches the name (m40).
+ */
 export const VAULT_MARKERS: readonly { name: string; mode: VaultMode }[] = [
   { name: "CLAUDE.md", mode: "claude" },
   { name: ".claude", mode: "claude" },
   { name: "AGENTS.md", mode: "gpt" },
   { name: ".codex", mode: "gpt" },
+  { name: ".obsidian", mode: "obsidian" },
+  { name: ".git", mode: "git" },
 ];
 
 /** Directory names never scanned or shown inside a vault. */
@@ -23,9 +29,24 @@ export const IGNORED_DIRS: ReadonlySet<string> = new Set([
   "out",
 ]);
 
-/** Hidden (dot) directories and the ignore list stay out of the vault. */
-export function isIgnoredDir(name: string): boolean {
-  return name.startsWith(".") || IGNORED_DIRS.has(name.toLowerCase());
+/**
+ * Directories the vault scan must always skip, whatever the settings
+ * say. The leading-dot criterion lives apart in `isHiddenDir`: hidden
+ * folders scan or not by `files.showHiddenFolders` (m40). `.git` is
+ * the one dot folder excluded here too — its object store holds
+ * thousands of directories that are never user notes, and walking it
+ * would swamp the scan the moment hidden folders are enabled inside
+ * a git-marked vault. The marker probe is unaffected: it matches the
+ * name in the parent, never the contents.
+ */
+export function isExcludedDir(name: string): boolean {
+  const lower = name.toLowerCase();
+  return IGNORED_DIRS.has(lower) || lower === ".git";
+}
+
+/** Hidden folders: scanned only when the user opts in. */
+export function isHiddenDir(name: string): boolean {
+  return name.startsWith(".");
 }
 
 /** Safety bounds for the recursive scan of pathological folders. */

@@ -114,3 +114,20 @@ describe("mergeSettings", () => {
     expect(settings.appearance).not.toBe(DEFAULT_SETTINGS.appearance);
   });
 });
+
+describe("files.showHiddenFolders (m40)", () => {
+  it("defaults to off", () => {
+    expect(DEFAULT_SETTINGS.files.showHiddenFolders).toBe(false);
+    expect(mergeSettings({}).files.showHiddenFolders).toBe(false);
+  });
+
+  it("keeps a valid value", () => {
+    const settings = mergeSettings({ files: { showHiddenFolders: true } });
+    expect(settings.files.showHiddenFolders).toBe(true);
+  });
+
+  it("falls back to the default on garbage", () => {
+    const settings = mergeSettings({ files: { showHiddenFolders: "yes" } });
+    expect(settings.files.showHiddenFolders).toBe(false);
+  });
+});
