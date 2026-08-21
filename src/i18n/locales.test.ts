@@ -25,11 +25,20 @@ const DYNAMIC_KEY_PREFIXES = [
   "rightPanel.",
 ];
 
-const sourceModules = import.meta.glob("../**/*.ts", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-}) as Record<string, string>;
+// The core package consumes 46 of these keys through its injected
+// translator (ct), so its sources count as call sites too.
+const sourceModules = {
+  ...(import.meta.glob("../**/*.ts", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>),
+  ...(import.meta.glob("../../packages/core/src/**/*.ts", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>),
+};
 
 const sourceText = Object.entries(sourceModules)
   .filter(([path]) => !path.endsWith(".test.ts") && !path.startsWith("../i18n/"))

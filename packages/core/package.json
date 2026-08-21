@@ -1,0 +1,47 @@
+{
+  "name": "@aisvision/quasidian-core",
+  "version": "0.1.0",
+  "description": "Embeddable markdown editor core of Quasidian: CodeMirror 6 with Obsidian-style Live Preview and a reading-mode HTML renderer fed by the same Lezer tree",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "author": "AIS Vision Systems",
+  "homepage": "https://github.com/AIS-Vision-Systems/Quasidian",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AIS-Vision-Systems/Quasidian.git",
+    "directory": "packages/core"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./theme.css": "./theme.css"
+  },
+  "files": [
+    "dist",
+    "theme.css",
+    "LICENSE.md",
+    "LICENSE-COMMERCIAL.md"
+  ],
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json"
+  },
+  "peerDependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/language-data": "^6.5.2",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.8",
+    "@lezer/common": "^1.5.2",
+    "@lezer/highlight": "^1.2.3",
+    "@lezer/markdown": "^1.7.2"
+  },
+  "dependencies": {
+    "katex": "^0.18.2"
+  }
+}

@@ -10,10 +10,9 @@ Quasidian is a minimalist desktop markdown editor that mimics Obsidian's look an
 
 ## Where things live
 
-- `src/lib/` — pure TS modules (no Tauri, no DOM), each with a sibling `.test.ts`: `vault`, `vaultSession`, `workspace`, `panes`, `folderTree`, `paths`, `wikilinks`, `renameLinks`, `backlinkIndex`, `searchIndex`, `outline`, `frontmatter`, `fuzzy`, `text`, `settings`, `updates`.
-- `src/markdown/` — Lezer extensions + reading-mode render: `parser`, `render`, `wikilinks`, `math`, `callouts`, `footnotes`, `frontmatter`, `setext`, `listInterrupt`.
-- `src/editor/` — CM6 extensions: `editor`, `livePreview`, `folding`, `autoPair`, `autosave`, `listCommands`, `tableCommands`, `gutterLines`.
-- `src/ui/` — DOM code (no tests). `src/ipc/` — the Tauri boundary (no tests).
+- `packages/core/` — the embeddable core, **`@aisvision/quasidian-core`** (npm workspace; the app consumes it from source via alias, milestone 41). Inside, the layer shape is preserved: `src/markdown/` (Lezer extensions + reading-mode render: `parser`, `render`, `wikilinks`, `math`, `callouts`, `footnotes`, `frontmatter`, `setext`, `listInterrupt`), `src/editor/` (CM6: `editor`, `livePreview`, `folding`, `autoPair`, `autosave`, `listCommands`, `tableCommands`, `gutterLines`, `resizeAnchor`, `imageSizeCache`), `src/lib/` (`frontmatter`, `coreStrings`), `src/ui/` (`icons`, `contextMenu`, `hoverPreview`, `renderedContent`, `inlineTitle`) and `theme.css`. **The package never imports anything from the app**; strings and icons are injected (`setCoreTranslator`, `setIconProvider`), resolution and embeds come through the editor hooks. `packages/demo/` is the minimal browser embedding.
+- `src/lib/` — pure TS modules (no Tauri, no DOM), each with a sibling `.test.ts`: `vault`, `vaultSession`, `workspace`, `panes`, `folderTree`, `paths`, `wikilinks`, `renameLinks`, `backlinkIndex`, `searchIndex`, `outline`, `fuzzy`, `text`, `settings`, `updates`.
+- `src/ui/` — app DOM code (no tests). `src/ipc/` — the Tauri boundary (no tests).
 - `src/i18n/locales/{ca,en,es}.json` — flat `Record<string, string>` dictionaries.
 - `src/help/guide.{ca,en,es}.md` — the user guide bundled with the app.
 - `src-tauri/src/{main,lib}.rs` — the only Rust files. `src-tauri/capabilities/default.json` — permissions.

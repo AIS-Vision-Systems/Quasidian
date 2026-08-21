@@ -2,7 +2,7 @@
 // folder — built on folder open, kept fresh by the file watcher. Raw link
 // targets are stored per file and resolved at query time with the current
 // folder listing, so renames and creations never leave stale resolutions.
-import { markdownParser } from "../markdown/parser";
+import { markdownParser } from "@aisvision/quasidian-core";
 import { normalizePath } from "./paths";
 import { createWikilinkResolver, type FolderFile } from "./wikilinks";
 

@@ -2,7 +2,7 @@
 // through CSS variables — these functions only set the variables.
 import { detectLocale, setLocale } from "../i18n/i18n";
 import type { Settings, ThemeSetting } from "../lib/settings";
-import type { EditorConfig } from "../editor/editor";
+import type { EditorConfig } from "@aisvision/quasidian-core";
 
 let systemThemeQuery: MediaQueryList | null = null;
 let systemThemeListener: (() => void) | null = null;

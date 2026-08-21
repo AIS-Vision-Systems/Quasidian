@@ -6,15 +6,15 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   arePropertiesCollapsed,
   setPropertiesCollapsed,
-} from "../editor/livePreview";
-import { renderToHtml } from "../markdown/render";
-import { createIcon } from "./icons";
-import { buildInlineTitleElement } from "./inlineTitle";
+} from "@aisvision/quasidian-core";
+import { renderToHtml } from "@aisvision/quasidian-core";
+import { createIcon } from "@aisvision/quasidian-core";
+import { buildInlineTitleElement } from "@aisvision/quasidian-core";
 import {
   scheduleHoverHide,
   scheduleHoverShow,
   scheduleHtmlHover,
-} from "./hoverPreview";
+} from "@aisvision/quasidian-core";
 import {
   addCodePills,
   fillEmbedImages,
@@ -23,7 +23,7 @@ import {
   markUnresolvedLinks,
   renderMathElements,
   type EmbedNoteResult,
-} from "./renderedContent";
+} from "@aisvision/quasidian-core";
 
 export interface ReadingViewHooks {
   /** `newTab` is set on Ctrl+click / middle-click. */

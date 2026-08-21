@@ -12,9 +12,9 @@ import guideCa from "../help/guide.ca.md?raw";
 import guideEs from "../help/guide.es.md?raw";
 import guideEn from "../help/guide.en.md?raw";
 import { getLocale, t } from "../i18n/i18n";
-import { renderToHtml } from "../markdown/render";
-import { createIcon } from "./icons";
-import { addCodePills, highlightCodeBlocks } from "./renderedContent";
+import { renderToHtml } from "@aisvision/quasidian-core";
+import { createIcon } from "@aisvision/quasidian-core";
+import { addCodePills, highlightCodeBlocks } from "@aisvision/quasidian-core";
 import { createUpdateCheck } from "./updateCheck";
 
 const GUIDES: Record<string, string> = {

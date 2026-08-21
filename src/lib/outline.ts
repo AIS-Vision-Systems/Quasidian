@@ -1,6 +1,6 @@
 // Pure module: no Tauri, no DOM. Document outline from the shared Lezer
 // parser — never a second parser.
-import { markdownParser } from "../markdown/parser";
+import { markdownParser } from "@aisvision/quasidian-core";
 
 export interface OutlineItem {
   /** Heading level, 1-6. */

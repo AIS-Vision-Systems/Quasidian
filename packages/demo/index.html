@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quasidian core demo</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+      body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        background-color: var(--background-primary);
+        color: var(--text-normal);
+        font-family: var(--font-interface);
+        font-size: var(--font-text-size);
+      }
+      #editor,
+      #preview {
+        min-width: 0;
+        overflow-y: auto;
+        padding: 24px;
+      }
+      #editor {
+        border-right: 1px solid var(--background-modifier-border);
+      }
+      .cm-editor {
+        height: 100%;
+      }
+    </style>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body class="theme-dark">
+    <div id="editor"></div>
+    <div id="preview" class="markdown-rendered"></div>
+  </body>
+</html>

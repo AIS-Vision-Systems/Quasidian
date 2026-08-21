@@ -86,7 +86,7 @@ See [`CLAUDE.md`](CLAUDE.md) for architecture rules and workflow conventions, an
 
 ## Roadmap
 
-Quasidian's core (link resolution, indexing, markdown rendering) is pure TypeScript with no Tauri or DOM dependencies, on top of CodeMirror 6 and Lezer. A future goal is to package that core as an **embeddable markdown viewer/editor for web applications**, beyond the desktop app.
+Quasidian's editor core — the Live Preview editor and the reading-mode renderer, sharing one Lezer tree — now lives in [`packages/core`](packages/core) as **[`@aisvision/quasidian-core`](packages/core/README.md)**, an embeddable package for web applications with no Tauri dependency. The desktop app consumes it from the same sources; a minimal browser embedding lives in [`packages/demo`](packages/demo).
 
 ## Publishing a release (maintainers)
 

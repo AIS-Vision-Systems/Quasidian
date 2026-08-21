@@ -1,9 +1,9 @@
 import "katex/dist/katex.min.css";
-import "./styles/theme.css";
+import "@aisvision/quasidian-core/theme.css";
 import "./styles/app.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "./i18n/i18n";
-import { setCoreTranslator } from "./lib/coreStrings";
+import { setCoreTranslator } from "@aisvision/quasidian-core";
 import { loadSettings, subscribeSettings } from "./ipc/settingsStore";
 import { applyAppearance, applyLanguage } from "./ui/applySettings";
 import { mountLayout } from "./ui/layout";
