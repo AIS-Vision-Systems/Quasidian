@@ -84,9 +84,15 @@ npm run typecheck  # tsc --noEmit; must pass before any commit
 
 See [`CLAUDE.md`](CLAUDE.md) for architecture rules and workflow conventions, and [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to contribute. Contributions require accepting the [Contributor License Agreement](CLA.md).
 
-## Roadmap
+## Embeddable core
 
-Quasidian's editor core — the Live Preview editor and the reading-mode renderer, sharing one Lezer tree — now lives in [`packages/core`](packages/core) as **[`@aisvision/quasidian-core`](packages/core/README.md)**, an embeddable package for web applications with no Tauri dependency. The desktop app consumes it from the same sources; a minimal browser embedding lives in [`packages/demo`](packages/demo).
+Quasidian's editor core — the Live Preview editor and the reading-mode renderer, sharing one Lezer tree — is published on npm as **[`@aisvision/quasidian-core`](https://www.npmjs.com/package/@aisvision/quasidian-core)**, an embeddable package for web applications with no Tauri dependency:
+
+```sh
+npm install @aisvision/quasidian-core
+```
+
+It lives in [`packages/core`](packages/core), which the desktop app consumes from the same sources, and its [README](packages/core/README.md) documents the public surface: the editor factory, the reading render, and the injected wikilink resolver, icons and strings. `@codemirror/*` and `@lezer/*` are peer dependencies, because two copies of CodeMirror on one page break the editor. A minimal browser embedding lives in [`packages/demo`](packages/demo).
 
 ## Publishing a release (maintainers)
 
