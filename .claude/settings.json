@@ -51,7 +51,7 @@
       "Bash(git push --force:*)",
       "Bash(git push --force-with-lease:*)",
       "Bash(git push origin main:*)",
-      "Bash(git push:* main)",
+      "Bash(git push main:*)",
       "Bash(git commit --no-verify:*)",
       "Bash(git rebase -i:*)",
       "PowerShell(git push --force:*)",
