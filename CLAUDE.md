@@ -50,7 +50,8 @@ Quasidian is a minimalist desktop markdown editor that mimics Obsidian's look an
 ## Workflow
 
 - One milestone per PR, in spec order. Don't start milestone N+1 features while implementing milestone N.
-- Conventional commits in English (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `ci:`). `main` takes no direct pushes — everything goes through a PR.
+- Conventional commits in English (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `ci:`).
+- `main` takes no direct pushes — everything goes through a PR, the maintainer included. The `protect-main` repository ruleset is the only one in force (Quasidian is excluded *by name* from the org-wide ruleset, so renaming the repo would re-impose it): no push, no force-push, no deletion, admin bypass limited to `pull_request`. The `test` status check is the **only** merge gate — 0 approving reviews are required, because the sole maintainer is also the sole code owner and GitHub never allows self-approval. `.github/CODEOWNERS` only auto-assigns the reviewer now; it no longer blocks. Never route around the block with `--force`, `--admin` or an admin bypass.
 - Committing, pushing a branch and opening a PR are autonomous. **Merging a PR, tagging a version and publishing a release are not** — they need the maintainer's explicit go-ahead, every time.
 - When adding a settings option: extend the typed schema + defaults + settings modal + i18n keys for all three languages, in the same PR.
 - Every change to the parser **or to the dual-mode decorations** ships tests for both editing decorations and reading-mode HTML output, so the two modes can't diverge.

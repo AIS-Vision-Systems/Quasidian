@@ -58,7 +58,7 @@ git switch main && git pull && git branch -d <branch>
 
 **`--merge`, not `--squash`** — every PR in this repo's history is a merge commit, and the individual commits of a milestone are worth keeping. Don't collapse them.
 
-Merging also needs a code-owner review, and the maintainer cannot approve their own PR: a solo PR lands with `--admin`, which the `main` ruleset allows. Delete the branch locally and on the remote once merged.
+No approving review is required — the maintainer is the sole code owner and GitHub never allows self-approval, so the ruleset asks for 0 reviews and a green `test` is the only gate. Wait for the check instead of reaching for `--admin`. Delete the branch locally and on the remote once merged.
 
 ## Reporting back to the user
 
