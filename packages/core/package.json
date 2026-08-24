@@ -1,6 +1,6 @@
 {
   "name": "@aisvision/quasidian-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Embeddable markdown editor core of Quasidian: CodeMirror 6 with Obsidian-style Live Preview and a reading-mode HTML renderer fed by the same Lezer tree",
   "license": "SEE LICENSE IN LICENSE.md",
   "author": "AIS Vision Systems",
