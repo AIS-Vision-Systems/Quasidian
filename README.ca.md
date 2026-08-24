@@ -100,6 +100,8 @@ Viu a [`packages/core`](packages/core), d'on l'aplicació d'escriptori el consum
 2. Etiqueta-la: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. El workflow `release` crea una release en esborrany en aquest mateix repositori, compila els instal·ladors de Windows (NSIS) i Linux (deb, AppImage), els puja, i publica la release quan tots els instal·ladors hi són — la comprovació d'actualitzacions de l'app llegeix l'última release publicada a través de l'API de GitHub.
 
+El paquet del nucli es versiona independentment de l'aplicació: puja la versió a `packages/core/package.json`, fes merge a `main` i etiqueta `core-vX.Y.Z`. El workflow `publish-core` el publica a npm mitjançant **trusted publishing** (OIDC), de manera que no cal desar cap token d'npm enlloc i npm hi adjunta la procedència automàticament. El trusted publisher registrat a npmjs.com està lligat al nom del fitxer del workflow — si es reanomena `publish-core.yml`, la publicació deixa de funcionar fins que es torni a configurar allà.
+
 ## Crèdits
 
 Idea i desenvolupament original de **Xavi Anguera**. Un projecte d'**AIS Vision Systems**.

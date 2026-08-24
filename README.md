@@ -100,6 +100,8 @@ It lives in [`packages/core`](packages/core), which the desktop app consumes fro
 2. Tag it: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. The `release` workflow creates a draft release in this repository, builds the Windows (NSIS) and Linux (deb, AppImage) installers, uploads them, and publishes the release once every installer is up — the in-app update check reads the latest published release through the GitHub API.
 
+The core package versions independently from the app: bump `packages/core/package.json`, merge to `main`, then tag `core-vX.Y.Z`. The `publish-core` workflow publishes it to npm through **trusted publishing** (OIDC), so no npm token is stored anywhere and npm attaches provenance automatically. The trusted publisher registered on npmjs.com is keyed to the workflow's filename — renaming `publish-core.yml` breaks publishing until it is reconfigured there.
+
 ## Credits
 
 Idea and original development by **Xavi Anguera**. A project of **AIS Vision Systems**.

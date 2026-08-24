@@ -100,6 +100,8 @@ Vive en [`packages/core`](packages/core), de donde la aplicación de escritorio 
 2. Etiquétala: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. El workflow `release` crea una release en borrador en este mismo repositorio, compila los instaladores de Windows (NSIS) y Linux (deb, AppImage), los sube, y publica la release cuando todos los instaladores están — la comprobación de actualizaciones de la app lee la última release publicada a través de la API de GitHub.
 
+El paquete del núcleo se versiona independientemente de la aplicación: sube la versión en `packages/core/package.json`, haz merge a `main` y etiqueta `core-vX.Y.Z`. El workflow `publish-core` lo publica en npm mediante **trusted publishing** (OIDC), de modo que no hay que guardar ningún token de npm en ninguna parte y npm le adjunta la procedencia automáticamente. El trusted publisher registrado en npmjs.com está ligado al nombre del archivo del workflow — si se renombra `publish-core.yml`, la publicación deja de funcionar hasta que se reconfigure allí.
+
 ## Créditos
 
 Idea y desarrollo original de **Xavi Anguera**. Un proyecto de **AIS Vision Systems**.
