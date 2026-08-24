@@ -84,9 +84,15 @@ npm run typecheck  # tsc --noEmit; debe pasar antes de cada commit
 
 Consulta [`CLAUDE.md`](CLAUDE.md) para las reglas de arquitectura y las convenciones de trabajo, y [`CONTRIBUTING.md`](CONTRIBUTING.md) para saber cómo contribuir. Las contribuciones requieren aceptar el [Contributor License Agreement](CLA.md).
 
-## Hoja de ruta
+## Núcleo integrable
 
-El núcleo de Quasidian (resolución de enlaces, indexación, renderizado de markdown) es TypeScript puro sin dependencias de Tauri ni del DOM, sobre CodeMirror 6 y Lezer. Un objetivo de futuro es empaquetar ese núcleo como **visor/editor de markdown integrable en aplicaciones web**, más allá de la aplicación de escritorio.
+El núcleo de edición de Quasidian —el editor con Live Preview y el renderizado del modo lectura, que comparten un mismo árbol Lezer— se publica en npm como **[`@aisvision/quasidian-core`](https://www.npmjs.com/package/@aisvision/quasidian-core)**, un paquete integrable en aplicaciones web sin ninguna dependencia de Tauri:
+
+```sh
+npm install @aisvision/quasidian-core
+```
+
+Vive en [`packages/core`](packages/core), de donde la aplicación de escritorio lo consume desde las mismas fuentes, y su [README](packages/core/README.md) documenta la superficie pública: la factoría del editor, el renderizado de lectura y la resolución de enlaces, los iconos y los textos, que se inyectan desde fuera. `@codemirror/*` y `@lezer/*` son peer dependencies, porque dos copias de CodeMirror en una misma página rompen el editor. En [`packages/demo`](packages/demo) hay una integración mínima para navegador.
 
 ## Publicar una release (mantenedores)
 
