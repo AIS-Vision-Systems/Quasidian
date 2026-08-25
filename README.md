@@ -86,6 +86,8 @@ See [`CLAUDE.md`](CLAUDE.md) for architecture rules and workflow conventions, an
 
 ## Embeddable core
 
+[![npm](https://img.shields.io/npm/v/@aisvision/quasidian-core?logo=npm&label=%40aisvision%2Fquasidian-core&color=blue)](https://www.npmjs.com/package/@aisvision/quasidian-core)
+
 Quasidian's editor core — the Live Preview editor and the reading-mode renderer, sharing one Lezer tree — is published on npm as **[`@aisvision/quasidian-core`](https://www.npmjs.com/package/@aisvision/quasidian-core)**, an embeddable package for web applications with no Tauri dependency:
 
 ```sh

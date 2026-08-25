@@ -1,5 +1,7 @@
 # @aisvision/quasidian-core
 
+[![npm](https://img.shields.io/npm/v/@aisvision/quasidian-core?logo=npm&color=blue)](https://www.npmjs.com/package/@aisvision/quasidian-core)
+
 The embeddable heart of [Quasidian](https://github.com/AIS-Vision-Systems/Quasidian): a **CodeMirror 6 markdown editor with Obsidian-style Live Preview**, and a **reading-mode HTML renderer** fed by the *same* Lezer syntax tree — so the two views can never drift apart. No Tauri, no filesystem, no app framework: the desktop app and this package share the same sources.
 
 - Obsidian dialect: wikilinks (`[[note]]`, aliases, headings), embeds/transclusions, callouts, footnotes, math (KaTeX), task lists, tables with cell editing, frontmatter properties.
