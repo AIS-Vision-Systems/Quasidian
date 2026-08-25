@@ -86,6 +86,8 @@ Consulta [`CLAUDE.md`](CLAUDE.md) per a les regles d'arquitectura i les convenci
 
 ## Nucli integrable
 
+[![npm](https://img.shields.io/npm/v/@aisvision/quasidian-core?logo=npm&label=%40aisvision%2Fquasidian-core&color=blue)](https://www.npmjs.com/package/@aisvision/quasidian-core)
+
 El nucli d'edició de Quasidian —l'editor amb Live Preview i el renderitzat del mode lectura, que comparteixen un mateix arbre Lezer— es publica a npm com a **[`@aisvision/quasidian-core`](https://www.npmjs.com/package/@aisvision/quasidian-core)**, un paquet integrable en aplicacions web sense cap dependència de Tauri:
 
 ```sh
