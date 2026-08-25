@@ -12,6 +12,10 @@ name: publish-core
 on:
   push:
     tags: ["core-v*"]
+  # Manual runs publish whatever version packages/core/package.json is
+  # on. Retrying a failed publish otherwise means deleting and
+  # re-pushing the tag, which is a lot of ceremony for a CI fix.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -42,7 +46,10 @@ jobs:
           npm install -g npm@latest
           npm --version
 
+      # A manual run has no tag to check against; it publishes whatever
+      # version the branch carries.
       - name: Check the tag matches the package version
+        if: github.ref_type == 'tag'
         run: |
           TAG="${GITHUB_REF_NAME#core-v}"
           VERSION=$(node -p "require('./packages/core/package.json').version")
@@ -58,6 +65,26 @@ jobs:
       - run: npm test
 
       - run: npm run build -w @aisvision/quasidian-core
+
+      # ENEEDAUTH at the publish step is ambiguous: either GitHub never
+      # handed out an id-token, or it did and npm's exchange with the
+      # registry was refused (no trusted publisher, or one whose repo,
+      # workflow filename or environment does not match this run). This
+      # separates the two — only the value's presence is reported, and
+      # the token itself is never printed.
+      - name: Check GitHub is providing an OIDC token
+        run: |
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "No OIDC token endpoint in the environment, so" >&2
+            echo "id-token: write is not taking effect — the problem is" >&2
+            echo "on the GitHub side, not on npmjs.com." >&2
+            exit 1
+          fi
+          echo "OIDC token endpoint present; GitHub's side is working."
+          echo "If the publish still fails to authenticate, the trusted"
+          echo "publisher on npmjs.com is what does not match: it must"
+          echo "name repository ${GITHUB_REPOSITORY}, workflow file"
+          echo "publish-core.yml, and no environment."
 
       # A configured token silently disables OIDC, and the publish then
       # fails with a 404 that looks like the package is missing. Catch
