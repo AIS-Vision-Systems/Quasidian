@@ -61,17 +61,27 @@ jobs:
 
       # A configured token silently disables OIDC, and the publish then
       # fails with a 404 that looks like the package is missing. Catch
-      # it here instead, where the message says what is wrong.
+      # it here instead, where the message says what is wrong. The
+      # npmrc files are read directly because `npm config get` refuses
+      # to return _authToken — it is a protected value, and asking for
+      # it exits non-zero, which under `bash -e` fails the step whether
+      # or not a token is there.
       - name: Refuse to publish with a registry token configured
         run: |
-          TOKEN=$(npm config get //registry.npmjs.org/:_authToken)
-          if [ -n "$TOKEN" ] && [ "$TOKEN" != "undefined" ]; then
-            echo "A registry token is configured, so npm would skip the" >&2
-            echo "OIDC exchange and publish anonymously. Something added" >&2
-            echo "an .npmrc — setup-node's registry-url is the usual" >&2
-            echo "culprit. Remove it; trusted publishing needs no token." >&2
+          found=""
+          for f in "$NPM_CONFIG_USERCONFIG" "$HOME/.npmrc" ".npmrc" "packages/core/.npmrc"; do
+            if [ -n "$f" ] && [ -f "$f" ] && grep -q "_authToken" "$f"; then
+              found="$found $f"
+            fi
+          done
+          if [ -n "$found" ]; then
+            echo "A registry token is configured in:$found" >&2
+            echo "npm would skip the OIDC exchange and publish anonymously." >&2
+            echo "setup-node's registry-url is the usual culprit — remove" >&2
+            echo "it; trusted publishing needs no token at all." >&2
             exit 1
           fi
+          echo "No registry token configured; the OIDC exchange can proceed."
 
       # Provenance attestations are generated automatically when the
       # publish is authenticated through OIDC.
