@@ -23,10 +23,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Do NOT add registry-url here, however much npm's own example
+      # suggests it: setup-node then writes an .npmrc carrying
+      # //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN} and the
+      # runner fills it with a placeholder. npm reads that as "auth is
+      # already configured", never starts the OIDC exchange, publishes
+      # anonymously and fails with a 404 that reads like a missing
+      # package. registry.npmjs.org is the default registry anyway.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
 
       # Trusted publishing needs npm >= 11.5.1, newer than what Node
       # bundles. Release builds also skip the dependency cache on
@@ -52,6 +58,20 @@ jobs:
       - run: npm test
 
       - run: npm run build -w @aisvision/quasidian-core
+
+      # A configured token silently disables OIDC, and the publish then
+      # fails with a 404 that looks like the package is missing. Catch
+      # it here instead, where the message says what is wrong.
+      - name: Refuse to publish with a registry token configured
+        run: |
+          TOKEN=$(npm config get //registry.npmjs.org/:_authToken)
+          if [ -n "$TOKEN" ] && [ "$TOKEN" != "undefined" ]; then
+            echo "A registry token is configured, so npm would skip the" >&2
+            echo "OIDC exchange and publish anonymously. Something added" >&2
+            echo "an .npmrc — setup-node's registry-url is the usual" >&2
+            echo "culprit. Remove it; trusted publishing needs no token." >&2
+            exit 1
+          fi
 
       # Provenance attestations are generated automatically when the
       # publish is authenticated through OIDC.
