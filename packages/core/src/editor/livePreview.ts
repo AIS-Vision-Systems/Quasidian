@@ -51,13 +51,18 @@ import {
   widgetHeightKey,
 } from "./widgetHeightCache";
 import {
+  applyCellEdit,
   applyTableOp,
   parseTableSource,
   serializeTable,
   type TableData,
   type TableOp,
 } from "./tableCommands";
-import { renderPropertiesHtml, renderToHtml } from "../markdown/render";
+import {
+  renderPropertiesHtml,
+  renderTableCells,
+  renderToHtml,
+} from "../markdown/render";
 import { isImageTarget } from "../markdown/wikilinks";
 import { createIcon } from "../ui/icons";
 import {
@@ -197,6 +202,16 @@ function selectionTouchesLine(state: EditorState, pos: number): boolean {
 export const sourceMode = Facet.define<boolean, boolean>({
   combine: (values) => values.some(Boolean),
 });
+
+/**
+ * The hooks of the editor a block widget lives in. Block decorations
+ * come from a state field, which is built without hooks; the table
+ * widget needs them to resolve the links and images of its rendered
+ * cells (m46). Null in a bare state (tests).
+ */
+const livePreviewHooks = Facet.define<LivePreviewHooks, LivePreviewHooks | null>(
+  { combine: (values) => values[0] ?? null },
+);
 
 /** Extends a mark range over one following space, to hide "# " and "> ". */
 function withFollowingSpace(state: EditorState, from: number, to: number): HiddenRange {
@@ -1417,9 +1432,22 @@ export function focusTableCell(
   pendingTableFocus = { from, row, column };
 }
 
-/** Escapes pipes and newlines so a cell edit can't break the table. */
-function sanitizeCell(text: string): string {
-  return text.replace(/\r?\n/g, " ").replace(/\\?\|/g, "\\|").trim();
+/**
+ * Puts the caret where the pointer is, inside the cell; at the end
+ * when the point maps to no text of the cell.
+ */
+function placeCaretAtPoint(cell: HTMLElement, x: number, y: number): void {
+  const range =
+    typeof document.caretRangeFromPoint === "function"
+      ? document.caretRangeFromPoint(x, y)
+      : null;
+  if (range === null || !cell.contains(range.startContainer)) {
+    placeCaretEnd(cell);
+    return;
+  }
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
 }
 
 function placeCaretEnd(cell: HTMLElement): void {
@@ -1484,6 +1512,9 @@ class TableWidget extends WidgetType {
       container.innerHTML = renderToHtml(this.source);
       return container;
     }
+    // What reading mode shows inside each cell, from the same tree.
+    const rendered = renderTableCells(this.source);
+    const hooks = view.state.facet(livePreviewHooks);
 
     const dispatchTable = (
       next: TableData,
@@ -1615,30 +1646,21 @@ class TableWidget extends WidgetType {
       },
     ];
 
-    /** The table data with the cell's current text applied. */
-    const dataWithCellEdit = (cell: HTMLElement): TableData => {
-      const row = Number(cell.dataset.row);
-      const column = Number(cell.dataset.column);
-      const text = sanitizeCell(cell.textContent ?? "");
-      if (text === data.rows[row][column]) {
-        return data;
-      }
-      return {
-        rows: data.rows.map((cells, r) =>
-          r === row
-            ? cells.map((value, c) => (c === column ? text : value))
-            : cells,
-        ),
-        alignments: data.alignments,
-      };
-    };
+    /**
+     * The table data with the cell's current text applied. Only a cell
+     * showing its source can be committed: the text of a rendered cell
+     * is not markdown and must never be written back (m46).
+     */
+    const dataWithCellEdit = (cell: HTMLElement): TableData =>
+      cell.dataset.editing === "true"
+        ? applyCellEdit(
+            data,
+            Number(cell.dataset.row),
+            Number(cell.dataset.column),
+            cell.textContent ?? "",
+          )
+        : data;
 
-    const commitCell = (cell: HTMLElement): void => {
-      const next = dataWithCellEdit(cell);
-      if (next !== data) {
-        dispatchTable(next, null);
-      }
-    };
 
     const focusCell = (row: number, column: number): void => {
       const target = container.querySelector<HTMLElement>(
@@ -1696,7 +1718,45 @@ class TableWidget extends WidgetType {
       column: number,
     ): HTMLElement => {
       const cell = document.createElement(tag);
-      cell.textContent = data.rows[row][column];
+      // Model rows count the delimiter (index 1); rendered rows do not.
+      const html = rendered?.[row === 0 ? 0 : row - 1]?.[column];
+      // Idle: the cell shows its markdown rendered, like reading mode.
+      const showRendered = (): void => {
+        delete cell.dataset.editing;
+        cell.style.minWidth = "";
+        cell.style.height = "";
+        cell.style.boxSizing = "";
+        if (html === undefined) {
+          cell.textContent = data.rows[row][column];
+          return;
+        }
+        cell.innerHTML = html;
+        renderMathElements(cell);
+        if (hooks !== null) {
+          markUnresolvedLinks(cell, hooks.isResolved);
+          fillEmbedImages(cell, hooks.resolveEmbedSrc);
+        }
+        for (const image of cell.querySelectorAll("img")) {
+          image.addEventListener("load", () => view.requestMeasure());
+        }
+      };
+      // Focused: the cell shows its source, edited as plain text. The
+      // box is pinned first so the table never shrinks under the
+      // pointer when the marks appear.
+      const enterEdit = (): void => {
+        if (cell.dataset.editing === "true") {
+          return;
+        }
+        const box = cell.getBoundingClientRect();
+        if (box.width > 0) {
+          cell.style.boxSizing = "border-box";
+          cell.style.minWidth = box.width + "px";
+          cell.style.height = box.height + "px";
+        }
+        cell.dataset.editing = "true";
+        cell.textContent = data.rows[row][column];
+      };
+      showRendered();
       cell.dataset.row = String(row);
       cell.dataset.column = String(column);
       cell.contentEditable = "plaintext-only";
@@ -1705,7 +1765,56 @@ class TableWidget extends WidgetType {
       if (alignment !== null) {
         cell.style.textAlign = alignment;
       }
-      cell.addEventListener("blur", () => commitCell(cell));
+      // Every way in — click, Tab, Enter, arrows, a pending focus —
+      // goes through focus, so the swap to source lives here.
+      cell.addEventListener("focus", enterEdit);
+      cell.addEventListener("mousedown", (event) => {
+        if (event.button !== 0 || cell.dataset.editing === "true") {
+          return;
+        }
+        // The click lands on rendered content. A link navigates, like
+        // everywhere else in Live Preview; anything else starts the
+        // edit with the caret under the pointer. The browser's own
+        // caret placement would act on the DOM being swapped out.
+        event.preventDefault();
+        const clicked = event.target;
+        const link =
+          clicked instanceof Element
+            ? clicked.closest("a.internal-link, a.external-link")
+            : null;
+        const target =
+          link instanceof HTMLElement
+            ? (link.dataset.target ?? link.getAttribute("href"))
+            : null;
+        if (hooks !== null && target !== null && target !== "") {
+          hooks.onNavigate(target);
+          return;
+        }
+        // Another cell of this table holds an uncommitted edit: its
+        // commit rebuilds the widget, which would swallow this click.
+        // Commit it here and carry the focus over to the clicked cell.
+        const editing = container.querySelector<HTMLElement>(
+          '[data-editing="true"]',
+        );
+        if (editing !== null && editing !== cell) {
+          const next = dataWithCellEdit(editing);
+          if (next !== data) {
+            dispatchTable(next, { row, column });
+            return;
+          }
+        }
+        enterEdit();
+        cell.focus();
+        placeCaretAtPoint(cell, event.clientX, event.clientY);
+      });
+      cell.addEventListener("blur", () => {
+        const next = dataWithCellEdit(cell);
+        if (next !== data) {
+          dispatchTable(next, null);
+        } else {
+          showRendered();
+        }
+      });
       cell.addEventListener("keydown", (event) => {
         const cellRow = Number(cell.dataset.row);
         const cellColumn = Number(cell.dataset.column);
@@ -3005,6 +3114,7 @@ function moveIntoBlock(view: EditorView, forward: boolean): boolean {
 
 export function livePreview(hooks: LivePreviewHooks) {
   return [
+    livePreviewHooks.of(hooks),
     inlineTitleField,
     blockDecorations,
     frontmatterAtomic,

@@ -38,7 +38,7 @@ export {
 
 // --- The shared markdown pipeline and the reading render ---
 export { markdownExtensions, markdownParser } from "./markdown/parser";
-export { renderToHtml } from "./markdown/render";
+export { renderTableCells, renderToHtml } from "./markdown/render";
 export { isExternalTarget, isImageTarget } from "./markdown/wikilinks";
 export { parseFrontmatter } from "./lib/frontmatter";
 

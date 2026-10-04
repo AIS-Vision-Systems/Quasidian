@@ -692,6 +692,12 @@ body.is-readable-line-length .cm-editor .cm-content {
   user-select: text;
 }
 
+/* Rendered cell content (m46): links are clickable, not editable text. */
+.table-editor td[contenteditable] a,
+.table-editor th[contenteditable] a {
+  cursor: pointer;
+}
+
 .table-editor td[contenteditable]:focus,
 .table-editor th[contenteditable]:focus {
   background-color: var(--background-modifier-hover);
