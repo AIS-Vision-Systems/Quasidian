@@ -269,6 +269,32 @@ describe("renderToHtml — links", () => {
     );
   });
 
+  it("renders a link whose destination has spaces (m47)", () => {
+    expect(renderToHtml("[exemple](docs/Exemple.md#Secció primera)")).toBe(
+      '<p><a class="internal-link" data-target="docs/Exemple.md#Secció primera">exemple</a></p>',
+    );
+    // The label keeps its formatting; a quoted title is not the target.
+    expect(renderToHtml('[**n**](La nota.md "títol")')).toBe(
+      '<p><a class="internal-link" data-target="La nota.md"><strong>n</strong></a></p>',
+    );
+  });
+
+  it("resolves the three spellings of one target to the same string (m47)", () => {
+    const expected =
+      '<p><a class="internal-link" data-target="docs/Exemple.md#Secció primera">x</a></p>';
+    expect(renderToHtml("[x](docs/Exemple.md#Secció primera)")).toBe(expected);
+    expect(renderToHtml("[x](<docs/Exemple.md#Secció primera>)")).toBe(expected);
+    expect(renderToHtml("[x](docs/Exemple.md#Secci%C3%B3%20primera)")).toBe(
+      expected,
+    );
+  });
+
+  it("strips the angle brackets of an external destination (m47)", () => {
+    expect(renderToHtml("[web](<https://exemple.cat/a b>)")).toBe(
+      '<p><a class="external-link" href="https://exemple.cat/a b">web</a></p>',
+    );
+  });
+
   it("renders autolinks", () => {
     expect(renderToHtml("<https://exemple.cat>")).toBe(
       '<p><a class="external-link" href="https://exemple.cat">https://exemple.cat</a></p>',

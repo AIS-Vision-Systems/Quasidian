@@ -18,6 +18,7 @@ Si la carpeta — o un avantpassat — conté un marcador de projecte (`CLAUDE.m
 ## Enllaços i transclusions
 
 - `[[nota]]` enllaça una nota; `[[nota|àlies]]` mostra un altre text; `[[nota#secció]]` salta a un heading.
+- Els enllaços markdown també funcionen: `[text](carpeta/Nota.md#Títol de secció)`. Els espais del camí o del heading no cal escapar-los.
 - Clicar un enllaç l'obre (o **crea la nota** si no existeix). `Ctrl+clic` o clic del mig: pestanya nova.
 - Des del menú contextual, «Insereix ▸ Wikilink» escriu `[[]]` i obre l'autocompletat de notes.
 - **Previsualització**: passa el ratolí per sobre d'un enllaç en mode lectura (o `Ctrl`+ratolí en edició) per veure el contingut en una finestra emergent.

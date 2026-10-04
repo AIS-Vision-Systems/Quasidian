@@ -18,6 +18,7 @@ If the folder — or an ancestor — holds a project marker (`CLAUDE.md`, `.clau
 ## Links and transclusions
 
 - `[[note]]` links a note; `[[note|alias]]` shows different text; `[[note#section]]` jumps to a heading.
+- Markdown links work too: `[text](folder/Note.md#Section title)`. Spaces in the path or in the heading need no escaping.
 - Clicking a link opens it (or **creates the note** when it does not exist). `Ctrl+click` or middle-click: new tab.
 - From the context menu, "Insert ▸ Wikilink" types `[[]]` and opens the note autocomplete.
 - **Preview**: hover a link in reading mode (or `Ctrl`+hover while editing) to see its content in a popup.
