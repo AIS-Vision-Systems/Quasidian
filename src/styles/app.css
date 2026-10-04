@@ -502,6 +502,8 @@ button:focus-visible {
 
 /* Tab bar: fills the central header between the collapse buttons. */
 .tab-bar {
+  /* Offset parent of the tabs: scroll-into-view reads offsetLeft. */
+  position: relative;
   display: flex;
   flex: 1;
   min-width: 0;
@@ -511,11 +513,20 @@ button:focus-visible {
   scrollbar-width: none;
 }
 
+/* Tabs shrink when the strip runs out of room, down to a minimum
+   (m49); past that the strip scrolls. The active tab keeps its size. */
 .workspace-tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 180px;
+  /* Border box: the minimum and maximum are the whole tab, padding
+     included (200px is the old 180px of content plus its padding). */
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  min-width: 64px;
+  max-width: 200px;
+  overflow: hidden;
   padding: 5px 8px 5px 12px;
   border-radius: 6px 6px 0 0;
   color: var(--text-muted);
@@ -524,7 +535,6 @@ button:focus-visible {
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
 /* Thin separators between tabs, hidden around the active one. */
@@ -542,6 +552,7 @@ button:focus-visible {
 }
 
 .workspace-tab.is-active {
+  flex-shrink: 0;
   background-color: var(--background-primary);
   color: var(--text-normal);
 }
@@ -551,6 +562,8 @@ button:focus-visible {
 }
 
 .workspace-tab-name {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -576,6 +589,49 @@ button:focus-visible {
 .workspace-tab-close:hover {
   background-color: var(--background-modifier-border);
   color: var(--text-normal);
+}
+
+/* An inactive tab reserves no room for its close button, so a narrow
+   tab gives all its width to the name. The button appears over the
+   end of the name on hover, on an opaque copy of the hovered tab's
+   own background so the text does not show through. */
+.workspace-tab:not(.is-active):not(.is-pinned) {
+  padding-right: 12px;
+}
+
+/* On a narrow tab the name comes first: the extension chip of an
+   image tab gives way before the name collapses. */
+.workspace-tab:not(.is-active) .file-item-chip {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.workspace-tab:not(.is-active) .workspace-tab-close {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: none;
+  transform: translateY(-50%);
+  background:
+    linear-gradient(
+      var(--background-modifier-hover),
+      var(--background-modifier-hover)
+    ),
+    var(--background-secondary-alt);
+}
+
+.workspace-tab:not(.is-active):hover .workspace-tab-close {
+  display: inline-flex;
+}
+
+.workspace-tab:not(.is-active) .workspace-tab-close:hover {
+  background:
+    linear-gradient(
+      var(--background-modifier-border),
+      var(--background-modifier-border)
+    ),
+    var(--background-secondary-alt);
 }
 
 .workspace-tab.is-dragging {
@@ -1275,14 +1331,19 @@ body.theme-dark .help-ais-logo-white {
 
 /* --- New-tab button and empty tab view --- */
 
+/* Sticks to the end of the strip when the tabs scroll (m49), so a new
+   tab is always one click away; opaque, since tabs pass under it. */
 .tab-new-button {
+  position: sticky;
+  right: 0;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   align-self: center;
   padding: 3px 6px;
   margin-left: 2px;
-  background: transparent;
+  background: var(--background-secondary-alt);
   border: none;
   border-radius: 4px;
   color: var(--text-muted);
@@ -1291,7 +1352,12 @@ body.theme-dark .help-ais-logo-white {
 }
 
 .tab-new-button:hover {
-  background-color: var(--background-modifier-hover);
+  background:
+    linear-gradient(
+      var(--background-modifier-hover),
+      var(--background-modifier-hover)
+    ),
+    var(--background-secondary-alt);
   color: var(--text-normal);
 }
 
