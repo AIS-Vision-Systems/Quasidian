@@ -223,6 +223,49 @@ describe("computeHiddenRanges — wikilinks", () => {
   });
 });
 
+describe("computeHiddenRanges — markdown links with spaces (m47)", () => {
+  // Same shape as the reading render: only the label shows.
+  const doc = "see [exemple](docs/Exemple.md#Secció primera) end";
+
+  it("hides brackets and the whole destination when outside", () => {
+    expect(hiddenRanges(doc, doc.length)).toEqual([
+      { from: 4, to: 5 },
+      { from: 12, to: 13 },
+      { from: 13, to: 14 },
+      { from: 14, to: 44 },
+      { from: 44, to: 45 },
+    ]);
+  });
+
+  it("reveals everything when the cursor is inside the link", () => {
+    expect(hiddenRanges(doc, 20)).toEqual([]);
+    expect(hiddenRanges(doc, 6)).toEqual([]);
+  });
+
+  it("hides a quoted title as well", () => {
+    const titled = 'x [n](La nota.md "títol") y';
+    expect(hiddenRanges(titled, titled.length)).toEqual([
+      { from: 2, to: 3 },
+      { from: 4, to: 5 },
+      { from: 5, to: 6 },
+      { from: 6, to: 16 },
+      { from: 17, to: 24 },
+      { from: 24, to: 25 },
+    ]);
+  });
+
+  it("hides the angle-bracket form like any stock link", () => {
+    const angled = "x [n](<La nota.md>) y";
+    expect(hiddenRanges(angled, angled.length)).toEqual([
+      { from: 2, to: 3 },
+      { from: 4, to: 5 },
+      { from: 5, to: 6 },
+      { from: 6, to: 18 },
+      { from: 18, to: 19 },
+    ]);
+  });
+});
+
 describe("computeHiddenRanges — markdown links", () => {
   const doc = "see [Spec](docs/SPEC.md) end";
 

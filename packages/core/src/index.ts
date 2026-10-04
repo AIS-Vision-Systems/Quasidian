@@ -40,6 +40,7 @@ export {
 export { markdownExtensions, markdownParser } from "./markdown/parser";
 export { renderTableCells, renderToHtml } from "./markdown/render";
 export { isExternalTarget, isImageTarget } from "./markdown/wikilinks";
+export { linkDestination } from "./markdown/links";
 export { parseFrontmatter } from "./lib/frontmatter";
 
 // --- Rendered-content helpers (embeds, code, math) ---

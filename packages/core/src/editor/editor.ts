@@ -51,6 +51,7 @@ import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import { ct as t } from "../lib/coreStrings";
 import { footnoteTag } from "../markdown/footnotes";
+import { linkDestination } from "../markdown/links";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag, isExternalTarget } from "../markdown/wikilinks";
@@ -469,12 +470,8 @@ function wikilinkAt(
     if (url === null) {
       return null;
     }
-    let target = state.sliceDoc(url.from, url.to);
-    try {
-      target = decodeURIComponent(target);
-    } catch {
-      // Malformed escapes: keep the raw text.
-    }
+    // The same string the reading render resolves (m47).
+    const { target } = linkDestination(state.sliceDoc(url.from, url.to));
     return { target, from: node.from, to: node.to };
   }
   const path = node.getChild("WikilinkPath");

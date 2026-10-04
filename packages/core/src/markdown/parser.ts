@@ -5,18 +5,21 @@ import { markdownLanguage } from "@codemirror/lang-markdown";
 import type { MarkdownParser } from "@lezer/markdown";
 import { footnotes } from "./footnotes";
 import { frontmatter } from "./frontmatter";
+import { lenientLinks } from "./links";
 import { listInterrupt } from "./listInterrupt";
 import { math } from "./math";
 import { setextRestriction } from "./setext";
 import { highlights, wikilinks } from "./wikilinks";
 
 /**
- * The full extension set: wikilinks/embeds, ==highlights==, math, the
- * 3-dash setext restriction, YAML frontmatter, footnotes and the
- * any-number ordered-list interrupt.
+ * The full extension set: wikilinks/embeds, markdown links with spaces
+ * in the destination, ==highlights==, math, the 3-dash setext
+ * restriction, YAML frontmatter, footnotes and the any-number
+ * ordered-list interrupt.
  */
 export const markdownExtensions = [
   wikilinks,
+  lenientLinks,
   highlights,
   math,
   setextRestriction,

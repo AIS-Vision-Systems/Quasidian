@@ -12,8 +12,9 @@ import {
 } from "../lib/frontmatter";
 import { iconMarkup } from "../ui/icons";
 import { calloutColor, calloutIcon, parseCalloutHeader } from "./callouts";
+import { linkDestination } from "./links";
 import { markdownParser } from "./parser";
-import { isExternalTarget, isImageTarget } from "./wikilinks";
+import { isImageTarget } from "./wikilinks";
 
 function escapeHtml(text: string): string {
   return text
@@ -608,19 +609,16 @@ function renderNode(node: SyntaxNode, doc: string, out: string[]): void {
       const marks = node.getChildren("LinkMark");
       const from = marks[0]?.to ?? node.from;
       const to = marks[1]?.from ?? node.to;
-      if (isExternalTarget(url)) {
-        out.push(`<a class="external-link" href="${escapeHtml(url)}">`);
-      } else {
-        // Internal note link: percent-decode so "La%20nota.md" resolves
-        // like any other target.
-        let target = url;
-        try {
-          target = decodeURIComponent(url);
-        } catch {
-          // Malformed escapes: keep the raw text.
-        }
+      // Angle brackets stripped; note links percent-decoded so
+      // "La%20nota.md" resolves like any other target (m47).
+      const destination = linkDestination(url);
+      if (destination.external) {
         out.push(
-          `<a class="internal-link" data-target="${escapeHtml(target)}">`,
+          `<a class="external-link" href="${escapeHtml(destination.target)}">`,
+        );
+      } else {
+        out.push(
+          `<a class="internal-link" data-target="${escapeHtml(destination.target)}">`,
         );
       }
       renderInline(node, from, to, doc, out);
