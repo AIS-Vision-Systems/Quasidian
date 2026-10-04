@@ -66,6 +66,7 @@ import {
   uniqueName,
 } from "../lib/attachments";
 import { onFileDrop } from "../ipc/dragDrop";
+import { startPointerDrag } from "./pointerDrag";
 import { countCharacters, countWords } from "../lib/text";
 import { revealOffset } from "../lib/tabScroll";
 import {
@@ -83,6 +84,7 @@ import {
 import {
   buildFolderTree,
   collapsedByDefault,
+  movesFile,
   relativePath,
   type TreeNode,
 } from "../lib/folderTree";
@@ -2222,7 +2224,6 @@ export function mountLayout(root: HTMLElement): void {
     index: number,
     start: MouseEvent,
   ): void {
-    let dragging = false;
     let target = index;
     let targetPaneId: number | null = null;
     let splitPaneId: number | null = null;
@@ -2240,10 +2241,6 @@ export function mountLayout(root: HTMLElement): void {
       return Number.isFinite(id) ? id : null;
     };
     const onMove = (event: MouseEvent): void => {
-      if (!dragging && Math.abs(event.clientX - start.clientX) < 5) {
-        return;
-      }
-      dragging = true;
       el.classList.add("is-dragging");
       clearMarkers();
       targetPaneId = null;
@@ -2294,27 +2291,33 @@ export function mountLayout(root: HTMLElement): void {
       }
       tabs[tabs.length - 1]?.classList.add("drop-after");
     };
-    const onUp = (): void => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      el.classList.remove("is-dragging");
-      clearMarkers();
-      if (!dragging) {
-        void activateTab(index);
-        return;
-      }
-      if (splitPaneId !== null) {
-        void dropSplitRight(index, splitPaneId);
-        return;
-      }
-      if (targetPaneId !== null) {
-        void dropOnPane(index, targetPaneId, target);
-        return;
-      }
-      void applyTabsChange(moveTab(tabsState, index, target));
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startPointerDrag(
+      start,
+      {
+        onMove,
+        onEnd() {
+          el.classList.remove("is-dragging");
+          clearMarkers();
+        },
+        onClick() {
+          void activateTab(index);
+        },
+        onDrop() {
+          if (splitPaneId !== null) {
+            void dropSplitRight(index, splitPaneId);
+            return;
+          }
+          if (targetPaneId !== null) {
+            void dropOnPane(index, targetPaneId, target);
+            return;
+          }
+          void applyTabsChange(moveTab(tabsState, index, target));
+        },
+      },
+      // Only sideways movement tears a tab off: a click that wobbles
+      // vertically still activates it.
+      { axis: "x" },
+    );
   }
 
   /** Docks the active pane's tab `index` into pane `targetId`. */
@@ -3170,6 +3173,191 @@ export function mountLayout(root: HTMLElement): void {
     updateCollapseAllButton();
   }
 
+  // The file being dragged out of the tree, if any (m52).
+  let draggingPath: string | null = null;
+
+  /**
+   * Dragging a file of the tree (m52). Dropped on a folder — or on a
+   * file, meaning its folder, or on the empty part of the list, meaning
+   * the root — it moves there, through the same flow as "Move file
+   * to…". Dropped inside a note in editing mode it is only embedded
+   * where it lands: nothing is moved or copied. Folders are targets,
+   * never sources.
+   */
+  function startFileDrag(path: string, label: string, start: MouseEvent): void {
+    let folderTarget: string | null = null;
+    let paneTarget: PaneUi | null = null;
+    let point: ScreenPoint = { x: start.clientX, y: start.clientY };
+    let expandTimer: number | null = null;
+    let expandKey: string | null = null;
+    let scrollTimer: number | null = null;
+
+    const clearMarks = (): void => {
+      for (const marked of sidebarFiles.querySelectorAll(".is-drop-target")) {
+        marked.classList.remove("is-drop-target");
+      }
+      clearDropCursors();
+    };
+    const cancelExpand = (): void => {
+      if (expandTimer !== null) {
+        window.clearTimeout(expandTimer);
+      }
+      expandTimer = null;
+      expandKey = null;
+    };
+    const stopScroll = (): void => {
+      if (scrollTimer !== null) {
+        window.clearInterval(scrollTimer);
+      }
+      scrollTimer = null;
+    };
+    // A collapsed folder opens after the pointer rests on it.
+    const expandOnRest = (folder: string): void => {
+      const key = normalizePath(folder);
+      if (!collapsedDirs.has(key)) {
+        cancelExpand();
+        return;
+      }
+      if (expandKey === key) {
+        return;
+      }
+      cancelExpand();
+      expandKey = key;
+      expandTimer = window.setTimeout(() => {
+        expandTimer = null;
+        expandKey = null;
+        collapsedDirs.delete(key);
+        foldStateKnown = true;
+        renderVaultTree();
+        updateCollapseAllButton();
+        scheduleSessionSave();
+        // The rebuild dropped the mark, and the pointer may well stay
+        // where it is: the folder is still where a drop would land.
+        if (folderTarget !== null) {
+          const target = folderTarget;
+          for (const row of fileList.querySelectorAll<HTMLElement>(
+            ".tree-folder-row[data-path]",
+          )) {
+            row.classList.toggle(
+              "is-drop-target",
+              samePath(row.dataset.path ?? "", target),
+            );
+          }
+        }
+      }, 600);
+    };
+    // Near the top or bottom edge of the list, it scrolls on its own.
+    const scrollNearEdges = (y: number): void => {
+      const box = sidebarFiles.getBoundingClientRect();
+      const inside = point.x >= box.left && point.x <= box.right;
+      const step =
+        !inside ? 0 : y < box.top + 28 ? -10 : y > box.bottom - 28 ? 10 : 0;
+      if (step === 0) {
+        stopScroll();
+        return;
+      }
+      if (scrollTimer === null) {
+        scrollTimer = window.setInterval(() => {
+          sidebarFiles.scrollTop += step;
+        }, 16);
+      }
+    };
+
+    startPointerDrag(
+      start,
+      {
+        onMove(event) {
+          if (draggingPath === null) {
+            draggingPath = path;
+            for (const row of fileList.querySelectorAll<HTMLElement>(
+              ".file-item[data-path]",
+            )) {
+              row.classList.toggle(
+                "is-dragging",
+                samePath(row.dataset.path ?? "", path),
+              );
+            }
+          }
+          point = { x: event.clientX, y: event.clientY };
+          clearMarks();
+          folderTarget = null;
+          paneTarget = null;
+          stopScroll();
+          const under = document.elementFromPoint(point.x, point.y);
+          if (under !== null && sidebarFiles.contains(under)) {
+            scrollNearEdges(point.y);
+            if (vaultRoot === null) {
+              cancelExpand();
+              return; // a flat folder has nowhere to move a file to
+            }
+            const row = under.closest<HTMLElement>(
+              ".tree-folder-row[data-path], .file-item[data-path]",
+            );
+            let folder = vaultRoot;
+            let mark: HTMLElement = fileList;
+            if (row !== null && row.classList.contains("tree-folder-row")) {
+              folder = row.dataset.path ?? vaultRoot;
+              mark = row;
+              expandOnRest(folder);
+            } else {
+              cancelExpand();
+              if (row !== null) {
+                // A file stands for the folder it lives in.
+                folder = dirname(row.dataset.path ?? path);
+                mark =
+                  row
+                    .closest(".tree-folder")
+                    ?.querySelector<HTMLElement>(":scope > .tree-folder-row") ??
+                  fileList;
+              }
+            }
+            if (movesFile(path, folder)) {
+              folderTarget = folder;
+              mark.classList.add("is-drop-target");
+            }
+            return;
+          }
+          cancelExpand();
+          const pane = dropTargetPane(point);
+          if (pane === null) {
+            return;
+          }
+          const notePath =
+            pane.id === boundPaneId ? openedPath : pane.openedPath;
+          if (notePath !== null && samePath(notePath, path)) {
+            return; // a note is never embedded in itself
+          }
+          paneTarget = pane;
+          pane.editor.setDropCursor(point);
+        },
+        onEnd() {
+          draggingPath = null;
+          for (const row of fileList.querySelectorAll(".is-dragging")) {
+            row.classList.remove("is-dragging");
+          }
+          clearMarks();
+          cancelExpand();
+          stopScroll();
+        },
+        onDrop() {
+          if (folderTarget !== null) {
+            void moveFileTo(path, folderTarget);
+            return;
+          }
+          if (paneTarget === null) {
+            return;
+          }
+          focusPane(paneTarget.id);
+          const text = embedsFor([path]);
+          if (editor.insertAtPoint(text, point) === null) {
+            editor.insertAt(text, null);
+          }
+        },
+      },
+      { ghostLabel: label },
+    );
+  }
+
   /** Path of the file shown in the active pane, or null. */
   function activePanePath(): string | null {
     // The bound pane's path lives in the alias until the next bind.
@@ -3210,6 +3398,19 @@ export function mountLayout(root: HTMLElement): void {
     const item = document.createElement("li");
     item.className = "file-item";
     item.dataset.path = path;
+    // A rebuild in the middle of a drag (a folder opening under the
+    // pointer) keeps the dragged row marked.
+    item.classList.toggle(
+      "is-dragging",
+      draggingPath !== null && samePath(path, draggingPath),
+    );
+    item.addEventListener("mousedown", (event) => {
+      if (event.button === 0) {
+        // The name as the row shows it; an image keeps its extension
+        // (the row's text would run name and chip together).
+        startFileDrag(path, name.replace(/\.md$/i, ""), event);
+      }
+    });
     const active = activePanePath();
     item.classList.toggle(
       "is-active",
@@ -3253,6 +3454,7 @@ export function mountLayout(root: HTMLElement): void {
         const collapsed = collapsedDirs.has(normalizePath(node.path));
         const row = document.createElement("div");
         row.className = "tree-folder-row";
+        row.dataset.path = node.path;
         row.append(
           createIcon(collapsed ? "chevron-right" : "chevron-down"),
         );

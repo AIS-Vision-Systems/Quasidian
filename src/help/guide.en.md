@@ -10,6 +10,7 @@ If the folder — or an ancestor — holds a project marker (`CLAUDE.md`, `.clau
 - **Quick switcher**: `Ctrl+O` — jump to any note by name or by its aliases.
 - **Command palette**: `Ctrl+P` — every available action.
 - Right-click a file: rename (incoming links repoint themselves), make a copy (`Name 1.md`…), move it to another vault folder (path links repoint), copy the path, open it with the default app, show in the system explorer, export to PDF or delete.
+- **Drag a file from the list**: dropped on a vault folder, it moves there (links repoint themselves); dropped inside a note in editing mode, it is embedded with `![[file]]` without moving it. `Esc` cancels.
 
 ## Editing and reading modes
 

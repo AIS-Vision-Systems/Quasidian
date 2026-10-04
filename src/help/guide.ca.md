@@ -10,6 +10,7 @@ Si la carpeta — o un avantpassat — conté un marcador de projecte (`CLAUDE.m
 - **Quick switcher**: `Ctrl+O` — salta a qualsevol nota pel nom o pels seus àlies.
 - **Paleta de comandes**: `Ctrl+P` — totes les accions disponibles.
 - Clic dret sobre un fitxer: canviar el nom (els enllaços entrants es reapunten sols), fer-ne una còpia (`Nom 1.md`…), moure'l a una altra carpeta del vault (els enllaços per camí es reapunten), copiar el camí, obrir-lo amb l'aplicació per defecte, mostrar a l'explorador, exportar a PDF o eliminar.
+- **Arrossega un fitxer de la llista**: deixat anar sobre una carpeta del vault, s'hi mou (els enllaços es reapunten sols); deixat anar dins d'una nota en mode edició, s'hi incrusta amb `![[fitxer]]` sense moure'l. `Esc` cancel·la.
 
 ## Modes d'edició i lectura
 

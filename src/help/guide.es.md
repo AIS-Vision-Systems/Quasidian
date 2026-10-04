@@ -10,6 +10,7 @@ Si la carpeta — o un ancestro — contiene un marcador de proyecto (`CLAUDE.md
 - **Quick switcher**: `Ctrl+O` — salta a cualquier nota por su nombre o sus alias.
 - **Paleta de comandos**: `Ctrl+P` — todas las acciones disponibles.
 - Clic derecho sobre un archivo: renombrar (los enlaces entrantes se reapuntan solos), hacer una copia (`Nombre 1.md`…), moverlo a otra carpeta del vault (los enlaces por ruta se reapuntan), copiar la ruta, abrirlo con la aplicación por defecto, mostrar en el explorador, exportar a PDF o eliminar.
+- **Arrastra un archivo de la lista**: soltado sobre una carpeta del vault, se mueve allí (los enlaces se reapuntan solos); soltado dentro de una nota en modo edición, se incrusta con `![[archivo]]` sin moverlo. `Esc` cancela.
 
 ## Modos de edición y lectura
 
