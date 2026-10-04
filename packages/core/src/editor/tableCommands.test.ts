@@ -6,6 +6,7 @@ import {
   parseTableSource,
   sanitizeCell,
   serializeTable,
+  surroundRange,
   type TableOp,
 } from "./tableCommands";
 
@@ -155,5 +156,42 @@ describe("applyCellEdit (m46)", () => {
     expect(applyCellEdit(data, 9, 0, "x")).toBe(data);
     expect(applyCellEdit(data, 2, 9, "x")).toBe(data);
     expect(applyCellEdit(data, -1, 0, "x")).toBe(data);
+  });
+});
+
+describe("surroundRange — format shortcuts inside a cell (m46)", () => {
+  it("wraps the selected text and keeps it selected", () => {
+    expect(surroundRange("un text fort", 8, 12, "**", "**")).toEqual({
+      text: "un text **fort**",
+      from: 10,
+      to: 14,
+    });
+  });
+
+  it("inserts an empty pair with the caret inside when nothing is selected", () => {
+    expect(surroundRange("ab", 1, 1, "*", "*")).toEqual({
+      text: "a**b",
+      from: 2,
+      to: 2,
+    });
+    expect(surroundRange("", 0, 0, "**", "**")).toEqual({
+      text: "****",
+      from: 2,
+      to: 2,
+    });
+  });
+
+  it("wraps the whole text", () => {
+    expect(surroundRange("tot", 0, 3, "*", "*").text).toBe("*tot*");
+  });
+
+  it("accepts a backward range and clamps one outside the text", () => {
+    expect(surroundRange("abcd", 3, 1, "*", "*")).toEqual({
+      text: "a*bc*d",
+      from: 2,
+      to: 4,
+    });
+    expect(surroundRange("ab", 1, 99, "*", "*").text).toBe("a*b*");
+    expect(surroundRange("ab", -5, 1, "*", "*").text).toBe("*a*b");
   });
 });

@@ -41,6 +41,43 @@ describe("insertionAt", () => {
     expect(insertionAt(state("text"), -3, embed).from).toBe(0);
   });
 
+  it("never lands inside an embed, a link or a formula", () => {
+    // Dropping a file onto an embedded image must not split its source.
+    const doc = "abans ![[gat.jpg]] després";
+    for (const pos of [7, 9, 14, 17]) {
+      expect(inserted(doc, pos, embed)).toBe(
+        "abans ![[gat.jpg]]![[foto.png]] després",
+      );
+    }
+    expect(inserted("a [[Nota A]] b", 6, embed)).toBe(
+      "a [[Nota A]]![[foto.png]] b",
+    );
+    expect(inserted("a [text](nota.md) b", 5, embed)).toBe(
+      "a [text](nota.md)![[foto.png]] b",
+    );
+    expect(inserted("a $x^2$ b", 4, embed)).toBe("a $x^2$![[foto.png]] b");
+    expect(inserted("a `codi` b", 4, embed)).toBe(
+      "a `codi`![[foto.png]] b",
+    );
+  });
+
+  it("inserts normally at the edges of an inline unit", () => {
+    const doc = "abans ![[gat.jpg]] després";
+    expect(inserted(doc, 6, embed)).toBe(
+      "abans ![[foto.png]]![[gat.jpg]] després",
+    );
+    expect(inserted(doc, 18, embed)).toBe(
+      "abans ![[gat.jpg]]![[foto.png]] després",
+    );
+  });
+
+  it("goes after the outermost unit when they nest", () => {
+    // A wikilink inside the label of a markdown link.
+    expect(inserted("[veu [[Nota]] ara](x.md) fi", 9, embed)).toBe(
+      "[veu [[Nota]] ara](x.md)![[foto.png]] fi",
+    );
+  });
+
   const table = "| a | b |\n| --- | --- |\n| 1 | 2 |";
 
   it("moves a drop inside a table to a line of its own after it", () => {

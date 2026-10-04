@@ -100,6 +100,27 @@ export function sanitizeCell(text: string): string {
 }
 
 /**
+ * Surrounds [from, to] of `text` with a pair of marks — bold, italic —
+ * the way the editor's format commands do: an empty range gets the
+ * pair with the caret inside, a non-empty one keeps its text selected.
+ */
+export function surroundRange(
+  text: string,
+  from: number,
+  to: number,
+  open: string,
+  close: string,
+): { text: string; from: number; to: number } {
+  const start = Math.max(0, Math.min(from, to, text.length));
+  const end = Math.max(start, Math.min(Math.max(from, to), text.length));
+  return {
+    text: text.slice(0, start) + open + text.slice(start, end) + close + text.slice(end),
+    from: start + open.length,
+    to: end + open.length,
+  };
+}
+
+/**
  * The table with one cell's text replaced (sanitized first). Returns
  * the very same object when nothing changes — callers compare by
  * identity to know whether there is anything to write — and for the
