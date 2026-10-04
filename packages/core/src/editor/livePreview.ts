@@ -10,7 +10,7 @@ import {
   syntaxTree,
 } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
-import type { SyntaxNode } from "@lezer/common";
+import type { SyntaxNode, Tree } from "@lezer/common";
 import {
   EditorState,
   Facet,
@@ -18,6 +18,7 @@ import {
   StateEffect,
   StateField,
   type Range,
+  type Transaction,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -312,18 +313,21 @@ export interface MathRange {
 
 /**
  * Pure computation of math elements in [from, to] whose range the
- * selection does not touch, to be replaced by KaTeX widgets.
+ * selection does not touch, to be replaced by KaTeX widgets. `tree`
+ * lets a caller that already holds a more complete tree than the
+ * one frozen in the state pass it along (block decorations, m44).
  */
 export function computeMathRanges(
   state: EditorState,
   from: number,
   to: number,
+  tree: Tree = syntaxTree(state),
 ): MathRange[] {
   if (state.facet(sourceMode)) {
     return [];
   }
   const ranges: MathRange[] = [];
-  syntaxTree(state).iterate({
+  tree.iterate({
     from,
     to,
     enter(node) {
@@ -780,12 +784,43 @@ class ImageWidget extends WidgetType {
 }
 
 // Inline title: the note name shown as an editable H1 above the
-// document. Module state set by the layout — never part of the doc.
-let inlineTitleText: string | null = null;
+// document — never part of the doc. Each editor holds its own title
+// (m44): with several panes, a block rebuild in one of them must
+// never paint the title of another.
+let defaultInlineTitle: string | null = null;
 let inlineTitleRename: (name: string) => void = () => undefined;
 
+/**
+ * Module-level default, for editors that never set a title of their
+ * own. Hosts with more than one editor use the editor handle's
+ * `setInlineTitle` instead.
+ */
 export function setInlineTitle(text: string | null): void {
-  inlineTitleText = text;
+  defaultInlineTitle = text;
+}
+
+/** Sets one editor's inline title (null hides it). */
+export const setInlineTitleEffect = StateEffect.define<string | null>();
+
+/**
+ * The editor's own inline title. `undefined` means it never set one
+ * and follows the module default.
+ */
+export const inlineTitleField = StateField.define<string | null | undefined>({
+  create: () => undefined,
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setInlineTitleEffect)) {
+        value = effect.value;
+      }
+    }
+    return value;
+  },
+});
+
+function inlineTitleOf(state: EditorState): string | null {
+  const own = state.field(inlineTitleField, false);
+  return own === undefined ? defaultInlineTitle : own;
 }
 
 export function setInlineTitleRename(handler: (name: string) => void): void {
@@ -2397,12 +2432,19 @@ function buildDecorations(
 // so inactive tables and multi-line math blocks are replaced through a
 // StateField instead.
 export function buildBlockDecorations(state: EditorState): DecorationSet {
-  ensureSyntaxTree(state, state.doc.length, 50);
+  // The tree frozen in a state covers only what was parsed when the
+  // state was created (a few thousand characters on a fresh document).
+  // ensureSyntaxTree advances the parser in place and *returns* the
+  // complete tree — syntaxTree(state) would still be the partial one,
+  // and every table past the parsed prefix would stay raw (m44).
+  const tree =
+    ensureSyntaxTree(state, state.doc.length, 50) ?? syntaxTree(state);
   const ranges: Range<Decoration>[] = [];
-  if (inlineTitleText !== null) {
+  const inlineTitle = inlineTitleOf(state);
+  if (inlineTitle !== null) {
     ranges.push(
       Decoration.widget({
-        widget: new InlineTitleWidget(inlineTitleText),
+        widget: new InlineTitleWidget(inlineTitle),
         side: -2,
         block: true,
       }).range(0),
@@ -2414,7 +2456,7 @@ export function buildBlockDecorations(state: EditorState): DecorationSet {
   if (state.facet(sourceMode)) {
     return Decoration.set(ranges, true);
   }
-  syntaxTree(state).iterate({
+  tree.iterate({
     enter(node) {
       if (node.name === "Frontmatter") {
         // Always replaced: the raw YAML is never edited in place — the
@@ -2467,7 +2509,12 @@ export function buildBlockDecorations(state: EditorState): DecorationSet {
         if (selectionTouches(state, node.from, node.to)) {
           return false;
         }
-        for (const math of computeMathRanges(state, node.from, node.to)) {
+        for (const math of computeMathRanges(
+          state,
+          node.from,
+          node.to,
+          tree,
+        )) {
           if (math.from === node.from) {
             ranges.push(
               Decoration.replace({
@@ -2485,17 +2532,30 @@ export function buildBlockDecorations(state: EditorState): DecorationSet {
   return Decoration.set(ranges, true);
 }
 
+/**
+ * Whether a transaction makes the block decorations stale. Besides the
+ * obvious triggers, the syntax tree itself: the background parser
+ * finishes with a transaction that changes neither the document nor
+ * the selection, and without this check the blocks it uncovered would
+ * stay raw until the next cursor move (m44). The tree changes
+ * identity a handful of times per document, not per parse slice.
+ */
+export function blockRebuildNeeded(tr: Transaction): boolean {
+  return (
+    tr.docChanged ||
+    tr.selection !== undefined ||
+    tr.effects.some(
+      (effect) =>
+        effect.is(refreshBlockDecorations) || effect.is(setInlineTitleEffect),
+    ) ||
+    syntaxTree(tr.state) !== syntaxTree(tr.startState)
+  );
+}
+
 const blockDecorations = StateField.define<DecorationSet>({
   create: buildBlockDecorations,
   update(value, tr) {
-    if (
-      tr.docChanged ||
-      tr.selection !== undefined ||
-      tr.effects.some((effect) => effect.is(refreshBlockDecorations))
-    ) {
-      return buildBlockDecorations(tr.state);
-    }
-    return value;
+    return blockRebuildNeeded(tr) ? buildBlockDecorations(tr.state) : value;
   },
   provide: (field) => EditorView.decorations.from(field),
 });
@@ -2684,6 +2744,7 @@ function moveIntoBlock(view: EditorView, forward: boolean): boolean {
 
 export function livePreview(hooks: LivePreviewHooks) {
   return [
+    inlineTitleField,
     blockDecorations,
     frontmatterAtomic,
     tableBlankGuard,

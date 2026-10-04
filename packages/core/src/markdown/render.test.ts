@@ -206,6 +206,16 @@ describe("renderToHtml — blocks", () => {
     expect(html).toContain('<td style="text-align:right">');
   });
 
+  it("renders a table that sits after more than 3000 characters (m44)", () => {
+    // The dual-mode twin of the Live Preview regression test: reading
+    // mode parses the whole document, so the table is always there.
+    const filler = "Paràgraf de farciment amb prou text per omplir.\n\n".repeat(200);
+    const html = renderToHtml(filler + "| a | b |\n| --- | --- |\n| 1 | 2 |\n");
+    expect(filler.length).toBeGreaterThan(3000);
+    expect(html).toContain("<table><thead><tr><th>a</th><th>b</th></tr></thead>");
+    expect(html).toContain("<td>1</td><td>2</td>");
+  });
+
   it("renders tables with header and body", () => {
     const html = renderToHtml("| a | b |\n| --- | --- |\n| c | d |");
     expect(html).toContain("<table><thead><tr><th>a</th><th>b</th></tr></thead>");
