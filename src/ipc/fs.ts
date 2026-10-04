@@ -34,6 +34,14 @@ export function copyFile(from: string, to: string): Promise<void> {
   return invoke("copy_file", { from, to });
 }
 
+/** Writes bytes to a new file (a pasted image); never overwrites. */
+export function writeBinaryFile(
+  path: string,
+  contents: Uint8Array,
+): Promise<void> {
+  return invoke("write_binary_file", { path, contents: Array.from(contents) });
+}
+
 /** Widens the asset-protocol scope to `path` (vaults recurse). */
 export function allowAssetDir(path: string, recursive: boolean): Promise<void> {
   return invoke("allow_asset_dir", { path, recursive });
