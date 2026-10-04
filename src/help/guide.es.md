@@ -18,6 +18,7 @@ Si la carpeta — o un ancestro — contiene un marcador de proyecto (`CLAUDE.md
 ## Enlaces y transclusiones
 
 - `[[nota]]` enlaza una nota; `[[nota|alias]]` muestra otro texto; `[[nota#sección]]` salta a un heading.
+- Los enlaces markdown también funcionan: `[texto](carpeta/Nota.md#Título de sección)`. Los espacios de la ruta o del heading no hace falta escaparlos.
 - Hacer clic en un enlace lo abre (o **crea la nota** si no existe). `Ctrl+clic` o clic central: pestaña nueva.
 - Desde el menú contextual, «Insertar ▸ Wikilink» escribe `[[]]` y abre el autocompletado de notas.
 - **Previsualización**: pasa el ratón sobre un enlace en modo lectura (o `Ctrl`+ratón en edición) para ver el contenido en una ventana emergente.
