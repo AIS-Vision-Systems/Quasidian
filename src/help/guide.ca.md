@@ -25,7 +25,7 @@ Si la carpeta — o un avantpassat — conté un marcador de projecte (`CLAUDE.m
 - Clic dret sobre un enllaç o una imatge incrustada: «Canvia el nom…» canvia el nom del fitxer enllaçat i actualitza tots els enllaços que hi apunten.
 - **Previsualització**: passa el ratolí per sobre d'un enllaç en mode lectura (o `Ctrl`+ratolí en edició) per veure el contingut en una finestra emergent.
 - `![[nota]]` incrusta el contingut d'una altra nota (també `![[nota#secció]]` i imatges `![[imatge.png|500]]`).
-- **Enganxa una imatge** (`Ctrl+V`) o **arrossega-hi fitxers** des del sistema, en mode edició: les notes i les imatges es copien a la carpeta de la nota — mai sobreescrivint res — i s'hi incrusten amb `![[fitxer]]` on les deixes anar. Un fitxer que ja és a la carpeta o al vault només s'incrusta.
+- **Enganxa una imatge** (`Ctrl+V`) o **arrossega-hi fitxers** des del sistema o una imatge des d'un navegador, en mode edició: les notes i les imatges es copien a la carpeta de la nota — mai sobreescrivint res — i s'hi incrusten amb `![[fitxer]]` on les deixes anar. Per incrustar un fitxer que ja és al vault sense copiar-lo, arrossega'l des de la llista de fitxers.
 
 ## Propietats
 

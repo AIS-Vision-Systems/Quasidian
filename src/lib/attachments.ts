@@ -59,6 +59,29 @@ export function pastedImageName(
 }
 
 /**
+ * The name a pasted or dropped file is stored under, or null when it
+ * is not an admitted file. A file keeps its own name; one that has
+ * none worth keeping — a screenshot, an image dragged out of a web
+ * page as "image.png" or with no extension at all — gets a pasted
+ * image name, with the extension its type calls for.
+ */
+export function importedFileName(
+  fileName: string,
+  mime: string,
+  base: string,
+  date: Date,
+): string | null {
+  const name = fileName.trim();
+  if (isAdmittedFile(name) && !isGenericClipboardName(name)) {
+    return name;
+  }
+  const extension = isAdmittedFile(name)
+    ? name.slice(name.lastIndexOf("."))
+    : extensionForMime(mime);
+  return extension === null ? null : pastedImageName(base, date, extension);
+}
+
+/**
  * `name` when it is free, the first free "name 1", "name 2"… otherwise:
  * an inserted file never overwrites another one.
  */
@@ -82,18 +105,6 @@ export function nameTakenIn(
 ): boolean {
   const key = normalizePath(joinPath(dir, candidate)).toLowerCase();
   return paths.some((path) => normalizePath(path).toLowerCase() === key);
-}
-
-/**
- * A drop position as the system reports it, in physical pixels, to the
- * CSS pixels the page measures in.
- */
-export function toClientPoint(
-  position: { x: number; y: number },
-  scale: number,
-): { x: number; y: number } {
-  const factor = Number.isFinite(scale) && scale > 0 ? scale : 1;
-  return { x: position.x / factor, y: position.y / factor };
 }
 
 /**

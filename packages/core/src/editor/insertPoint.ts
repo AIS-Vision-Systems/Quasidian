@@ -1,10 +1,25 @@
 // Where text dropped on the editor really goes (m51). A drop lands on
-// a pixel, and the position under it may sit inside a block that is
-// never edited as raw text: the frontmatter and tables are widgets,
-// and text pushed into their source would break them. The insertion
-// then moves to just after the block, on a line of its own. No DOM.
+// a pixel, and the position under it may sit inside something that is
+// not plain text. The frontmatter and tables are widgets, never edited
+// as raw text: the insertion moves to just after the block, on a line
+// of its own. An embed, a link or a formula is one unit, shown as an
+// image or as its label: text pushed into its source would break it,
+// so the insertion moves to just after it. No DOM.
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { EditorState } from "@codemirror/state";
+import type { SyntaxNode } from "@lezer/common";
+
+/** Inline elements that are one unit: nothing is inserted inside. */
+const INLINE_UNITS = new Set([
+  "Embed",
+  "Wikilink",
+  "Link",
+  "Image",
+  "InlineMath",
+  "InlineCode",
+  "FootnoteRef",
+  "Autolink",
+]);
 
 export interface Insertion {
   /** Where the text goes in. */
@@ -42,7 +57,18 @@ export function insertionAt(
   });
   const found = block as { name: string; from: number; to: number } | null;
   if (found === null) {
-    return { from: at, insert: text };
+    // Strictly inside an inline unit: after it. Its edges are fine.
+    let end = at;
+    for (
+      let node: SyntaxNode | null = tree.resolveInner(at, 0);
+      node !== null;
+      node = node.parent
+    ) {
+      if (INLINE_UNITS.has(node.name) && node.from < at && at < node.to) {
+        end = Math.max(end, node.to);
+      }
+    }
+    return { from: end, insert: text };
   }
   // The block's lines, whole: a position on the edge of its first or
   // last line is still inside its source.

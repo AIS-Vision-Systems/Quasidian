@@ -58,14 +58,10 @@ import { applyRewrites, renameLinkTargets } from "../lib/renameLinks";
 import {
   embedTargetFor,
   embedText,
-  extensionForMime,
-  isAdmittedFile,
-  isGenericClipboardName,
+  importedFileName,
   nameTakenIn,
-  pastedImageName,
   uniqueName,
 } from "../lib/attachments";
-import { onFileDrop } from "../ipc/dragDrop";
 import { startPointerDrag } from "./pointerDrag";
 import { countCharacters, countWords } from "../lib/text";
 import { revealOffset } from "../lib/tabScroll";
@@ -398,6 +394,10 @@ export function mountLayout(root: HTMLElement): void {
     header.className = "view-header";
     const paneTabBar = document.createElement("div");
     paneTabBar.className = "tab-bar";
+    // A tab squeezed to a few letters cuts its name instead of ending
+    // it in an ellipsis; widths change with the window, not only with
+    // the tabs.
+    new ResizeObserver(() => markNarrowTabs(paneTabBar)).observe(paneTabBar);
     // Tabs shrink to make room (m49); when they overflow even at their
     // minimum width the strip scrolls, and its scrollbar is hidden —
     // the vertical wheel moves it.
@@ -1253,43 +1253,47 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   /**
-   * Pasted files (m51): images are stored beside the note and embedded
-   * at the cursor. A screenshot gets a generated name; a file copied
-   * in the file manager keeps its own.
+   * Pasted files (m51): stored beside the note and embedded at the
+   * cursor. A screenshot gets a generated name; a file keeps its own.
    */
   function pasteFiles(files: File[]): boolean {
     if (openedPath === null || isImageTarget(openedPath)) {
       return false;
     }
-    void importPastedFiles(files, boundPaneId, openedPath).catch((error) =>
+    void importFiles(files, boundPaneId, openedPath, null).catch((error) =>
       setStatusError(t("error.importFile", { error: String(error) })),
     );
     return true;
   }
 
-  async function importPastedFiles(
+  /**
+   * Stores pasted or dropped files beside the note and embeds them at
+   * a document position (null: the cursor, as it is once they are
+   * stored — text typed meanwhile stays before the embed). Notes and
+   * images only, never overwriting: a taken name gets a number.
+   */
+  async function importFiles(
     files: File[],
     paneId: number,
     notePath: string,
+    pos: number | null,
   ): Promise<void> {
     const dir = dirname(notePath);
     const added: string[] = [];
     const problems: string[] = [];
     for (const file of files) {
-      const extension =
-        extensionForMime(file.type) ??
-        (isImageTarget(file.name)
-          ? file.name.slice(file.name.lastIndexOf("."))
-          : null);
-      if (extension === null) {
+      const wanted = importedFileName(
+        file.name,
+        file.type,
+        t("tabs.pastedImage"),
+        new Date(),
+      );
+      if (wanted === null) {
         problems.push(
           t("error.dropUnsupported", { name: file.name || file.type }),
         );
         continue;
       }
-      const wanted = isGenericClipboardName(file.name)
-        ? pastedImageName(t("tabs.pastedImage"), new Date(), extension)
-        : file.name;
       const target = joinPath(dir, freeNameIn(dir, wanted, added));
       try {
         await writeBinaryFile(target, new Uint8Array(await file.arrayBuffer()));
@@ -1299,9 +1303,7 @@ export function mountLayout(root: HTMLElement): void {
       }
     }
     reportImportProblems(problems);
-    // At the cursor as it is once the image is stored: text typed
-    // meanwhile stays before the embed.
-    await embedAdded(added, paneId, notePath, null);
+    await embedAdded(added, paneId, notePath, pos);
   }
 
   /** The pane under a point of the screen, or null. */
@@ -1337,12 +1339,12 @@ export function mountLayout(root: HTMLElement): void {
   }
 
   /**
-   * Files dropped from the system (m51): a file from outside the open
-   * folder or vault is copied beside the note; one that already lives
-   * in it is only embedded. Notes and images, nothing else.
+   * Files dropped from outside the app (m51) — the file manager, or an
+   * image dragged out of a web browser: copied beside the note and
+   * embedded where they are dropped.
    */
   async function importDroppedFiles(
-    paths: string[],
+    files: File[],
     point: ScreenPoint,
   ): Promise<void> {
     const target = paneAtPoint(point);
@@ -1357,59 +1359,87 @@ export function mountLayout(root: HTMLElement): void {
     if (openedPath === null) {
       return;
     }
-    const paneId = boundPaneId;
-    const notePath = openedPath;
-    // Where it was dropped, resolved now: the copies below take time,
-    // and the screen may have scrolled by the time they finish.
-    const pos = editor.posAtPoint(point);
-    const dir = dirname(notePath);
-    const added: string[] = [];
-    const problems: string[] = [];
-    for (const path of paths) {
-      const name = basename(path);
-      if (!isAdmittedFile(name)) {
-        problems.push(t("error.dropUnsupported", { name }));
-        continue;
-      }
-      if (samePath(path, notePath)) {
-        continue; // a note is never embedded in itself
-      }
-      const inScope =
-        folderFiles.some((file) => samePath(file.path, path)) ||
-        folderImages.some((file) => samePath(file.path, path));
-      if (inScope) {
-        added.push(path);
-        continue;
-      }
-      const copy = joinPath(dir, freeNameIn(dir, name, added));
-      try {
-        await copyFile(path, copy);
-        added.push(copy);
-      } catch (error) {
-        problems.push(t("error.importFile", { error: String(error) }));
-      }
-    }
-    reportImportProblems(problems);
-    await embedAdded(added, paneId, notePath, pos);
+    // Where it was dropped, resolved now: storing the files takes
+    // time, and the screen may have scrolled by the time it is done.
+    await importFiles(files, boundPaneId, openedPath, editor.posAtPoint(point));
   }
 
-  void onFileDrop((event) => {
-    if (event.type === "leave") {
-      clearDropCursors();
-      return;
-    }
-    if (event.type === "over") {
-      const target = dropTargetPane(event.point);
-      for (const ui of paneUis.values()) {
-        ui.editor.setDropCursor(ui === target ? event.point : null);
+  // Drags from outside arrive as HTML5 drag events (the webview's
+  // native file drop is disabled in tauri.conf.json): it is the only
+  // way an image dragged out of a browser reaches the app, since that
+  // drag carries no file path. Handled in the capture phase, before
+  // CodeMirror — which would insert a dropped file's text — and
+  // always consumed: an unhandled file drop makes the webview
+  // navigate to the file.
+  const dragsFiles = (event: DragEvent): boolean =>
+    event.dataTransfer !== null &&
+    Array.from(event.dataTransfer.types).includes("Files");
+  document.addEventListener(
+    "dragover",
+    (event) => {
+      if (!dragsFiles(event) || event.dataTransfer === null) {
+        return;
       }
-      return;
+      event.preventDefault();
+      event.stopPropagation();
+      const point = { x: event.clientX, y: event.clientY };
+      const target = dropTargetPane(point);
+      // Over any pane the drop is accepted, so that one which cannot
+      // take it can say why; elsewhere the cursor says "not here".
+      event.dataTransfer.dropEffect =
+        paneAtPoint(point) === null ? "none" : "copy";
+      for (const ui of paneUis.values()) {
+        ui.editor.setDropCursor(ui === target ? point : null);
+      }
+    },
+    true,
+  );
+  document.addEventListener(
+    "dragleave",
+    (event) => {
+      // Leaving the window, not moving between its elements.
+      if (event.relatedTarget === null) {
+        clearDropCursors();
+      }
+    },
+    true,
+  );
+  document.addEventListener(
+    "drop",
+    (event) => {
+      if (!dragsFiles(event) || event.dataTransfer === null) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      clearDropCursors();
+      void importDroppedFiles(Array.from(event.dataTransfer.files), {
+        x: event.clientX,
+        y: event.clientY,
+      }).catch((error) =>
+        setStatusError(t("error.importFile", { error: String(error) })),
+      );
+    },
+    true,
+  );
+  // Anything else dragged in — a link or a piece of text out of a
+  // browser — belongs to the editor, which inserts it as text. Dropped
+  // anywhere else it would make the webview navigate to it: outside
+  // the editor's text, every drop is refused.
+  const overEditorText = (event: DragEvent): boolean =>
+    event.target instanceof Element &&
+    event.target.closest(".cm-content") !== null;
+  document.addEventListener("dragover", (event) => {
+    if (!overEditorText(event) && event.dataTransfer !== null) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "none";
     }
-    clearDropCursors();
-    void importDroppedFiles(event.paths, event.point).catch((error) =>
-      setStatusError(t("error.importFile", { error: String(error) })),
-    );
-  }).catch(() => undefined);
+  });
+  document.addEventListener("drop", (event) => {
+    if (!overEditorText(event)) {
+      event.preventDefault();
+    }
+  });
 
   function createPaneEditor(host: HTMLElement): EditorHandle {
     return createEditor(host, {
@@ -1801,6 +1831,7 @@ export function mountLayout(root: HTMLElement): void {
       }),
       plusButton,
     );
+    markNarrowTabs(ui.tabBar);
     ui.tabBar.scrollLeft = scrollLeft;
     // The active tab is always in view; the new-tab button sticks to
     // the end of the strip and must not cover it.
@@ -1815,6 +1846,21 @@ export function mountLayout(root: HTMLElement): void {
         ui.tabBar.clientWidth - plusButton.offsetWidth - plusGap,
         activeEl.offsetLeft,
         activeEl.offsetWidth,
+      );
+    }
+  }
+
+  /**
+   * Marks the tabs whose name has less room than an ellipsis needs to
+   * be of any use, so the stylesheet cuts the name instead.
+   */
+  function markNarrowTabs(bar: HTMLElement): void {
+    const limit = (Number.parseFloat(getComputedStyle(bar).fontSize) || 16) * 2.5;
+    for (const tab of bar.querySelectorAll<HTMLElement>(".workspace-tab")) {
+      const name = tab.querySelector<HTMLElement>(".workspace-tab-name");
+      tab.classList.toggle(
+        "is-narrow",
+        name !== null && name.clientWidth < limit,
       );
     }
   }
@@ -2084,6 +2130,8 @@ export function mountLayout(root: HTMLElement): void {
       visible: false,
       theme: "dark",
       backgroundColor: "#000000",
+      // Like the main window: file drags arrive as HTML5 events (m51).
+      dragDropEnabled: false,
     });
     void spawned.once("tauri://error", (event) => {
       setStatusError(t("error.openFile", { error: String(event.payload) }));
@@ -4057,16 +4105,33 @@ export function mountLayout(root: HTMLElement): void {
    * folder — m39), repointing links, tabs, session and open views.
    */
   async function relocateFile(path: string, target: string): Promise<void> {
-    // Files linking here, resolved with the pre-rename index and listing.
-    const linkers =
-      currentFolder === null
-        ? []
-        : backlinkIndex.backlinksOf(
-            path,
-            currentFolder,
-            folderFiles,
-            getSettings().files.defaultExtension,
-          );
+    // The listing as it is before the rename, notes and images. The
+    // watcher re-lists the folder a moment after the file moves: read
+    // from the live variables, the loop below would stop resolving the
+    // old name halfway through a long list of linkers, and leave the
+    // rest of the links broken.
+    const scopeBefore = [...folderFiles, ...folderImages];
+    const folderBefore = currentFolder;
+    // Files linking here, resolved with the pre-rename index and
+    // listing — plus every note open in a pane: the index only knows
+    // what is saved, and a link typed a moment ago is not on disk yet.
+    const linkers = new Map<string, string>();
+    if (folderBefore !== null) {
+      for (const linker of backlinkIndex.backlinksOf(
+        path,
+        folderBefore,
+        scopeBefore,
+        getSettings().files.defaultExtension,
+      )) {
+        linkers.set(normalizePath(linker).toLowerCase(), linker);
+      }
+    }
+    for (const ui of paneUis.values()) {
+      const open = ui.id === boundPaneId ? openedPath : ui.openedPath;
+      if (open !== null && !isImageTarget(open) && !samePath(open, path)) {
+        linkers.set(normalizePath(open).toLowerCase(), open);
+      }
+    }
     try {
       if (openedPath !== null && samePath(path, openedPath) && autosave.isDirty()) {
         await saveNow();
@@ -4095,15 +4160,26 @@ export function mountLayout(root: HTMLElement): void {
         ui.viewTitle.textContent = basename(target).replace(/\.md$/i, "");
       }
     }
-    // Repoint the wikilinks of every linker to the new name.
-    for (const linker of linkers) {
+    // Repoint the links of every linker to the new name.
+    for (const linker of linkers.values()) {
       try {
+        // A linker open in a pane is rewritten from its buffer — what
+        // the user sees, unsaved edits included — and every pane
+        // showing it takes the result.
+        const showing = [...paneUis.values()].filter((ui) => {
+          const open = ui.id === boundPaneId ? openedPath : ui.openedPath;
+          return open !== null && samePath(open, linker);
+        });
         const isOpen = openedPath !== null && samePath(linker, openedPath);
-        const contents = isOpen ? editor.getDoc() : await readFile(linker);
+        const contents =
+          showing.length > 0
+            ? (showing.find((ui) => ui.id === boundPaneId) ?? showing[0])
+                .editor.getDoc()
+            : await readFile(linker);
         const rewrites = renameLinkTargets(
           contents,
-          currentFolder ?? dirname(linker),
-          folderFiles,
+          folderBefore ?? dirname(linker),
+          scopeBefore,
           path,
           target,
           getSettings().files.defaultExtension,
@@ -4115,10 +4191,15 @@ export function mountLayout(root: HTMLElement): void {
         await writeFile(linker, updated);
         backlinkIndex.setFile(linker, updated);
         searchIndex.setFile(linker, updated);
+        reloadingFromDisk = true;
+        for (const ui of showing) {
+          ui.editor.reloadDoc(updated);
+          if (ui.id !== boundPaneId && ui.mode === "read") {
+            void ui.readingView.render(updated);
+          }
+        }
+        reloadingFromDisk = false;
         if (isOpen) {
-          reloadingFromDisk = true;
-          editor.reloadDoc(updated);
-          reloadingFromDisk = false;
           setCounts(updated);
           if (currentMode === "read") {
             readingView.render(updated);

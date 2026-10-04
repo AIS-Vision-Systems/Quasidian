@@ -28,6 +28,13 @@ export {
 export { minimalChange, normalizeLineEndings, type DocChange } from "./editor/docDiff";
 export { insertionAt, type Insertion } from "./editor/insertPoint";
 export {
+  completeLink,
+  narrowOptions,
+  type LinkCompletion,
+  type LinkCompletionHooks,
+  type LinkCompletionOption,
+} from "./editor/linkCompletion";
+export {
   linkAt,
   type LinkAt,
   type LinkKind,

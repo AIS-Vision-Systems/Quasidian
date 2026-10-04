@@ -44,6 +44,14 @@ import {
 } from "../markdown/callouts";
 import { cachedImageSize, cacheImageSize } from "./imageSizeCache";
 import type { LinkMenuTarget } from "./linkAt";
+import type { LinkCompletionHooks } from "./linkCompletion";
+import {
+  cellCompletionKey,
+  cellSelection,
+  closeCellCompletion,
+  setCellText,
+  updateCellCompletion,
+} from "./cellCompletion";
 import {
   cachedWidgetHeight,
   cacheWidgetHeight,
@@ -56,6 +64,7 @@ import {
   applyTableOp,
   parseTableSource,
   serializeTable,
+  surroundRange,
   type TableData,
   type TableOp,
 } from "./tableCommands";
@@ -64,7 +73,7 @@ import {
   renderTableCells,
   renderToHtml,
 } from "../markdown/render";
-import { isImageTarget } from "../markdown/wikilinks";
+import { isExternalTarget, isImageTarget } from "../markdown/wikilinks";
 import { createIcon } from "../ui/icons";
 import {
   scheduleHoverHide,
@@ -160,14 +169,20 @@ export interface LivePreviewHooks {
   resolveEmbedSrc(target: string): string | null;
   /** Renders a note embed target (and resolved path), or null. */
   renderEmbedNote(target: string): Promise<EmbedNoteResult | null>;
-  /** Navigates to a wikilink/embed target. */
-  onNavigate(target: string): void;
+  /** Navigates to a wikilink/embed target; `newTab` on Ctrl/middle click. */
+  onNavigate(target: string, newTab?: boolean): void;
   /** Whether a wikilink target points to an existing note. */
   isResolved(target: string): boolean;
   /** Path of the open file, for transclusion cycle detection. */
   currentFilePath(): string | null;
   /** Host menu entries for a right-clicked link or embed (m50). */
   linkMenuItems?(link: LinkMenuTarget): MenuEntry[];
+  /**
+   * The names offered while a link is typed inside a table cell — the
+   * same ones the editor's autocompletion uses. Without them cells
+   * simply do not complete.
+   */
+  completion?: LinkCompletionHooks;
 }
 
 /** Inline mark node name → element node names whose range reveals it. */
@@ -1541,6 +1556,9 @@ class TableWidget extends WidgetType {
 
   override destroy(dom: HTMLElement): void {
     untrackWidgetHeight(dom);
+    // A rebuild under a focused cell (undo, an external reload) fires
+    // no blur: the suggestion list would stay on screen.
+    closeCellCompletion();
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -1815,6 +1833,9 @@ class TableWidget extends WidgetType {
       // goes through focus, so the swap to source lives here.
       cell.addEventListener("focus", enterEdit);
       cell.addEventListener("mousedown", (event) => {
+        if (cell.dataset.editing === "true") {
+          closeCellCompletion(); // the caret is about to move
+        }
         if (event.button !== 0 || cell.dataset.editing === "true") {
           return;
         }
@@ -1833,7 +1854,8 @@ class TableWidget extends WidgetType {
             ? (link.dataset.target ?? link.getAttribute("href"))
             : null;
         if (hooks !== null && target !== null && target !== "") {
-          hooks.onNavigate(target);
+          // Ctrl+click opens in a new tab, as on any other link.
+          hooks.onNavigate(target, event.ctrlKey || event.metaKey);
           return;
         }
         // Another cell of this table holds an uncommitted edit: its
@@ -1853,7 +1875,50 @@ class TableWidget extends WidgetType {
         cell.focus();
         placeCaretAtPoint(cell, event.clientX, event.clientY);
       });
+      // The link under the pointer of an idle cell, if any.
+      const linkTargetAt = (node: EventTarget | null): string | null => {
+        if (cell.dataset.editing === "true" || !(node instanceof Element)) {
+          return null;
+        }
+        const link = node.closest<HTMLElement>(
+          "a.internal-link, a.external-link",
+        );
+        const found =
+          link === null
+            ? null
+            : (link.dataset.target ?? link.getAttribute("href"));
+        return found === null || found === "" ? null : found;
+      };
+      // Middle click: new tab, like the editor's links.
+      cell.addEventListener("auxclick", (event) => {
+        const target = linkTargetAt(event.target);
+        if (event.button === 1 && hooks !== null && target !== null) {
+          event.preventDefault();
+          hooks.onNavigate(target, true);
+        }
+      });
+      // Ctrl+hover previews the linked note, like the editor's links.
+      cell.addEventListener("mousemove", (event) => {
+        const target = linkTargetAt(event.target);
+        if (
+          hooks === null ||
+          target === null ||
+          isExternalTarget(target) ||
+          !(event.ctrlKey || event.metaKey)
+        ) {
+          scheduleHoverHide();
+          return;
+        }
+        scheduleHoverShow(event.clientX, event.clientY, target, {
+          resolveEmbedSrc: hooks.resolveEmbedSrc,
+          renderEmbedNote: hooks.renderEmbedNote,
+          isResolved: hooks.isResolved,
+          onNavigate: hooks.onNavigate,
+        });
+      });
+      cell.addEventListener("mouseleave", () => scheduleHoverHide());
       cell.addEventListener("blur", () => {
+        closeCellCompletion();
         const next = dataWithCellEdit(cell);
         if (next !== data) {
           dispatchTable(next, null);
@@ -1861,7 +1926,43 @@ class TableWidget extends WidgetType {
           showRendered();
         }
       });
+      // Typing a link offers note names, headings and paths, like the
+      // editor's autocompletion (same source, see completeLink).
+      cell.addEventListener("input", () => {
+        if (cell.dataset.editing === "true" && hooks?.completion !== undefined) {
+          updateCellCompletion(cell, view, hooks.completion);
+        }
+      });
       cell.addEventListener("keydown", (event) => {
+        // The open suggestion list takes its keys first.
+        if (cellCompletionKey(event)) {
+          return;
+        }
+        // Ctrl+B / Ctrl+I: the editor's format shortcuts never reach a
+        // cell (it is not CodeMirror text), so they are applied here.
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          // Lower-cased: with Caps Lock on the key arrives as "B".
+          (event.key.toLowerCase() === "b" ||
+            event.key.toLowerCase() === "i") &&
+          cell.dataset.editing === "true"
+        ) {
+          event.preventDefault();
+          const mark = event.key.toLowerCase() === "b" ? "**" : "*";
+          const selected = cellSelection(cell);
+          const text = cell.textContent ?? "";
+          const next = surroundRange(
+            text,
+            selected?.from ?? text.length,
+            selected?.to ?? text.length,
+            mark,
+            mark,
+          );
+          setCellText(cell, next.text, next.from, next.to);
+          return;
+        }
         const cellRow = Number(cell.dataset.row);
         const cellColumn = Number(cell.dataset.column);
         if (event.key === "Enter") {
@@ -1930,7 +2031,15 @@ class TableWidget extends WidgetType {
       cell.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        const linkTarget = linkTargetAt(event.target);
+        const linkItems =
+          linkTarget === null
+            ? []
+            : (hooks?.linkMenuItems?.({ target: linkTarget, kind: "link" }) ??
+              []);
         openContextMenu(event.clientX, event.clientY, [
+          ...linkItems,
+          ...(linkItems.length > 0 ? (["separator"] as const) : []),
           { label: t("menu.tableRow"), submenu: rowMenuItems(row).filter(
             (entry): entry is Exclude<MenuEntry, "separator"> =>
               entry !== "separator",

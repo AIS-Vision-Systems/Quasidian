@@ -86,10 +86,12 @@ import {
   listOutdentCommand,
 } from "./listCommands";
 import { emptyTable } from "./tableCommands";
+import { pasteCarriesFiles } from "./clipboardFiles";
 import { minimalChange } from "./docDiff";
 import { dropCursorField, setDropCursorPos } from "./dropCursor";
 import { insertionAt } from "./insertPoint";
 import { linkAt, type LinkAt, type LinkMenuTarget } from "./linkAt";
+import { completeLink } from "./linkCompletion";
 import {
   focusInlineTitle,
   focusTableCell,
@@ -503,84 +505,41 @@ export interface EditorHooks {
    */
   linkMenuItems?(link: LinkMenuTarget): MenuEntry[];
   /**
-   * Files pasted into the editor (m51): an image from the clipboard,
-   * or files copied in the system's file manager. Only asked when the
-   * clipboard carries files and no text — text always wins. Return
-   * true to take the paste; the host stores the files and inserts
-   * what points at them (see `insertAtPoint`).
+   * Files pasted into the editor (m51): an image from the clipboard
+   * or copied in a browser, or files copied in the system's file
+   * manager. Only asked when the files are what was copied — real
+   * text on the clipboard always wins. Return true to take the paste;
+   * the host stores the files and inserts what points at them (see
+   * `insertAtPoint`).
    */
   onPasteFiles?(files: File[]): boolean;
 }
 
-function wikilinkCompletionSource(hooks: EditorHooks) {
+/**
+ * The editor's link completion — note names after "[[", headings after
+ * a "#", paths inside "](...)". The decisions live in completeLink,
+ * which the table cells share.
+ */
+function linkCompletionSource(hooks: EditorHooks) {
   return async (
     context: CompletionContext,
   ): Promise<CompletionResult | null> => {
-    const alreadyClosed =
-      context.state.sliceDoc(context.pos, context.pos + 2) === "]]";
-    // After a #: offer the note's headings (empty note = current file).
-    const anchorMatch = context.matchBefore(/\[\[[^\][|#]*#[^\][|#]*$/);
-    if (anchorMatch !== null) {
-      const hashIndex = anchorMatch.text.indexOf("#");
-      const note = anchorMatch.text.slice(2, hashIndex).trim();
-      const headings = await hooks.getHeadingCompletions(note);
-      return {
-        from: anchorMatch.from + hashIndex + 1,
-        options: headings.map((heading) => ({
-          label: heading,
-          apply: alreadyClosed ? heading : heading + "]]",
-        })),
-        validFor: /^[^\][|#]*$/,
-      };
-    }
-    const match = context.matchBefore(/\[\[[^\][|]*$/);
-    if (match === null) {
+    const line = context.state.doc.lineAt(context.pos);
+    const offset = context.pos - line.from;
+    const result = await completeLink(
+      line.text.slice(0, offset),
+      line.text.slice(offset),
+      hooks,
+    );
+    if (result === null) {
       return null;
     }
     return {
-      from: match.from + 2,
-      options: hooks.getWikilinkCompletions().map((name) => ({
-        label: name,
-        apply: alreadyClosed ? name : name + "]]",
-      })),
-      validFor: /^[^\][|#]*$/,
+      from: line.from + result.from,
+      options: result.options,
+      filter: !result.filtered,
+      validFor: result.validFor,
     };
-  };
-}
-
-/**
- * Inside a markdown link's `](...)`: offer note and image paths. The
- * typed fragment matches anywhere in the path ("guid" finds
- * "src/help/guide.ca.md"), earliest occurrence first.
- */
-function markdownLinkCompletionSource(hooks: EditorHooks) {
-  return (context: CompletionContext): CompletionResult | null => {
-    const match = context.matchBefore(/\]\([^)\s]*$/);
-    if (match === null) {
-      return null;
-    }
-    const alreadyClosed =
-      context.state.sliceDoc(context.pos, context.pos + 1) === ")";
-    let typed = match.text.slice(2).toLowerCase();
-    try {
-      typed = decodeURIComponent(typed);
-    } catch {
-      // Malformed escapes: match the raw text.
-    }
-    const options = hooks
-      .getLinkPathCompletions()
-      .map((path) => ({ path, at: path.toLowerCase().indexOf(typed) }))
-      .filter((entry) => entry.at !== -1)
-      .sort((a, b) => a.at - b.at || a.path.localeCompare(b.path))
-      .map((entry) => {
-        // Spaces are percent-encoded, as markdown URLs require.
-        const encoded = encodeURI(entry.path);
-        return {
-          label: entry.path,
-          apply: alreadyClosed ? encoded : encoded + ")",
-        };
-      });
-    return { from: match.from + 2, options, filter: false };
   };
 }
 
@@ -847,14 +806,14 @@ export function createEditor(
           isResolved: hooks.isResolved,
           currentFilePath: hooks.currentFilePath,
           linkMenuItems: hooks.linkMenuItems,
+          completion: hooks,
         }),
         lineNumbersCompartment.of(lineNumbersExtension(config)),
         indentCompartment.of(indentExtension(config)),
         spellcheckCompartment.of(spellcheckExtension(config)),
         autocompletion({
           override: [
-            wikilinkCompletionSource(hooks),
-            markdownLinkCompletionSource(hooks),
+            linkCompletionSource(hooks),
           ],
           icons: false,
         }),
@@ -883,17 +842,19 @@ export function createEditor(
             openEditorMenu(view, event.clientX, event.clientY, linkItems);
             return true;
           },
-          // Pasted files (m51) go to the host. Text always wins: an
-          // office suite also puts a picture of what was copied on the
-          // clipboard, and pasting that instead of the text would be
-          // wrong.
+          // Pasted files (m51) go to the host — when the files are
+          // what was copied, not a picture that merely accompanies
+          // text (see pasteCarriesFiles).
           paste(event) {
             const data = event.clipboardData;
             if (
               hooks.onPasteFiles === undefined ||
               data === null ||
-              data.files.length === 0 ||
-              data.getData("text/plain") !== ""
+              !pasteCarriesFiles(
+                data.getData("text/plain"),
+                data.getData("text/html"),
+                data.files.length,
+              )
             ) {
               return false;
             }
