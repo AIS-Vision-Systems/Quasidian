@@ -55,6 +55,7 @@ import { parseFrontmatter } from "@aisvision/quasidian-core";
 import { computeOutline, findHeading, sectionSlice } from "../lib/outline";
 import { applyRewrites, renameLinkTargets } from "../lib/renameLinks";
 import { countCharacters, countWords } from "../lib/text";
+import { revealOffset } from "../lib/tabScroll";
 import {
   resolveWikilink,
   splitAnchor,
@@ -383,6 +384,23 @@ export function mountLayout(root: HTMLElement): void {
     header.className = "view-header";
     const paneTabBar = document.createElement("div");
     paneTabBar.className = "tab-bar";
+    // Tabs shrink to make room (m49); when they overflow even at their
+    // minimum width the strip scrolls, and its scrollbar is hidden —
+    // the vertical wheel moves it.
+    paneTabBar.addEventListener(
+      "wheel",
+      (event) => {
+        if (
+          event.deltaY === 0 ||
+          paneTabBar.scrollWidth <= paneTabBar.clientWidth
+        ) {
+          return;
+        }
+        event.preventDefault();
+        paneTabBar.scrollLeft += event.deltaY;
+      },
+      { passive: false },
+    );
     header.append(paneTabBar);
 
     const paneFileBar = document.createElement("div");
@@ -1447,6 +1465,8 @@ export function mountLayout(root: HTMLElement): void {
     plusButton.addEventListener("click", () =>
       void applyTabsChange(newEmptyTab(tabsState)),
     );
+    // A redraw must not throw the strip back to its start.
+    const scrollLeft = ui.tabBar.scrollLeft;
     ui.tabBar.replaceChildren(
       ...paneTabs.tabs.map((tab, index) => {
         const el = document.createElement("div");
@@ -1506,6 +1526,22 @@ export function mountLayout(root: HTMLElement): void {
       }),
       plusButton,
     );
+    ui.tabBar.scrollLeft = scrollLeft;
+    // The active tab is always in view; the new-tab button sticks to
+    // the end of the strip and must not cover it.
+    const activeEl = ui.tabBar.children[paneTabs.active];
+    if (activeEl instanceof HTMLElement && activeEl !== plusButton) {
+      // offsetWidth leaves the margin out: the gap before the button
+      // is part of what it takes from the strip.
+      const plusGap =
+        Number.parseFloat(getComputedStyle(plusButton).marginLeft) || 0;
+      ui.tabBar.scrollLeft = revealOffset(
+        ui.tabBar.scrollLeft,
+        ui.tabBar.clientWidth - plusButton.offsetWidth - plusGap,
+        activeEl.offsetLeft,
+        activeEl.offsetWidth,
+      );
+    }
   }
 
   /** Renders every pane's tab bar and repositions the collapse buttons. */
