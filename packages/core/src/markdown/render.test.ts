@@ -216,6 +216,19 @@ describe("renderToHtml — blocks", () => {
     expect(html).toContain("<td>1</td><td>2</td>");
   });
 
+  it("renders blocks the same wherever they sit in the document (m45)", () => {
+    // The reading-mode twin of the Live Preview test: a table and a
+    // math block are the same output after text is inserted above.
+    const blocks = "| a | b |\n| --- | --- |\n| 1 | 2 |\n\n$$\nx^2\n$$\n";
+    const table = "<table><thead><tr><th>a</th><th>b</th></tr></thead>";
+    const math = '<span class="math-block" data-tex="x^2">x^2</span>';
+    for (const doc of ["intro\n\n" + blocks, "nova línia\n\nintro\n\n" + blocks]) {
+      const html = renderToHtml(doc);
+      expect(html).toContain(table);
+      expect(html).toContain(math);
+    }
+  });
+
   it("renders tables with header and body", () => {
     const html = renderToHtml("| a | b |\n| --- | --- |\n| c | d |");
     expect(html).toContain("<table><thead><tr><th>a</th><th>b</th></tr></thead>");

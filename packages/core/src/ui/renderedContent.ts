@@ -228,7 +228,9 @@ export function fillEmbedNotes(
   for (const embed of root.querySelectorAll<HTMLElement>("span.embed-note")) {
     const target = embed.dataset.target ?? "";
     const job = hooks.renderEmbedNote(target).then((result) => {
-      if (result === null || !embed.isConnected) {
+      // Gone from this root meanwhile (a re-render replaced it). Not
+      // isConnected: a root staged off-document is filled too (m45).
+      if (result === null || !root.contains(embed)) {
         return;
       }
       const key = result.path.toLowerCase();
