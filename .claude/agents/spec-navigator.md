@@ -1,6 +1,6 @@
 ---
 name: spec-navigator
-description: Extracts the requirements of a Quasidian milestone (or topic) from the Catalan specs in docs/SPEC*.md, plus the constraints earlier phases impose on it. Use this INSTEAD of reading the six spec documents yourself — they are long, in Catalan, and loading them costs tens of thousands of tokens. Trigger on "milestone N", "what does the spec say about X", or before starting any implementation work.
+description: Extracts the requirements of a Quasidian milestone (or topic) from the Catalan specs in docs/SPEC*.md, plus the constraints earlier phases impose on it. Use this INSTEAD of reading the seven spec documents yourself — they are long, in Catalan, and loading them costs tens of thousands of tokens. Trigger on "milestone N", "what does the spec say about X", or before starting any implementation work.
 tools: Read, Grep, Glob
 model: sonnet
 ---
@@ -20,9 +20,10 @@ All specs are written in **Catalan** and are historical documents (never rewritt
 | `docs/SPEC3.md` | 24–29 | PDF export, credits/help page, workspace settings, splits, multiple windows, multi-folder vault modes |
 | `docs/SPEC4.md` | 30–34 | per-vault sessions, window routing, sidebar/navigation, appearance defaults, update check |
 | `docs/SPEC5.md` | 35 | open-source publication, licensing, CI/release workflow |
-| `docs/SPEC6.md` | 36–43 | **current phase**: resize render fix, menu polish, source mode, file copy/move, `.obsidian`/`.git` markers, embeddable core, CSP, signed updater |
+| `docs/SPEC6.md` | 36–43 | resize render fix, menu polish, source mode, file copy/move, `.obsidian`/`.git` markers, embeddable core, CSP, signed updater |
+| `docs/SPEC7.md` | 44–52 | **current phase**: Live Preview bugs (unrendered tables, scroll jumps, table-cell formatting), markdown links with spaces, sidebar highlight and UI font size, shrinking tabs, rename from a link, paste/drop files, sidebar drag and drop |
 
-Structure of SPEC2–SPEC6: `## Invariants (no els canviïs)`, `## Fora d'abast`, `## Milestones` (numbered items with a bolded title and nested `**Sub-topic**:` bullets), `## Convencions`, `## Primer pas concret`. Milestone numbering is continuous across all six files and never restarts. Only milestone 36 has an explicit `Criteris d'acceptació` bullet; elsewhere acceptance is implicit in the descriptive bullets.
+Structure of SPEC2–SPEC7: `## Invariants (no els canviïs)`, `## Fora d'abast`, `## Milestones` (numbered items with a bolded title and nested `**Sub-topic**:` bullets), `## Convencions`, `## Primer pas concret`. Milestone numbering is continuous across all seven files and never restarts. SPEC7 adds a `## Fora d'abast d'aquesta fase` section (Mermaid is deferred there, not excluded). Only milestones 36, 44 and 45 have an explicit `Criteris d'acceptació` bullet; elsewhere acceptance is implicit in the descriptive bullets.
 
 ## How to answer
 

@@ -1,6 +1,6 @@
 # CLAUDE.md — Quasidian
 
-Quasidian is a minimalist desktop markdown editor that mimics Obsidian's look and behavior (Live Preview, wikilinks, dark theme) without the weight. The specs are in Catalan and are **historical documents — never rewrite them to match the present**: `docs/SPEC.md` (milestones 1–11), `SPEC2.md` (12–23), `SPEC3.md` (24–29), `SPEC4.md` (30–34) and `SPEC5.md` (35), all complete, plus `docs/SPEC6.md` (36–43, current phase). Read the entry for the milestone you are implementing; for constraints carried over from earlier phases ask the `spec-navigator` agent instead of loading all six. New work needs a phase-7 spec first. The README is the public source of truth.
+Quasidian is a minimalist desktop markdown editor that mimics Obsidian's look and behavior (Live Preview, wikilinks, dark theme) without the weight. The specs are in Catalan and are **historical documents — never rewrite them to match the present**: `docs/SPEC.md` (milestones 1–11), `SPEC2.md` (12–23), `SPEC3.md` (24–29), `SPEC4.md` (30–34), `SPEC5.md` (35) and `SPEC6.md` (36–43), all complete, plus `docs/SPEC7.md` (44–52, current phase). Read the entry for the milestone you are implementing; for constraints carried over from earlier phases ask the `spec-navigator` agent instead of loading all seven. New work beyond milestone 52 needs a phase-8 spec first. The README is the public source of truth.
 
 ## Stack
 

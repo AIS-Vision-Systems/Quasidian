@@ -9,7 +9,7 @@ One milestone per PR, in spec order. Never start milestone N+1 features while im
 
 ## 1. Understand the milestone
 
-Ask the `spec-navigator` agent for the milestone. Do **not** read the six spec files yourself — they are long and in Catalan. You want: goal, requirements with exact file and key names, required tests, acceptance criteria, and constraints carried over from earlier phases.
+Ask the `spec-navigator` agent for the milestone. Do **not** read the seven spec files yourself — they are long and in Catalan. You want: goal, requirements with exact file and key names, required tests, acceptance criteria, and constraints carried over from earlier phases.
 
 If you don't know where the affected code lives, ask `code-locator` rather than exploring by hand.
 
