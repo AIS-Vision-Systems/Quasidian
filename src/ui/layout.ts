@@ -66,6 +66,7 @@ import {
   uniqueName,
 } from "../lib/attachments";
 import { onFileDrop } from "../ipc/dragDrop";
+import { startPointerDrag } from "./pointerDrag";
 import { countCharacters, countWords } from "../lib/text";
 import { revealOffset } from "../lib/tabScroll";
 import {
@@ -2222,7 +2223,6 @@ export function mountLayout(root: HTMLElement): void {
     index: number,
     start: MouseEvent,
   ): void {
-    let dragging = false;
     let target = index;
     let targetPaneId: number | null = null;
     let splitPaneId: number | null = null;
@@ -2240,10 +2240,6 @@ export function mountLayout(root: HTMLElement): void {
       return Number.isFinite(id) ? id : null;
     };
     const onMove = (event: MouseEvent): void => {
-      if (!dragging && Math.abs(event.clientX - start.clientX) < 5) {
-        return;
-      }
-      dragging = true;
       el.classList.add("is-dragging");
       clearMarkers();
       targetPaneId = null;
@@ -2294,27 +2290,33 @@ export function mountLayout(root: HTMLElement): void {
       }
       tabs[tabs.length - 1]?.classList.add("drop-after");
     };
-    const onUp = (): void => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      el.classList.remove("is-dragging");
-      clearMarkers();
-      if (!dragging) {
-        void activateTab(index);
-        return;
-      }
-      if (splitPaneId !== null) {
-        void dropSplitRight(index, splitPaneId);
-        return;
-      }
-      if (targetPaneId !== null) {
-        void dropOnPane(index, targetPaneId, target);
-        return;
-      }
-      void applyTabsChange(moveTab(tabsState, index, target));
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startPointerDrag(
+      start,
+      {
+        onMove,
+        onEnd() {
+          el.classList.remove("is-dragging");
+          clearMarkers();
+        },
+        onClick() {
+          void activateTab(index);
+        },
+        onDrop() {
+          if (splitPaneId !== null) {
+            void dropSplitRight(index, splitPaneId);
+            return;
+          }
+          if (targetPaneId !== null) {
+            void dropOnPane(index, targetPaneId, target);
+            return;
+          }
+          void applyTabsChange(moveTab(tabsState, index, target));
+        },
+      },
+      // Only sideways movement tears a tab off: a click that wobbles
+      // vertically still activates it.
+      { axis: "x" },
+    );
   }
 
   /** Docks the active pane's tab `index` into pane `targetId`. */
