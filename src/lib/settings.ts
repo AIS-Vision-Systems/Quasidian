@@ -13,6 +13,8 @@ export interface AppearanceSettings {
   accentColor: string;
   /** CSS font-family for the UI; empty string keeps the theme default. */
   interfaceFont: string;
+  /** Text size of the panels and bars, in px. */
+  interfaceFontSize: number;
   editorFont: EditorFontSetting;
   /** Editor font size in px. */
   fontSize: number;
@@ -79,6 +81,7 @@ export const DEFAULT_SETTINGS: Settings = {
     theme: "dark",
     accentColor: "#8a5cf5",
     interfaceFont: "",
+    interfaceFontSize: 16,
     editorFont: "proportional",
     fontSize: 18,
     readableLineLength: true,
@@ -169,6 +172,12 @@ export function mergeSettings(raw: unknown): Settings {
       interfaceFont: pickString(
         appearance.interfaceFont,
         d.appearance.interfaceFont,
+      ),
+      interfaceFontSize: pickNumber(
+        appearance.interfaceFontSize,
+        d.appearance.interfaceFontSize,
+        10,
+        24,
       ),
       editorFont: pickEnum(appearance.editorFont, d.appearance.editorFont, [
         "proportional",

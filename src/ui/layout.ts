@@ -649,9 +649,10 @@ export function mountLayout(root: HTMLElement): void {
     for (const [paneId, ui] of paneUis) {
       ui.root.classList.toggle("is-active-pane", paneId === id);
     }
-    // Status bar and right panel follow the active pane. The tab bars
-    // themselves are not rebuilt here: a rebuild mid-mousedown would
-    // detach the element the user is clicking.
+    // Status bar, file tree and right panel follow the active pane.
+    // The tab bars themselves are not rebuilt here: a rebuild
+    // mid-mousedown would detach the element the user is clicking.
+    syncTreeActive();
     refreshStatusChrome();
     updateNavButtons();
     renderBacklinks();
@@ -1521,6 +1522,8 @@ export function mountLayout(root: HTMLElement): void {
     }
     placeCollapseButtons();
     updateNavButtons();
+    // Every path that changes the active file ends here.
+    syncTreeActive();
   }
 
   function placeCollapseButtons(): void {
@@ -2858,6 +2861,33 @@ export function mountLayout(root: HTMLElement): void {
     updateCollapseAllButton();
   }
 
+  /** Path of the file shown in the active pane, or null. */
+  function activePanePath(): string | null {
+    // The bound pane's path lives in the alias until the next bind.
+    if (splitState.activePane === boundPaneId) {
+      return openedPath;
+    }
+    return paneUis.get(splitState.activePane)?.openedPath ?? null;
+  }
+
+  /**
+   * Moves the tree's highlight to the file of the active pane (m48).
+   * The rows are only rebuilt when the listing changes, so the mark
+   * has to follow on its own whenever the active file does: a pane
+   * gets the focus, a tab is activated, a file is opened or closed.
+   */
+  function syncTreeActive(): void {
+    const active = activePanePath();
+    for (const row of fileList.querySelectorAll<HTMLElement>(
+      ".file-item[data-path]",
+    )) {
+      row.classList.toggle(
+        "is-active",
+        active !== null && samePath(row.dataset.path ?? "", active),
+      );
+    }
+  }
+
   /** Uppercase extension chip for image entries ("JPG", "PNG"…). */
   function extensionChip(name: string): HTMLSpanElement {
     const chip = document.createElement("span");
@@ -2870,9 +2900,11 @@ export function mountLayout(root: HTMLElement): void {
   function fileListItem(path: string, name: string): HTMLLIElement {
     const item = document.createElement("li");
     item.className = "file-item";
+    item.dataset.path = path;
+    const active = activePanePath();
     item.classList.toggle(
       "is-active",
-      openedPath !== null && samePath(path, openedPath),
+      active !== null && samePath(path, active),
     );
     if (isImageTarget(name)) {
       const label = document.createElement("span");

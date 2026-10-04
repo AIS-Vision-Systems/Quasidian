@@ -306,6 +306,21 @@ export function openSettingsModal(): void {
         textInput(a.interfaceFont, (interfaceFont) => patch({ interfaceFont })),
       ),
       row(
+        "settings.interfaceFontSize.name",
+        "settings.interfaceFontSize.desc",
+        withReset(
+          numberInput(a.interfaceFontSize, 10, 24, (interfaceFontSize) =>
+            patch({ interfaceFontSize }),
+          ),
+          a.interfaceFontSize ===
+            DEFAULT_SETTINGS.appearance.interfaceFontSize,
+          () =>
+            patch({
+              interfaceFontSize: DEFAULT_SETTINGS.appearance.interfaceFontSize,
+            }),
+        ),
+      ),
+      row(
         "settings.editorFont.name",
         "settings.editorFont.desc",
         select(

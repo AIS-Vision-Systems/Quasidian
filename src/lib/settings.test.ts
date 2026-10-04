@@ -99,6 +99,37 @@ describe("mergeSettings", () => {
     );
   });
 
+  it("defaults the interface font size to 16", () => {
+    expect(DEFAULT_SETTINGS.appearance.interfaceFontSize).toBe(16);
+    expect(parseSettings("{}").appearance.interfaceFontSize).toBe(16);
+  });
+
+  it("keeps a valid interface font size, bounds included", () => {
+    for (const size of [10, 13, 24]) {
+      expect(
+        mergeSettings({ appearance: { interfaceFontSize: size } }).appearance
+          .interfaceFontSize,
+      ).toBe(size);
+    }
+  });
+
+  it("falls back to the default interface font size on garbage", () => {
+    for (const size of [9, 25, 0, -3, "gran", null, Number.NaN, {}]) {
+      expect(
+        mergeSettings({ appearance: { interfaceFontSize: size } }).appearance
+          .interfaceFontSize,
+      ).toBe(DEFAULT_SETTINGS.appearance.interfaceFontSize);
+    }
+  });
+
+  it("keeps the editor and interface font sizes independent", () => {
+    const settings = mergeSettings({
+      appearance: { fontSize: 22, interfaceFontSize: 12 },
+    });
+    expect(settings.appearance.fontSize).toBe(22);
+    expect(settings.appearance.interfaceFontSize).toBe(12);
+  });
+
   it("ignores unknown keys", () => {
     const settings = mergeSettings({
       unknown: true,
