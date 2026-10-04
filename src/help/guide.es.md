@@ -24,6 +24,7 @@ Si la carpeta — o un ancestro — contiene un marcador de proyecto (`CLAUDE.md
 - Clic derecho sobre un enlace o una imagen incrustada: «Cambiar el nombre…» cambia el nombre del archivo enlazado y actualiza todos los enlaces que apuntan a él.
 - **Previsualización**: pasa el ratón sobre un enlace en modo lectura (o `Ctrl`+ratón en edición) para ver el contenido en una ventana emergente.
 - `![[nota]]` incrusta el contenido de otra nota (también `![[nota#sección]]` e imágenes `![[imagen.png|500]]`).
+- **Pega una imagen** (`Ctrl+V`) o **arrastra archivos** desde el sistema, en modo edición: las notas y las imágenes se copian a la carpeta de la nota — sin sobrescribir nunca nada — y se incrustan con `![[archivo]]` donde las sueltas. Un archivo que ya está en la carpeta o en el vault solo se incrusta.
 
 ## Propiedades
 

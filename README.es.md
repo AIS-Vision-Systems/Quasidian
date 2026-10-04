@@ -10,6 +10,7 @@ Editor de escritorio de markdown minimalista que imita el aspecto y el comportam
 - **Modo de lectura** (Ctrl+E) — HTML renderizado desde el mismo árbol de parseo que usa el editor; las casillas de tareas siguen siendo clicables.
 - **Wikilinks y backlinks** — `[[enlaces]]` con autocompletado, resueltos contra la carpeta del archivo abierto.
 - **Carpeta = vault** — sin configuración, sin base de datos, sin archivos de índice escritos en tus notas. Abre un archivo markdown y su carpeta se convierte en el espacio de trabajo.
+- **Imágenes pegando o arrastrando** — se guardan junto a la nota y se incrustan donde las sueltas.
 - **Búsqueda global** en la carpeta, mantenida al día por un vigilante de archivos.
 - **Matemáticas** renderizadas con KaTeX.
 - **Interfaz trilingüe** — English, Català, Español.

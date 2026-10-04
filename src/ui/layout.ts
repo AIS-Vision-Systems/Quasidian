@@ -13,6 +13,7 @@ import { t } from "../i18n/i18n";
 import {
   allowAssetDir,
   copyFile,
+  writeBinaryFile,
   deleteFile,
   listFolder,
   openFolderDialog,
@@ -54,6 +55,17 @@ import { extractLinkTargets } from "../lib/backlinkIndex";
 import { parseFrontmatter } from "@aisvision/quasidian-core";
 import { computeOutline, findHeading, sectionSlice } from "../lib/outline";
 import { applyRewrites, renameLinkTargets } from "../lib/renameLinks";
+import {
+  embedTargetFor,
+  embedText,
+  extensionForMime,
+  isAdmittedFile,
+  isGenericClipboardName,
+  nameTakenIn,
+  pastedImageName,
+  uniqueName,
+} from "../lib/attachments";
+import { onFileDrop } from "../ipc/dragDrop";
 import { countCharacters, countWords } from "../lib/text";
 import { revealOffset } from "../lib/tabScroll";
 import {
@@ -1175,6 +1187,228 @@ export function mountLayout(root: HTMLElement): void {
     ];
   }
 
+  type ScreenPoint = { x: number; y: number };
+
+  /**
+   * The text that embeds files of the open scope (m51): one
+   * `![[…]]` per file.
+   */
+  function embedsFor(paths: string[]): string {
+    const folder = currentFolder ?? "";
+    const files = [...folderFiles, ...folderImages];
+    const extension = getSettings().files.defaultExtension;
+    return embedText(
+      paths.map((path) => embedTargetFor(path, folder, files, extension)),
+    );
+  }
+
+  /** A free file name in `dir`, counting the ones just added. */
+  function freeNameIn(dir: string, name: string, added: string[]): string {
+    const existing = [
+      ...added,
+      ...folderFiles.map((file) => file.path),
+      ...folderImages.map((file) => file.path),
+    ];
+    return uniqueName(name, (candidate) =>
+      nameTakenIn(dir, candidate, existing),
+    );
+  }
+
+  /**
+   * Re-lists the scope so new files resolve, then embeds them at a
+   * document position (null: the cursor) — unless the user has moved
+   * to another pane or note in the meantime: the files stay in the
+   * folder, but nothing is typed into another note.
+   */
+  async function embedAdded(
+    added: string[],
+    paneId: number,
+    notePath: string,
+    pos: number | null,
+  ): Promise<void> {
+    if (added.length === 0) {
+      return;
+    }
+    if (currentFolder !== null) {
+      // The files are already there: a listing that fails must not
+      // cost the embed that points at them.
+      await refreshFolder(currentFolder).catch(() => undefined);
+    }
+    if (
+      boundPaneId !== paneId ||
+      openedPath === null ||
+      !samePath(openedPath, notePath) ||
+      currentMode !== "edit"
+    ) {
+      return;
+    }
+    editor.insertAt(embedsFor(added), pos);
+  }
+
+  /** Shows every problem of one paste or drop, not just the last. */
+  function reportImportProblems(problems: string[]): void {
+    setStatusError(problems.length === 0 ? null : problems.join(" · "));
+  }
+
+  /**
+   * Pasted files (m51): images are stored beside the note and embedded
+   * at the cursor. A screenshot gets a generated name; a file copied
+   * in the file manager keeps its own.
+   */
+  function pasteFiles(files: File[]): boolean {
+    if (openedPath === null || isImageTarget(openedPath)) {
+      return false;
+    }
+    void importPastedFiles(files, boundPaneId, openedPath).catch((error) =>
+      setStatusError(t("error.importFile", { error: String(error) })),
+    );
+    return true;
+  }
+
+  async function importPastedFiles(
+    files: File[],
+    paneId: number,
+    notePath: string,
+  ): Promise<void> {
+    const dir = dirname(notePath);
+    const added: string[] = [];
+    const problems: string[] = [];
+    for (const file of files) {
+      const extension =
+        extensionForMime(file.type) ??
+        (isImageTarget(file.name)
+          ? file.name.slice(file.name.lastIndexOf("."))
+          : null);
+      if (extension === null) {
+        problems.push(
+          t("error.dropUnsupported", { name: file.name || file.type }),
+        );
+        continue;
+      }
+      const wanted = isGenericClipboardName(file.name)
+        ? pastedImageName(t("tabs.pastedImage"), new Date(), extension)
+        : file.name;
+      const target = joinPath(dir, freeNameIn(dir, wanted, added));
+      try {
+        await writeBinaryFile(target, new Uint8Array(await file.arrayBuffer()));
+        added.push(target);
+      } catch (error) {
+        problems.push(t("error.importFile", { error: String(error) }));
+      }
+    }
+    reportImportProblems(problems);
+    // At the cursor as it is once the image is stored: text typed
+    // meanwhile stays before the embed.
+    await embedAdded(added, paneId, notePath, null);
+  }
+
+  /** The pane under a point of the screen, or null. */
+  function paneAtPoint(point: ScreenPoint): PaneUi | null {
+    const under = document.elementFromPoint(point.x, point.y);
+    const paneEl = under?.closest<HTMLElement>(".pane") ?? null;
+    return paneEl === null
+      ? null
+      : (paneUis.get(Number(paneEl.dataset.paneId)) ?? null);
+  }
+
+  /**
+   * Whether a file can be dropped into a pane: it shows a note in
+   * editing mode — not reading mode, an image or an empty tab.
+   */
+  function acceptsDrop(ui: PaneUi): boolean {
+    const bound = ui.id === boundPaneId;
+    const path = bound ? openedPath : ui.openedPath;
+    const mode = bound ? currentMode : ui.mode;
+    return path !== null && !isImageTarget(path) && mode === "edit";
+  }
+
+  /** The pane a dragged file can be dropped on at this point, or null. */
+  function dropTargetPane(point: ScreenPoint): PaneUi | null {
+    const ui = paneAtPoint(point);
+    return ui !== null && acceptsDrop(ui) ? ui : null;
+  }
+
+  function clearDropCursors(): void {
+    for (const ui of paneUis.values()) {
+      ui.editor.setDropCursor(null);
+    }
+  }
+
+  /**
+   * Files dropped from the system (m51): a file from outside the open
+   * folder or vault is copied beside the note; one that already lives
+   * in it is only embedded. Notes and images, nothing else.
+   */
+  async function importDroppedFiles(
+    paths: string[],
+    point: ScreenPoint,
+  ): Promise<void> {
+    const target = paneAtPoint(point);
+    if (target === null) {
+      return; // not over a note: the sidebar, the bars…
+    }
+    if (!acceptsDrop(target)) {
+      setStatusError(t("error.dropNeedsNote"));
+      return;
+    }
+    focusPane(target.id);
+    if (openedPath === null) {
+      return;
+    }
+    const paneId = boundPaneId;
+    const notePath = openedPath;
+    // Where it was dropped, resolved now: the copies below take time,
+    // and the screen may have scrolled by the time they finish.
+    const pos = editor.posAtPoint(point);
+    const dir = dirname(notePath);
+    const added: string[] = [];
+    const problems: string[] = [];
+    for (const path of paths) {
+      const name = basename(path);
+      if (!isAdmittedFile(name)) {
+        problems.push(t("error.dropUnsupported", { name }));
+        continue;
+      }
+      if (samePath(path, notePath)) {
+        continue; // a note is never embedded in itself
+      }
+      const inScope =
+        folderFiles.some((file) => samePath(file.path, path)) ||
+        folderImages.some((file) => samePath(file.path, path));
+      if (inScope) {
+        added.push(path);
+        continue;
+      }
+      const copy = joinPath(dir, freeNameIn(dir, name, added));
+      try {
+        await copyFile(path, copy);
+        added.push(copy);
+      } catch (error) {
+        problems.push(t("error.importFile", { error: String(error) }));
+      }
+    }
+    reportImportProblems(problems);
+    await embedAdded(added, paneId, notePath, pos);
+  }
+
+  void onFileDrop((event) => {
+    if (event.type === "leave") {
+      clearDropCursors();
+      return;
+    }
+    if (event.type === "over") {
+      const target = dropTargetPane(event.point);
+      for (const ui of paneUis.values()) {
+        ui.editor.setDropCursor(ui === target ? event.point : null);
+      }
+      return;
+    }
+    clearDropCursors();
+    void importDroppedFiles(event.paths, event.point).catch((error) =>
+      setStatusError(t("error.importFile", { error: String(error) })),
+    );
+  }).catch(() => undefined);
+
   function createPaneEditor(host: HTMLElement): EditorHandle {
     return createEditor(host, {
     onDocChanged(doc, quiet) {
@@ -1195,6 +1429,7 @@ export function mountLayout(root: HTMLElement): void {
       void openWikilink(target, newTab === true);
     },
     linkMenuItems,
+    onPasteFiles: pasteFiles,
     getWikilinkCompletions() {
       return [
         ...folderFiles.map((file) => file.name.replace(/\.md$/i, "")),
