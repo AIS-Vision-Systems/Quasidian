@@ -21,6 +21,7 @@ Si la carpeta — o un avantpassat — conté un marcador de projecte (`CLAUDE.m
 - Els enllaços markdown també funcionen: `[text](carpeta/Nota.md#Títol de secció)`. Els espais del camí o del heading no cal escapar-los.
 - Clicar un enllaç l'obre (o **crea la nota** si no existeix). `Ctrl+clic` o clic del mig: pestanya nova.
 - Des del menú contextual, «Insereix ▸ Wikilink» escriu `[[]]` i obre l'autocompletat de notes.
+- Clic dret sobre un enllaç o una imatge incrustada: «Canvia el nom…» canvia el nom del fitxer enllaçat i actualitza tots els enllaços que hi apunten.
 - **Previsualització**: passa el ratolí per sobre d'un enllaç en mode lectura (o `Ctrl`+ratolí en edició) per veure el contingut en una finestra emergent.
 - `![[nota]]` incrusta el contingut d'una altra nota (també `![[nota#secció]]` i imatges `![[imatge.png|500]]`).
 
