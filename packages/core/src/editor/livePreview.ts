@@ -43,6 +43,7 @@ import {
   parseCalloutHeader,
 } from "../markdown/callouts";
 import { cachedImageSize, cacheImageSize } from "./imageSizeCache";
+import type { LinkMenuTarget } from "./linkAt";
 import {
   cachedWidgetHeight,
   cacheWidgetHeight,
@@ -165,6 +166,8 @@ export interface LivePreviewHooks {
   isResolved(target: string): boolean;
   /** Path of the open file, for transclusion cycle detection. */
   currentFilePath(): string | null;
+  /** Host menu entries for a right-clicked link or embed (m50). */
+  linkMenuItems?(link: LinkMenuTarget): MenuEntry[];
 }
 
 /** Inline mark node name → element node names whose range reveals it. */
@@ -212,6 +215,24 @@ export const sourceMode = Facet.define<boolean, boolean>({
 const livePreviewHooks = Facet.define<LivePreviewHooks, LivePreviewHooks | null>(
   { combine: (values) => values[0] ?? null },
 );
+
+/**
+ * Opens the host's menu entries for an embed or a link inside one
+ * (m50). Widgets take no part in the editor's own context menu, so
+ * without entries nothing opens.
+ */
+function openLinkMenu(
+  event: MouseEvent,
+  hooks: LivePreviewHooks | null,
+  link: LinkMenuTarget,
+): void {
+  event.preventDefault();
+  event.stopPropagation();
+  const items = hooks?.linkMenuItems?.(link) ?? [];
+  if (items.length > 0) {
+    openContextMenu(event.clientX, event.clientY, items);
+  }
+}
 
 /** Extends a mark range over one following space, to hide "# " and "> ". */
 function withFollowingSpace(state: EditorState, from: number, to: number): HiddenRange {
@@ -837,6 +858,12 @@ class ImageWidget extends WidgetType {
     const src = this.src;
     const image = document.createElement("img");
     image.className = "cm-embed-image";
+    image.addEventListener("contextmenu", (event) =>
+      openLinkMenu(event, view.state.facet(livePreviewHooks), {
+        target: this.target,
+        kind: "embed",
+      }),
+    );
     // The real height is known only once loaded; remeasure so the gutter
     // and coordinate mapping stay aligned with the content. The natural
     // size is cached so a widget recreated while scrolling takes its
@@ -1097,6 +1124,25 @@ class NoteEmbedWidget extends WidgetType {
     const container = document.createElement("span");
     container.className = "cm-embed-note";
     trackWidgetHeight(container, () => this.heightKey);
+    // A link inside the embedded note answers for itself; anywhere
+    // else the menu is about the embedded note.
+    container.addEventListener("contextmenu", (event) => {
+      const clicked = event.target;
+      const inner =
+        clicked instanceof Element
+          ? clicked.closest<HTMLElement>(
+              "a.internal-link:not(.embed-note-title)",
+            )
+          : null;
+      const target = inner?.dataset.target;
+      openLinkMenu(
+        event,
+        this.hooks,
+        target === undefined
+          ? { target: this.target, kind: "embed" }
+          : { target, kind: "link" },
+      );
+    });
     const title = document.createElement("span");
     title.className = "cm-embed-note-title";
     title.textContent = this.alias ?? this.target;
