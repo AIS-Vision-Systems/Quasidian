@@ -35,7 +35,6 @@ import {
 import {
   bumpEmbedGeneration,
   clearEmbedHtmlCache,
-  setInlineTitle,
   setInlineTitleRename,
   setKnownPropertyKeys,
 } from "@aisvision/quasidian-core";
@@ -631,13 +630,13 @@ export function mountLayout(root: HTMLElement): void {
     currentMode = ui.mode;
     const pane = paneById(splitState, id);
     tabsState = pane === null ? emptyWorkspace() : pane.workspace;
-    // The inline-title module state follows the bound pane.
-    setInlineTitle(
+    // Each editor holds its own inline title (m44); a no-op when it
+    // already shows the right one.
+    editor.setInlineTitle(
       openedPath !== null && getSettings().appearance.inlineTitle
         ? basename(openedPath).replace(/\.md$/i, "")
         : null,
     );
-    editor.refreshBlocks();
   }
 
   /** Makes pane `id` the active one (user interaction). */
@@ -1634,7 +1633,7 @@ export function mountLayout(root: HTMLElement): void {
     emptyTabView.classList.remove("is-hidden");
     fileBar.classList.remove("is-hidden");
     viewTitle.textContent = t("tabs.newTab");
-    setInlineTitle(null);
+    editor.setInlineTitle(null);
     setCounts("");
     if (currentFolder !== null) {
       void getCurrentWindow()
@@ -3116,8 +3115,10 @@ export function mountLayout(root: HTMLElement): void {
     fileBar.classList.remove("is-hidden");
     const noteName = basename(path).replace(/\.md$/i, "");
     viewTitle.textContent = noteName;
-    // Before setDoc: the block-decorations field reads it on rebuild.
-    setInlineTitle(getSettings().appearance.inlineTitle ? noteName : null);
+    // Before setDoc: the new state is seeded with it.
+    editor.setInlineTitle(
+      getSettings().appearance.inlineTitle ? noteName : null,
+    );
     // A warm scope never rescans on open: the watcher keeps the
     // listing fresh, and re-scanning a large vault on every tab
     // switch janked the UI even when detached (an IPC storm plus a
@@ -3235,7 +3236,7 @@ export function mountLayout(root: HTMLElement): void {
     fileBar.classList.remove("is-hidden");
     const name = imageBaseName(path);
     viewTitle.textContent = name;
-    setInlineTitle(null);
+    editor.setInlineTitle(null);
     // Like notes: warm scopes skip the rescan, cold ones refresh
     // detached (perf).
     const imageFolder = dirname(path);
@@ -3455,7 +3456,7 @@ export function mountLayout(root: HTMLElement): void {
     }
     viewTitle.textContent = "";
     fileBar.classList.add("is-hidden");
-    setInlineTitle(null);
+    editor.setInlineTitle(null);
     setCounts("");
     if (currentFolder !== null) {
       void getCurrentWindow()
@@ -3591,10 +3592,9 @@ export function mountLayout(root: HTMLElement): void {
       void getCurrentWindow()
         .setTitle(`${basename(vaultRoot ?? dirname(target))} - ${noteName}`)
         .catch(() => undefined);
-      setInlineTitle(
+      editor.setInlineTitle(
         getSettings().appearance.inlineTitle ? noteName : null,
       );
-      editor.refreshBlocks();
       if (currentMode === "read") {
         const scroll = readingView.element.scrollTop;
         readingView.render(editor.getDoc());
@@ -4380,12 +4380,14 @@ export function mountLayout(root: HTMLElement): void {
     // Before applyConfig: its dispatch rebuilds embed widgets, which
     // must pick up the new generation (e.g. showProperties changes).
     bumpEmbedGeneration();
-    setInlineTitle(
-      openedPath !== null && settings.appearance.inlineTitle
-        ? basename(openedPath).replace(/\.md$/i, "")
-        : null,
-    );
     for (const ui of paneUis.values()) {
+      // The bound pane's path lives in the alias until the next bind.
+      const path = ui.id === boundPaneId ? openedPath : ui.openedPath;
+      ui.editor.setInlineTitle(
+        path !== null && settings.appearance.inlineTitle
+          ? basename(path).replace(/\.md$/i, "")
+          : null,
+      );
       ui.editor.applyConfig(editorConfigFrom(settings));
     }
     editor.refreshBlocks();
@@ -4463,34 +4465,49 @@ export function mountLayout(root: HTMLElement): void {
       imageEl.src = convertFileSrc(openedPath) + `?v=${Date.now()}`;
       return;
     }
+    const paneId = boundPaneId;
+    const path = openedPath;
     let contents: string;
     try {
-      contents = await readFile(openedPath);
+      contents = await readFile(path);
     } catch {
       // Deleted or unreadable on disk: keep the buffer; saving recreates it.
       return;
     }
-    if (contents === editor.getDoc()) {
+    // The read yields. Meanwhile the user may have moved to another
+    // pane or tab — `editor` and `openedPath` are aliases of the
+    // bound pane, and loading this file into another note's buffer
+    // would be data loss — or typed, and local edits always win (m44).
+    if (
+      boundPaneId !== paneId ||
+      openedPath === null ||
+      !samePath(openedPath, path) ||
+      autosave.isDirty()
+    ) {
       return;
     }
-    // The reader must stay where they are: anchor in document space
-    // before the reload and re-apply after — a full-document replace
-    // (and the reading re-render) would otherwise land at the top.
-    const anchor =
-      currentMode === "edit" ? editor.topVisiblePos() : readingTopAnchor();
+    // Reading mode re-renders from scratch: anchor in document space
+    // before the reload and re-apply after. The editor needs no such
+    // help — only the differing range is replaced, and CodeMirror
+    // keeps its own scroll position through the change.
+    const anchor = currentMode === "read" ? readingTopAnchor() : null;
     reloadingFromDisk = true;
-    editor.reloadDoc(contents);
+    // False when disk and buffer already match once line endings are
+    // normalized: a CRLF note is not a changed note.
+    const changed = editor.reloadDoc(contents);
     reloadingFromDisk = false;
-    setCounts(contents);
+    if (!changed) {
+      return;
+    }
+    const doc = editor.getDoc();
+    setCounts(doc);
     if (currentMode === "read") {
-      await readingView.render(contents);
+      await readingView.render(doc);
       if (anchor !== null) {
         scrollReadingToAnchor(anchor);
       }
-    } else if (anchor !== null) {
-      scrollEditorToAnchor(anchor);
     }
-    mirrorToTwins(openedPath, contents);
+    mirrorToTwins(path, doc);
   }
 
   // The watcher fires in bursts (editors write several times); coalesce

@@ -86,12 +86,15 @@ import {
   listOutdentCommand,
 } from "./listCommands";
 import { emptyTable } from "./tableCommands";
+import { minimalChange } from "./docDiff";
 import {
   focusInlineTitle,
   focusTableCell,
+  inlineTitleField,
   livePreview,
   refreshBlockDecorations,
   requestAddProperty,
+  setInlineTitleEffect,
   sourceMode,
 } from "./livePreview";
 
@@ -603,10 +606,18 @@ export interface EditorHandle {
   /** Tears the editor down (pane closed). */
   destroy(): void;
   /**
-   * Replaces the whole document keeping undo history, cursor (clamped)
-   * and scroll — for reloading external changes from disk.
+   * Brings the document to `contents` (line endings normalized) by
+   * replacing only the range that differs — for reloading external
+   * changes from disk and mirroring another pane. Undo history, the
+   * cursor, folds and everything measured outside that range survive.
+   * Returns false when the document already matched.
    */
-  reloadDoc(contents: string): void;
+  reloadDoc(contents: string): boolean;
+  /**
+   * This editor's inline title (null hides it). Per editor: with
+   * several editors on a page each one shows its own note name.
+   */
+  setInlineTitle(text: string | null): void;
   /** Selects [from, to], scrolls it into view centered, and focuses. */
   revealRange(from: number, to: number): void;
   /** Document position of the first visible line (mode-switch anchor). */
@@ -655,6 +666,9 @@ export function createEditor(
   const sourceModeCompartment = new Compartment();
   // Per-tab, not a setting: survives setDoc rebuilds via buildState.
   let currentSourceMode = false;
+  // Likewise the inline title. Undefined until the host sets one: the
+  // editor then follows the module-level default.
+  let currentInlineTitle: string | null | undefined = undefined;
 
   function lineNumbersExtension(c: EditorConfig) {
     return c.showLineNumbers
@@ -931,6 +945,7 @@ export function createEditor(
           },
         }),
         sourceModeCompartment.of(sourceMode.of(currentSourceMode)),
+        inlineTitleField.init(() => currentInlineTitle),
         EditorView.lineWrapping,
         // Scroll past end lives inside CodeMirror's height model. The
         // CSS it replaces (padding-bottom in vh units) changed the
@@ -1087,13 +1102,26 @@ export function createEditor(
       document.removeEventListener("visibilitychange", onVisible);
       view.destroy();
     },
-    reloadDoc(contents: string): void {
-      const head = Math.min(view.state.selection.main.head, contents.length);
+    reloadDoc(contents: string): boolean {
+      // Only the differing range: a whole-document replace discards
+      // the syntax tree and every measured height, which left tables
+      // raw and made the text jump (m44). The selection is mapped
+      // through the change by CodeMirror.
+      const change = minimalChange(view.state.doc.toString(), contents);
+      if (change === null) {
+        return false;
+      }
       view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: contents },
-        selection: { anchor: head },
+        changes: change,
         annotations: quietReload.of(true),
       });
+      return true;
+    },
+    setInlineTitle(text: string | null): void {
+      currentInlineTitle = text;
+      if (view.state.field(inlineTitleField, false) !== text) {
+        view.dispatch({ effects: setInlineTitleEffect.of(text) });
+      }
     },
     revealRange(from: number, to: number): void {
       const length = view.state.doc.length;

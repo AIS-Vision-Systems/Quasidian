@@ -25,6 +25,7 @@ export {
   sourceMode,
   type LivePreviewHooks,
 } from "./editor/livePreview";
+export { minimalChange, normalizeLineEndings, type DocChange } from "./editor/docDiff";
 export { cachedImageSize, cacheImageSize } from "./editor/imageSizeCache";
 export {
   initialResizeAnchor,

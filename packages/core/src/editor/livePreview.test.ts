@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { markdownExtensions } from "../markdown/parser";
@@ -16,7 +16,12 @@ import {
   computeMathRanges,
   computeNoteEmbeds,
   computeTaskMarkers,
+  blockRebuildNeeded,
   buildBlockDecorations,
+  inlineTitleField,
+  refreshBlockDecorations,
+  setInlineTitle,
+  setInlineTitleEffect,
   estimatedImageHeight,
   getEmbedHtml,
   setEmbedHtml,
@@ -718,5 +723,138 @@ describe("source mode (m38) — every token visible, no widgets", () => {
     expect(
       computeHiddenRanges(state, 0, doc.length).length,
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("block decorations beyond the initially parsed prefix (m44)", () => {
+  // A new state parses only its first ~3000 characters; the rest of
+  // the tree arrives later from the background parser. No test here
+  // pre-parses the document: that is the bug being pinned down.
+  const filler = "Paràgraf de farciment amb prou text per omplir.\n\n".repeat(200);
+  const table = "| a | b |\n| --- | --- |\n| 1 | 2 |\n";
+  const math = "$$\nx^2\n$$\n";
+
+  function freshState(doc: string): EditorState {
+    return EditorState.create({
+      doc,
+      // Cursor at the start: away from every block under test.
+      selection: EditorSelection.single(0),
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+      ],
+    });
+  }
+
+  it("the frozen tree of a fresh state really is partial", () => {
+    const doc = filler + table;
+    expect(filler.length).toBeGreaterThan(3000);
+    expect(syntaxTree(freshState(doc)).length).toBeLessThan(doc.length);
+  });
+
+  it("replaces a table that sits after more than 3000 characters", () => {
+    expect(buildBlockDecorations(freshState(filler + table)).size).toBe(1);
+  });
+
+  it("replaces a multi-line math block after more than 3000 characters", () => {
+    expect(buildBlockDecorations(freshState(filler + math)).size).toBe(1);
+  });
+
+  it("replaces both, in document order", () => {
+    const doc = filler + table + "\n" + math;
+    expect(buildBlockDecorations(freshState(doc)).size).toBe(2);
+  });
+});
+
+describe("blockRebuildNeeded (m44)", () => {
+  function state(doc: string): EditorState {
+    return EditorState.create({
+      doc,
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+        inlineTitleField,
+      ],
+    });
+  }
+
+  it("rebuilds on document and selection changes", () => {
+    const start = state("text");
+    expect(
+      blockRebuildNeeded(start.update({ changes: { from: 0, insert: "x" } })),
+    ).toBe(true);
+    expect(blockRebuildNeeded(start.update({ selection: { anchor: 2 } }))).toBe(
+      true,
+    );
+  });
+
+  it("rebuilds on the refresh and inline-title effects", () => {
+    const start = state("text");
+    expect(
+      blockRebuildNeeded(
+        start.update({ effects: refreshBlockDecorations.of(null) }),
+      ),
+    ).toBe(true);
+    expect(
+      blockRebuildNeeded(start.update({ effects: setInlineTitleEffect.of("N") })),
+    ).toBe(true);
+  });
+
+  it("does not rebuild on a transaction that changes nothing", () => {
+    const start = state("text");
+    ensureSyntaxTree(start, start.doc.length, 5000);
+    // Settle the language state on the completed tree first.
+    const settled = start.update({}).state;
+    expect(blockRebuildNeeded(settled.update({}))).toBe(false);
+  });
+
+  it("rebuilds when the syntax tree advances behind the state", () => {
+    const filler = "Paràgraf de farciment amb prou text per omplir.\n\n".repeat(200);
+    const start = state(filler + "| a | b |\n| --- | --- |\n| 1 | 2 |\n");
+    const before = syntaxTree(start);
+    // The parser finishes in place, as the background worker does…
+    ensureSyntaxTree(start, start.doc.length, 5000);
+    // …and the next transaction, although empty, carries a new tree.
+    const tr = start.update({});
+    expect(syntaxTree(tr.state)).not.toBe(before);
+    expect(blockRebuildNeeded(tr)).toBe(true);
+  });
+});
+
+describe("inline title — per-editor state (m44)", () => {
+  function state(initial?: string | null): EditorState {
+    return EditorState.create({
+      doc: "text",
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+        initial === undefined
+          ? inlineTitleField
+          : inlineTitleField.init(() => initial),
+      ],
+    });
+  }
+
+  it("shows the title held by each state, not a shared one", () => {
+    const a = state("Nota A");
+    const b = state(null);
+    expect(buildBlockDecorations(a).size).toBe(1);
+    expect(buildBlockDecorations(b).size).toBe(0);
+    // Changing one editor leaves the other untouched.
+    const b2 = b.update({ effects: setInlineTitleEffect.of("Nota B") }).state;
+    expect(buildBlockDecorations(b2).size).toBe(1);
+    const a2 = a.update({ effects: setInlineTitleEffect.of(null) }).state;
+    expect(buildBlockDecorations(a2).size).toBe(0);
+    expect(buildBlockDecorations(a).size).toBe(1);
+  });
+
+  it("an editor that never set its own title follows the module default", () => {
+    const follower = state();
+    setInlineTitle("Per defecte");
+    try {
+      expect(buildBlockDecorations(follower).size).toBe(1);
+      // An editor with its own value ignores the default.
+      expect(buildBlockDecorations(state(null)).size).toBe(0);
+    } finally {
+      setInlineTitle(null);
+    }
+    expect(buildBlockDecorations(follower).size).toBe(0);
   });
 });
