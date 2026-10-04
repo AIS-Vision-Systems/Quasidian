@@ -25,7 +25,7 @@ If the folder — or an ancestor — holds a project marker (`CLAUDE.md`, `.clau
 - Right-click a link or an embedded image: "Rename…" renames the linked file and updates every link that points to it.
 - **Preview**: hover a link in reading mode (or `Ctrl`+hover while editing) to see its content in a popup.
 - `![[note]]` embeds another note's content (also `![[note#section]]` and images `![[image.png|500]]`).
-- **Paste an image** (`Ctrl+V`) or **drag files in** from your system, in editing mode: notes and images are copied into the note's folder — never overwriting anything — and embedded with `![[file]]` where you drop them. A file that already lives in the folder or vault is only embedded.
+- **Paste an image** (`Ctrl+V`) or **drag files in** from your system, or an image from a web browser, in editing mode: notes and images are copied into the note's folder — never overwriting anything — and embedded with `![[file]]` where you drop them. To embed a file that is already in the vault without copying it, drag it from the file list.
 
 ## Properties
 
