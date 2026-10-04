@@ -16,6 +16,24 @@ describe("extractLinkTargets", () => {
     ).toEqual(["nota.md"]);
   });
 
+  it("collects markdown link targets as the string a click resolves (m47)", () => {
+    // Spaces, angle brackets and percent-escapes all name the same note.
+    expect(
+      extractLinkTargets(
+        "[a](La nota.md#Una secció) [b](<La nota.md>) [c](La%20nota.md)",
+      ),
+    ).toEqual(["La nota.md#Una secció", "La nota.md", "La nota.md"]);
+  });
+
+  it("treats a Windows drive path as a note target, like a click does (m47)", () => {
+    // A single letter before the colon is a drive, not a URL scheme.
+    expect(extractLinkTargets("[a](C:/notes/x.md)")).toEqual(["C:/notes/x.md"]);
+  });
+
+  it("ignores an external link in angle brackets (m47)", () => {
+    expect(extractLinkTargets("[web](<https://exemple.cat/a b>)")).toEqual([]);
+  });
+
   it("finds links nested in headings and emphasis", () => {
     expect(extractLinkTargets("# Títol [[a]]\n**[[b]]**")).toEqual(["a", "b"]);
   });

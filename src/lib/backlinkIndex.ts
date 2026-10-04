@@ -2,14 +2,16 @@
 // folder — built on folder open, kept fresh by the file watcher. Raw link
 // targets are stored per file and resolved at query time with the current
 // folder listing, so renames and creations never leave stale resolutions.
-import { markdownParser } from "@aisvision/quasidian-core";
+import { linkDestination, markdownParser } from "@aisvision/quasidian-core";
 import { normalizePath } from "./paths";
 import { createWikilinkResolver, type FolderFile } from "./wikilinks";
 
 /**
  * Collects link targets from a document using the shared Lezer tree:
- * wikilink paths and internal markdown link URLs (external schemes are
- * ignored). Links inside code blocks produce no nodes, so none leak in.
+ * wikilink paths and internal markdown link destinations, as the
+ * string a click resolves — angle brackets removed, percent-escapes
+ * decoded (external schemes are ignored). Links inside code blocks
+ * produce no nodes, so none leak in.
  */
 export function extractLinkTargets(doc: string): string[] {
   const tree = markdownParser.parse(doc);
@@ -26,9 +28,9 @@ export function extractLinkTargets(doc: string): string[] {
       if (node.name === "Link") {
         const url = node.node.getChild("URL");
         if (url !== null) {
-          const target = doc.slice(url.from, url.to);
-          if (!/^[a-z][a-z0-9+.-]*:/i.test(target)) {
-            targets.push(target);
+          const destination = linkDestination(doc.slice(url.from, url.to));
+          if (!destination.external) {
+            targets.push(destination.target);
           }
         }
         return false;
