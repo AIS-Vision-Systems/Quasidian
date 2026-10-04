@@ -555,8 +555,9 @@ body.is-pointer-dragging * {
   scrollbar-width: none;
 }
 
-/* Tabs shrink when the strip runs out of room, down to a minimum
-   (m49); past that the strip scrolls. The active tab keeps its size. */
+/* Tabs shrink when the strip runs out of room (m49), all of them, down
+   to a single letter — the active one down to its close button. Only
+   past that does the strip scroll. */
 .workspace-tab {
   position: relative;
   display: inline-flex;
@@ -566,7 +567,8 @@ body.is-pointer-dragging * {
      included (200px is the old 180px of content plus its padding). */
   box-sizing: border-box;
   flex: 0 1 auto;
-  min-width: 64px;
+  /* One letter plus the padding. */
+  min-width: calc(1em + 24px);
   max-width: 200px;
   overflow: hidden;
   padding: 5px 8px 5px 12px;
@@ -594,7 +596,10 @@ body.is-pointer-dragging * {
 }
 
 .workspace-tab.is-active {
-  flex-shrink: 0;
+  /* Gives way more slowly than the others, and stops at its close
+     button: the name may vanish, the way to close the tab may not. */
+  flex-shrink: 0.5;
+  min-width: 44px;
   background-color: var(--background-primary);
   color: var(--text-normal);
 }
@@ -608,6 +613,17 @@ body.is-pointer-dragging * {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Too narrow for an ellipsis, which would take the room of the only
+   letters left: the name is simply cut (the class is set from the
+   measured width, see markNarrowTabs). */
+.workspace-tab.is-narrow .workspace-tab-name {
+  text-overflow: clip;
+}
+
+.workspace-tab.is-active .workspace-tab-close {
+  flex-shrink: 0;
 }
 
 .workspace-tab-close {

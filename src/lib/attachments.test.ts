@@ -3,11 +3,11 @@ import {
   embedTargetFor,
   embedText,
   extensionForMime,
+  importedFileName,
   isAdmittedFile,
   isGenericClipboardName,
   nameTakenIn,
   pastedImageName,
-  toClientPoint,
   uniqueName,
 } from "./attachments";
 import type { FolderFile } from "./wikilinks";
@@ -88,6 +88,41 @@ describe("pastedImageName", () => {
   });
 });
 
+describe("importedFileName", () => {
+  const date = new Date(2026, 9, 4, 15, 30, 12);
+  const name = (file: string, mime: string): string | null =>
+    importedFileName(file, mime, "Imatge enganxada", date);
+
+  it("keeps the name of a file the user named", () => {
+    expect(name("diagrama.png", "image/png")).toBe("diagrama.png");
+    expect(name("Nota vella.md", "")).toBe("Nota vella.md");
+    expect(name("foto.JPG", "image/jpeg")).toBe("foto.JPG");
+  });
+
+  it("names a screenshot by the moment it was pasted", () => {
+    expect(name("image.png", "image/png")).toBe(
+      "Imatge enganxada 20261004153012.png",
+    );
+    expect(name("", "image/jpeg")).toBe("Imatge enganxada 20261004153012.jpg");
+  });
+
+  it("gives an image with no usable extension the one of its type", () => {
+    // Dragged out of a web page: "download", "unnamed", a query string…
+    expect(name("download", "image/webp")).toBe(
+      "Imatge enganxada 20261004153012.webp",
+    );
+    expect(name("foto.php?id=3", "image/png")).toBe(
+      "Imatge enganxada 20261004153012.png",
+    );
+  });
+
+  it("is null for anything that is neither a note nor an image", () => {
+    expect(name("informe.pdf", "application/pdf")).toBeNull();
+    expect(name("dades.csv", "text/csv")).toBeNull();
+    expect(name("sense-res", "")).toBeNull();
+  });
+});
+
 describe("uniqueName", () => {
   it("keeps a free name", () => {
     expect(uniqueName("foto.png", () => false)).toBe("foto.png");
@@ -127,20 +162,6 @@ describe("nameTakenIn", () => {
     expect(
       uniqueName("foto.png", (name) => nameTakenIn("C:/vault/docs", name, paths)),
     ).toBe("foto 1.png");
-  });
-});
-
-describe("toClientPoint", () => {
-  it("divides physical pixels by the device pixel ratio", () => {
-    expect(toClientPoint({ x: 300, y: 150 }, 1.5)).toEqual({ x: 200, y: 100 });
-    expect(toClientPoint({ x: 300, y: 150 }, 1)).toEqual({ x: 300, y: 150 });
-    expect(toClientPoint({ x: 300, y: 150 }, 2)).toEqual({ x: 150, y: 75 });
-  });
-
-  it("leaves the point alone on a nonsensical scale", () => {
-    for (const scale of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(toClientPoint({ x: 300, y: 150 }, scale)).toEqual({ x: 300, y: 150 });
-    }
   });
 });
 
