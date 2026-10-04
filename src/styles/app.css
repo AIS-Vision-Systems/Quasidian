@@ -1,5 +1,14 @@
 /* App chrome. Component styles for the editor core's DOM live in
    @aisvision/quasidian-core/core.css — loaded before this file. */
+/* Text of the panels and of every bar: one size and one line height
+   (m48). The size follows the "interface font size" setting; the
+   editor keeps its own (--font-text-size). Defined here, not in the
+   core theme: the embeddable core has no panels. */
+:root {
+  --font-ui-size: 16px;
+  --line-height-ui: 1.3;
+}
+
 html,
 body {
   height: 100%;
@@ -49,6 +58,8 @@ body {
   padding: 12px;
   background-color: var(--background-secondary);
   border-right: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-size);
+  line-height: var(--line-height-ui);
   overflow-y: hidden;
   /* Same shrinkability as .backlinks-panel: the row must never grow
      with the file list. */
@@ -63,7 +74,7 @@ body {
 .file-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -71,11 +82,11 @@ body {
 
 .file-list-empty {
   color: var(--text-faint);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
 }
 
 .file-item {
-  padding: 4px 8px;
+  padding: 2px 8px;
   border-radius: 4px;
   color: var(--text-muted);
   cursor: pointer;
@@ -180,7 +191,7 @@ body {
   justify-content: space-between;
   align-items: center;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -215,7 +226,7 @@ button:focus-visible {
   border-radius: 4px;
   color: var(--text-normal);
   font-family: var(--font-interface);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
   outline: none;
   -webkit-user-select: text;
   user-select: text;
@@ -231,7 +242,7 @@ button:focus-visible {
 
 .search-status {
   color: var(--text-faint);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
 }
 
 .search-results {
@@ -248,7 +259,7 @@ button:focus-visible {
   padding: 2px 4px;
   border-radius: 4px;
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
   font-weight: 600;
   cursor: pointer;
 }
@@ -270,7 +281,7 @@ button:focus-visible {
   padding: 2px 6px;
   border-radius: 4px;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -302,7 +313,7 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 2px 8px;
   border-radius: 4px;
   color: var(--text-muted);
   font-weight: 600;
@@ -334,7 +345,7 @@ button:focus-visible {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   border-left: 1px solid var(--background-modifier-border);
   margin-left: 14px;
 }
@@ -351,6 +362,8 @@ button:focus-visible {
   padding: 12px;
   background-color: var(--background-secondary);
   border-left: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-size);
+  line-height: var(--line-height-ui);
   overflow-y: hidden;
   /* Grid items default to min-height auto: enough backlinks would
      inflate the row past the viewport and the inner list could never
@@ -367,7 +380,7 @@ button:focus-visible {
   align-items: center;
   gap: 8px;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
 }
 
 .right-panel-views {
@@ -389,7 +402,7 @@ button:focus-visible {
 }
 
 .outline-item {
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
 }
 
 .backlinks-count {
@@ -399,7 +412,7 @@ button:focus-visible {
 .backlinks-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -419,7 +432,7 @@ button:focus-visible {
 
 .backlinks-empty {
   color: var(--text-faint);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
 }
 
 /* --- Main area --- */
@@ -506,7 +519,8 @@ button:focus-visible {
   padding: 5px 8px 5px 12px;
   border-radius: 6px 6px 0 0;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
+  line-height: var(--line-height-ui);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -607,7 +621,7 @@ button:focus-visible {
   transform: translateX(-50%);
   max-width: 55%;
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -957,7 +971,8 @@ button:focus-visible {
   background-color: var(--background-secondary);
   border-top: 1px solid var(--background-modifier-border);
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
+  line-height: var(--line-height-ui);
 }
 
 .status-bar-error {
@@ -993,7 +1008,7 @@ button:focus-visible {
   border: none;
   color: var(--interactive-accent);
   font-family: var(--font-interface);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
   cursor: pointer;
 }
 
@@ -1059,7 +1074,7 @@ button:focus-visible {
   border: none;
   color: var(--text-muted);
   font-family: var(--font-interface);
-  font-size: var(--font-ui-small);
+  font-size: var(--font-ui-size);
   cursor: pointer;
 }
 

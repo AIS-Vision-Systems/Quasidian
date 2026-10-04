@@ -51,6 +51,10 @@ export function applyAppearance(settings: Settings): void {
       : "var(--font-interface)",
   );
   root.style.setProperty("--font-text-size", `${appearance.fontSize}px`);
+  root.style.setProperty(
+    "--font-ui-size",
+    `${appearance.interfaceFontSize}px`,
+  );
   document.body.classList.toggle(
     "is-readable-line-length",
     appearance.readableLineLength,
