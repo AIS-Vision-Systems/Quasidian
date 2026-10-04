@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderToHtml } from "./render";
+import { renderTableCells, renderToHtml } from "./render";
 
 describe("renderToHtml — blocks", () => {
   it("renders headings without marks, with their document position", () => {
@@ -352,5 +352,83 @@ describe("renderToHtml — safety", () => {
     expect(renderToHtml("**b**")).not.toContain("*");
     expect(renderToHtml("# t")).not.toContain("#");
     expect(renderToHtml("[[n]]")).not.toContain("[[");
+  });
+});
+
+describe("renderTableCells — the cells of the Live Preview table (m46)", () => {
+  const formatted = [
+    "| **fort** | *suau* | `codi` | ==marca== | ~~fora~~ |",
+    "| --- | --- | --- | --- | --- |",
+    "| [[Nota]] | [web](https://exemple.cat) | $x^2$ | a \\| b |  |",
+    "| ![[img.png]] | [n](La%20nota.md) |",
+  ].join("\n");
+
+  it("renders inline formatting in the header cells", () => {
+    expect(renderTableCells(formatted)?.[0]).toEqual([
+      "<strong>fort</strong>",
+      "<em>suau</em>",
+      "<code>codi</code>",
+      "<mark>marca</mark>",
+      "<del>fora</del>",
+    ]);
+  });
+
+  it("renders links, math, escaped pipes and empty cells in the body", () => {
+    expect(renderTableCells(formatted)?.[1]).toEqual([
+      '<a class="internal-link" data-target="Nota">Nota</a>',
+      '<a class="external-link" href="https://exemple.cat">web</a>',
+      '<span class="math-inline" data-tex="x^2">x^2</span>',
+      "a | b",
+      "",
+    ]);
+  });
+
+  it("keeps short rows short: only the cells the source has", () => {
+    expect(renderTableCells(formatted)?.[2]).toEqual([
+      '<img class="internal-embed" data-target="img.png" alt="img.png">',
+      '<a class="internal-link" data-target="La nota.md">n</a>',
+    ]);
+  });
+
+  it("leaves the delimiter row out: header first, then the body rows", () => {
+    expect(renderTableCells("| a |\n| --- |\n| b |\n| c |")).toEqual([
+      ["a"],
+      ["b"],
+      ["c"],
+    ]);
+    expect(renderTableCells("| a |\n| --- |")).toEqual([["a"]]);
+  });
+
+  it("escapes raw HTML in a cell, like the rest of the render", () => {
+    expect(renderTableCells("| <b>x</b> |\n| --- |")?.[0]).toEqual([
+      "&lt;b&gt;x&lt;/b&gt;",
+    ]);
+  });
+
+  it("is null when the source holds no table", () => {
+    expect(renderTableCells("només text")).toBeNull();
+    expect(renderTableCells("")).toBeNull();
+  });
+
+  it("is exactly what reading mode puts inside each cell", () => {
+    // The two modes share one code path: every cell of the widget
+    // must appear verbatim, in order, in the reading-mode table.
+    const html = renderToHtml(formatted);
+    const rows = renderTableCells(formatted);
+    expect(rows).not.toBeNull();
+    const [header, ...body] = rows!;
+    expect(html).toContain(
+      "<thead><tr>" + header.map((cell) => "<th>" + cell + "</th>").join("") + "</tr></thead>",
+    );
+    expect(html).toContain(
+      "<tbody>" +
+        body
+          .map(
+            (cells) =>
+              "<tr>" + cells.map((cell) => "<td>" + cell + "</td>").join("") + "</tr>",
+          )
+          .join("") +
+        "</tbody>",
+    );
   });
 });

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyCellEdit,
   applyTableOp,
   emptyTable,
   parseTableSource,
+  sanitizeCell,
   serializeTable,
   type TableOp,
 } from "./tableCommands";
@@ -99,5 +101,59 @@ describe("applyTableOp", () => {
     expect(serializeTable(desc)).toBe(
       "| n |\n| --- |\n| b2 |\n| a10 |\n| a2 |",
     );
+  });
+});
+
+describe("sanitizeCell — a cell edit can never break the table (m46)", () => {
+  it("escapes bare pipes", () => {
+    expect(sanitizeCell("a | b")).toBe("a \\| b");
+  });
+
+  it("does not escape a pipe twice", () => {
+    expect(sanitizeCell("a \\| b")).toBe("a \\| b");
+  });
+
+  it("flattens line breaks and trims", () => {
+    expect(sanitizeCell("  dues\nlínies\r\nmés  ")).toBe("dues línies més");
+  });
+
+  it("leaves inline markdown alone", () => {
+    expect(sanitizeCell("**fort** i [[Nota]]")).toBe("**fort** i [[Nota]]");
+  });
+});
+
+describe("applyCellEdit (m46)", () => {
+  const data = parseTableSource(SOURCE)!;
+
+  it("replaces one cell and nothing else", () => {
+    const next = applyCellEdit(data, 2, 1, "**nou**");
+    expect(serializeTable(next)).toBe(
+      "| a | b |\n| --- | ---: |\n| c | **nou** |\n| e | f |",
+    );
+    // The original is never mutated.
+    expect(serializeTable(data)).toBe(SOURCE);
+  });
+
+  it("edits the header row too", () => {
+    expect(serializeTable(applyCellEdit(data, 0, 0, "cap"))).toBe(
+      "| cap | b |\n| --- | ---: |\n| c | d |\n| e | f |",
+    );
+  });
+
+  it("sanitizes the text it writes", () => {
+    expect(applyCellEdit(data, 2, 0, " x | y\n").rows[2][0]).toBe("x \\| y");
+  });
+
+  it("returns the very same object when nothing changes", () => {
+    expect(applyCellEdit(data, 2, 0, "c")).toBe(data);
+    // Only whitespace differs: still nothing to write.
+    expect(applyCellEdit(data, 2, 0, "  c  ")).toBe(data);
+  });
+
+  it("never touches the delimiter row or a cell that does not exist", () => {
+    expect(applyCellEdit(data, 1, 0, "x")).toBe(data);
+    expect(applyCellEdit(data, 9, 0, "x")).toBe(data);
+    expect(applyCellEdit(data, 2, 9, "x")).toBe(data);
+    expect(applyCellEdit(data, -1, 0, "x")).toBe(data);
   });
 });

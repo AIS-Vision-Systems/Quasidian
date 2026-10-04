@@ -264,15 +264,13 @@ export function tableAlignments(
     });
 }
 
-function renderTableRow(
-  row: SyntaxNode,
-  cellTag: "th" | "td",
-  doc: string,
-  out: string[],
-  alignments: ("left" | "center" | "right" | null)[],
-): void {
-  // Empty cells produce no TableCell node, so the pipes in the source
-  // drive the row's shape and each span is matched to its node (if any).
+/**
+ * The cell node of every column of a table row, null for an empty
+ * cell. Empty cells produce no TableCell node, so the pipes in the
+ * source drive the row's shape and each span is matched to its node
+ * (if any).
+ */
+function tableRowCells(row: SyntaxNode, doc: string): (SyntaxNode | null)[] {
   const text = doc.slice(row.from, row.to);
   const pipes: number[] = [];
   for (let i = 0; i < text.length; i++) {
@@ -305,25 +303,82 @@ function renderTableRow(
       cells.push(cell);
     }
   }
+  return spans.map(
+    (span) =>
+      cells.find(
+        (candidate) =>
+          candidate.from >= row.from + span.from &&
+          candidate.to <= row.from + span.to,
+      ) ?? null,
+  );
+}
+
+function renderTableRow(
+  row: SyntaxNode,
+  cellTag: "th" | "td",
+  doc: string,
+  out: string[],
+  alignments: ("left" | "center" | "right" | null)[],
+): void {
   out.push("<tr>");
-  spans.forEach((span, column) => {
+  tableRowCells(row, doc).forEach((cell, column) => {
     const alignment = alignments[column] ?? null;
     out.push(
       alignment === null
         ? `<${cellTag}>`
         : `<${cellTag} style="text-align:${alignment}">`,
     );
-    const cell = cells.find(
-      (candidate) =>
-        candidate.from >= row.from + span.from &&
-        candidate.to <= row.from + span.to,
-    );
-    if (cell !== undefined) {
+    if (cell !== null) {
       renderInline(cell, cell.from, cell.to, doc, out);
     }
     out.push(`</${cellTag}>`);
   });
   out.push("</tr>");
+}
+
+/**
+ * The inline HTML of every cell of a table, given the table's source
+ * alone: the header row first, then the body rows (the delimiter row
+ * is not a row here). Exactly what reading mode puts inside each
+ * <th>/<td> — the Live Preview table widget shows it in the cells
+ * that are not being edited, so the two modes cannot diverge (m46).
+ * Null when the source holds no table. Footnote references inside a
+ * cell are numbered per document, which a lone table does not know.
+ */
+export function renderTableCells(source: string): string[][] | null {
+  const found: SyntaxNode[] = [];
+  markdownParser.parse(source).iterate({
+    enter(node) {
+      if (found.length > 0) {
+        return false;
+      }
+      if (node.name === "Table") {
+        found.push(node.node);
+        return false;
+      }
+      return;
+    },
+  });
+  const table = found[0];
+  if (table === undefined) {
+    return null;
+  }
+  footnoteNumbers = new Map();
+  inlineNoteNumbers = new Map();
+  const cellsOf = (row: SyntaxNode): string[] =>
+    tableRowCells(row, source).map((cell) => {
+      if (cell === null) {
+        return "";
+      }
+      const out: string[] = [];
+      renderInline(cell, cell.from, cell.to, source, out);
+      return out.join("");
+    });
+  const header = table.getChild("TableHeader");
+  return [
+    header === null ? [] : cellsOf(header),
+    ...table.getChildren("TableRow").map(cellsOf),
+  ];
 }
 
 /** Renders `> [!type] Títol` blockquotes as callout boxes. */

@@ -94,6 +94,39 @@ export function parseTableSource(source: string): TableData | null {
   return { rows, alignments };
 }
 
+/** Escapes pipes and newlines so a cell edit can't break the table. */
+export function sanitizeCell(text: string): string {
+  return text.replace(/\r?\n/g, " ").replace(/\\?\|/g, "\\|").trim();
+}
+
+/**
+ * The table with one cell's text replaced (sanitized first). Returns
+ * the very same object when nothing changes — callers compare by
+ * identity to know whether there is anything to write — and for the
+ * delimiter row or a cell that does not exist.
+ */
+export function applyCellEdit(
+  data: TableData,
+  row: number,
+  column: number,
+  text: string,
+): TableData {
+  const current = data.rows[row]?.[column];
+  if (row === 1 || current === undefined) {
+    return data;
+  }
+  const next = sanitizeCell(text);
+  if (next === current) {
+    return data;
+  }
+  return {
+    rows: data.rows.map((cells, r) =>
+      r === row ? cells.map((value, c) => (c === column ? next : value)) : cells,
+    ),
+    alignments: data.alignments,
+  };
+}
+
 function delimiterCell(alignment: ColumnAlignment): string {
   switch (alignment) {
     case "left":
