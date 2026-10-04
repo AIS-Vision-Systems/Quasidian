@@ -681,6 +681,17 @@ body.is-readable-line-length .cm-editor .cm-content {
   background: none;
 }
 
+/* Where a file dragged over the editor will be inserted (m51). */
+.cm-pointer-drop-cursor {
+  display: inline-block;
+  width: 0;
+  height: 1.2em;
+  margin: 0 -1px;
+  border-left: 2px solid var(--interactive-accent);
+  vertical-align: text-bottom;
+  pointer-events: none;
+}
+
 /* --- Interactive table editor (Live Preview widget) --- */
 
 .table-editor td[contenteditable],

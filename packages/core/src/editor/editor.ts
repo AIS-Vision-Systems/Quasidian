@@ -87,6 +87,8 @@ import {
 } from "./listCommands";
 import { emptyTable } from "./tableCommands";
 import { minimalChange } from "./docDiff";
+import { dropCursorField, setDropCursorPos } from "./dropCursor";
+import { insertionAt } from "./insertPoint";
 import { linkAt, type LinkAt, type LinkMenuTarget } from "./linkAt";
 import {
   focusInlineTitle,
@@ -500,6 +502,14 @@ export interface EditorHooks {
    * say. They lead the text menu; an empty list adds nothing.
    */
   linkMenuItems?(link: LinkMenuTarget): MenuEntry[];
+  /**
+   * Files pasted into the editor (m51): an image from the clipboard,
+   * or files copied in the system's file manager. Only asked when the
+   * clipboard carries files and no text — text always wins. Return
+   * true to take the paste; the host stores the files and inserts
+   * what points at them (see `insertAtPoint`).
+   */
+  onPasteFiles?(files: File[]): boolean;
 }
 
 function wikilinkCompletionSource(hooks: EditorHooks) {
@@ -637,6 +647,30 @@ export interface EditorHandle {
   addProperty(): void;
   /** Inserts an empty table at the cursor (palette command). */
   insertTable(): void;
+  /**
+   * Inserts `text` at a point of the screen (client pixels) — where a
+   * dragged file is dropped — or at the cursor when `point` is null.
+   * A point over the frontmatter or a table inserts right after that
+   * block. Returns the position it went in, or null when the point
+   * is not over this editor.
+   */
+  insertAtPoint(text: string, point: { x: number; y: number } | null): number | null;
+  /**
+   * Document position under a point of the screen, or null when the
+   * point is not over this editor. For a drop that is finished later:
+   * resolve the position at once and pass it to `insertAt`.
+   */
+  posAtPoint(point: { x: number; y: number }): number | null;
+  /**
+   * Inserts `text` at a document position (clamped), or at the cursor
+   * when `pos` is null, with the same care for frontmatter and tables
+   * as `insertAtPoint`. Returns the position it went in.
+   */
+  insertAt(text: string, pos: number | null): number;
+  /**
+   * Shows where a drop at `point` would insert; null hides the cursor.
+   */
+  setDropCursor(point: { x: number; y: number } | null): void;
 }
 
 export function createEditor(
@@ -849,6 +883,26 @@ export function createEditor(
             openEditorMenu(view, event.clientX, event.clientY, linkItems);
             return true;
           },
+          // Pasted files (m51) go to the host. Text always wins: an
+          // office suite also puts a picture of what was copied on the
+          // clipboard, and pasting that instead of the text would be
+          // wrong.
+          paste(event) {
+            const data = event.clipboardData;
+            if (
+              hooks.onPasteFiles === undefined ||
+              data === null ||
+              data.files.length === 0 ||
+              data.getData("text/plain") !== ""
+            ) {
+              return false;
+            }
+            if (!hooks.onPasteFiles([...data.files])) {
+              return false;
+            }
+            event.preventDefault();
+            return true;
+          },
           // Ctrl+hover over a wikilink previews the linked note/section.
           mousemove(event, view) {
             if (!(event.ctrlKey || event.metaKey)) {
@@ -953,6 +1007,7 @@ export function createEditor(
         }),
         sourceModeCompartment.of(sourceMode.of(currentSourceMode)),
         inlineTitleField.init(() => currentInlineTitle),
+        dropCursorField,
         EditorView.lineWrapping,
         // Scroll past end lives inside CodeMirror's height model. The
         // CSS it replaces (padding-bottom in vh units) changed the
@@ -976,6 +1031,41 @@ export function createEditor(
   // KaTeX/monospace fonts load once after startup and change glyph
   // metrics; remeasure so line geometry stays exact.
   void document.fonts.ready.then(() => view.requestMeasure());
+
+  /**
+   * Document position under a point of the screen, or null when the
+   * point is outside this editor. Inside it, the nearest position
+   * counts: a drop in the margin or between two lines still lands.
+   */
+  function posAtPoint(point: { x: number; y: number }): number | null {
+    const box = view.scrollDOM.getBoundingClientRect();
+    if (
+      point.x < box.left ||
+      point.x > box.right ||
+      point.y < box.top ||
+      point.y > box.bottom
+    ) {
+      return null;
+    }
+    return view.posAtCoords(point, false);
+  }
+
+  /** Inserts at a position (or at the cursor), clear of widget blocks. */
+  function insertText(text: string, pos: number | null): number {
+    const insertion = insertionAt(
+      view.state,
+      pos ?? view.state.selection.main.head,
+      text,
+    );
+    view.dispatch({
+      changes: { from: insertion.from, insert: insertion.insert },
+      selection: { anchor: insertion.from + insertion.insert.length },
+      effects: setDropCursorPos.of(null),
+      scrollIntoView: pos === null,
+    });
+    view.focus();
+    return insertion.from;
+  }
 
   function topVisiblePos(): number {
     // Height-based, not coordinate-based: posAtCoords needs a point
@@ -1123,6 +1213,23 @@ export function createEditor(
         annotations: quietReload.of(true),
       });
       return true;
+    },
+    insertAtPoint(text, point): number | null {
+      if (point === null) {
+        return insertText(text, null);
+      }
+      const pos = posAtPoint(point);
+      return pos === null ? null : insertText(text, pos);
+    },
+    posAtPoint,
+    insertAt: insertText,
+    setDropCursor(point): void {
+      const at = point === null ? null : posAtPoint(point);
+      // The cursor sits where the text would really go in.
+      const pos = at === null ? null : insertionAt(view.state, at, "").from;
+      if (view.state.field(dropCursorField, false) !== pos) {
+        view.dispatch({ effects: setDropCursorPos.of(pos) });
+      }
     },
     setInlineTitle(text: string | null): void {
       currentInlineTitle = text;
