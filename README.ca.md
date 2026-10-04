@@ -10,6 +10,7 @@ Editor d'escriptori de markdown minimalista que imita l'aspecte i el comportamen
 - **Mode de lectura** (Ctrl+E) — HTML renderitzat des del mateix arbre de parseig que fa servir l'editor; les caselles de tasques continuen sent clicables.
 - **Wikilinks i backlinks** — `[[enllaços]]` amb autocompleció, resolts contra la carpeta del fitxer obert.
 - **Carpeta = vault** — sense configuració, sense base de dades, sense fitxers d'índex escrits a les teves notes. Obre un fitxer markdown i la seva carpeta esdevé l'espai de treball.
+- **Imatges enganxant o arrossegant** — es desen al costat de la nota i s'incrusten on les deixes anar.
 - **Cerca global** a la carpeta, mantinguda al dia per un vigilant de fitxers.
 - **Matemàtiques** renderitzades amb KaTeX.
 - **Interfície trilingüe** — English, Català, Español.

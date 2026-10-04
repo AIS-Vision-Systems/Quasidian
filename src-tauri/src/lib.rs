@@ -121,6 +121,20 @@ fn copy_file(from: String, to: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Writes bytes handed over by the webview to a new file (m51): a
+/// pasted image has no file on disk to copy from, and the text
+/// commands would corrupt it. Never overwrites.
+#[tauri::command]
+fn write_binary_file(path: String, contents: Vec<u8>) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    file.write_all(&contents).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn delete_file(path: String) -> Result<(), String> {
     std::fs::remove_file(&path).map_err(|e| e.to_string())
@@ -190,6 +204,7 @@ pub fn run() {
             ensure_dir,
             rename_file,
             copy_file,
+            write_binary_file,
             allow_asset_dir,
             delete_file,
             list_folder,

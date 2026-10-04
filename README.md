@@ -10,6 +10,7 @@ Minimalist desktop markdown editor that mimics Obsidian's look and behavior (Liv
 - **Reading mode** (Ctrl+E) — rendered HTML from the same parse tree the editor uses; task-list checkboxes stay clickable.
 - **Wikilinks and backlinks** — `[[links]]` with autocompletion, resolved against the open file's folder.
 - **Folder = vault** — no configuration, no database, no index files written into your notes. Open a markdown file and its folder becomes the workspace.
+- **Images by paste or drag and drop** — stored next to the note and embedded where you drop them.
 - **Global search** across the folder, kept fresh by a file watcher.
 - **Math** rendering via KaTeX.
 - **Trilingual UI** — English, Català, Español.

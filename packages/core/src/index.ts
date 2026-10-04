@@ -26,6 +26,7 @@ export {
   type LivePreviewHooks,
 } from "./editor/livePreview";
 export { minimalChange, normalizeLineEndings, type DocChange } from "./editor/docDiff";
+export { insertionAt, type Insertion } from "./editor/insertPoint";
 export {
   linkAt,
   type LinkAt,
