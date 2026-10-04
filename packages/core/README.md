@@ -31,7 +31,7 @@ editor.setDoc("# Hello\n\nSome **markdown** with [[wikilinks]].");
 previewElement.innerHTML = renderToHtml(editor.getDoc());
 ```
 
-`hooks` tells the core how your application resolves things (`isResolved`, `resolveEmbedSrc`, `renderEmbedNote`, completions, navigation callbacks) — see the `EditorHooks` type. `config` covers line numbers, indentation, spellcheck and auto-pairing — see `EditorConfig`. Set `<body class="theme-dark">` (or `theme-light`) for the stylesheet's variables to apply.
+`hooks` tells the core how your application resolves things (`isResolved`, `resolveEmbedSrc`, `renderEmbedNote`, completions, navigation callbacks) — see the `EditorHooks` type. The optional `linkMenuItems(link)` hook returns the context-menu entries your application offers on a right-clicked link or embed; the core knows no files, so it adds none of its own. `config` covers line numbers, indentation, spellcheck and auto-pairing — see `EditorConfig`. Set `<body class="theme-dark">` (or `theme-light`) for the stylesheet's variables to apply.
 
 A complete minimal embedding lives in [`packages/demo`](../demo) of the repository:
 

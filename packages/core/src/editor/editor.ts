@@ -51,11 +51,10 @@ import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import { ct as t } from "../lib/coreStrings";
 import { footnoteTag } from "../markdown/footnotes";
-import { linkDestination } from "../markdown/links";
 import { mathTag } from "../markdown/math";
 import { markdownExtensions } from "../markdown/parser";
 import { highlightTag, isExternalTarget } from "../markdown/wikilinks";
-import { openContextMenu } from "../ui/contextMenu";
+import { openContextMenu, type MenuEntry } from "../ui/contextMenu";
 import { renderFootnoteContent } from "../markdown/render";
 import {
   scheduleHoverHide,
@@ -88,6 +87,7 @@ import {
 } from "./listCommands";
 import { emptyTable } from "./tableCommands";
 import { minimalChange } from "./docDiff";
+import { linkAt, type LinkAt, type LinkMenuTarget } from "./linkAt";
 import {
   focusInlineTitle,
   focusTableCell,
@@ -315,9 +315,17 @@ function insertFootnoteCommand(view: EditorView): void {
   view.focus();
 }
 
-function openEditorMenu(view: EditorView, x: number, y: number): void {
+function openEditorMenu(
+  view: EditorView,
+  x: number,
+  y: number,
+  /** Entries for the link under the pointer; they open the menu. */
+  linkItems: MenuEntry[] = [],
+): void {
   const hasSelection = !view.state.selection.main.empty;
   openContextMenu(x, y, [
+    ...linkItems,
+    ...(linkItems.length > 0 ? (["separator"] as const) : []),
     {
       label: t("menu.cut"),
       icon: "scissors",
@@ -454,35 +462,11 @@ function footnoteHoverAt(
  * or null when not inside one. Markdown URLs are percent-decoded, so
  * "docs/La%20nota.md" resolves like any other target.
  */
-function wikilinkAt(
-  state: EditorState,
-  pos: number,
-): { target: string; from: number; to: number } | null {
-  let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, 0);
-  while (node !== null && node.name !== "Wikilink" && node.name !== "Link") {
-    node = node.parent;
-  }
-  if (node === null) {
-    return null;
-  }
-  if (node.name === "Link") {
-    const url = node.getChild("URL");
-    if (url === null) {
-      return null;
-    }
-    // The same string the reading render resolves (m47).
-    const { target } = linkDestination(state.sliceDoc(url.from, url.to));
-    return { target, from: node.from, to: node.to };
-  }
-  const path = node.getChild("WikilinkPath");
-  if (path === null) {
-    return null;
-  }
-  return {
-    target: state.sliceDoc(path.from, path.to),
-    from: node.from,
-    to: node.to,
-  };
+function wikilinkAt(state: EditorState, pos: number): LinkAt | null {
+  // Clicks and hover previews follow links, not embeds: an embed is
+  // its own widget, and revealed it is text being edited.
+  const link = linkAt(state, pos);
+  return link !== null && link.kind !== "embed" ? link : null;
 }
 
 
@@ -510,6 +494,12 @@ export interface EditorHooks {
   isResolved(target: string): boolean;
   /** Path of the open file, for transclusion cycle detection. */
   currentFilePath(): string | null;
+  /**
+   * Menu entries for a link the user right-clicked (m50): the core
+   * knows no files, so what can be done with a link is the host's to
+   * say. They lead the text menu; an empty list adds nothing.
+   */
+  linkMenuItems?(link: LinkMenuTarget): MenuEntry[];
 }
 
 function wikilinkCompletionSource(hooks: EditorHooks) {
@@ -822,6 +812,7 @@ export function createEditor(
           onNavigate: hooks.onWikilinkClick,
           isResolved: hooks.isResolved,
           currentFilePath: hooks.currentFilePath,
+          linkMenuItems: hooks.linkMenuItems,
         }),
         lineNumbersCompartment.of(lineNumbersExtension(config)),
         indentCompartment.of(indentExtension(config)),
@@ -836,7 +827,26 @@ export function createEditor(
         EditorView.domEventHandlers({
           contextmenu(event, view) {
             event.preventDefault();
-            openEditorMenu(view, event.clientX, event.clientY);
+            // Over a link, the host's entries for it come first (m50).
+            let linkItems: MenuEntry[] = [];
+            if (
+              hooks.linkMenuItems !== undefined &&
+              event.target instanceof Element &&
+              event.target.closest(".cm-link") !== null
+            ) {
+              const pos = view.posAtCoords({
+                x: event.clientX,
+                y: event.clientY,
+              });
+              const link = pos === null ? null : linkAt(view.state, pos);
+              if (link !== null) {
+                linkItems = hooks.linkMenuItems({
+                  target: link.target,
+                  kind: link.kind,
+                });
+              }
+            }
+            openEditorMenu(view, event.clientX, event.clientY, linkItems);
             return true;
           },
           // Ctrl+hover over a wikilink previews the linked note/section.

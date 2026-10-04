@@ -26,6 +26,12 @@ export {
   type LivePreviewHooks,
 } from "./editor/livePreview";
 export { minimalChange, normalizeLineEndings, type DocChange } from "./editor/docDiff";
+export {
+  linkAt,
+  type LinkAt,
+  type LinkKind,
+  type LinkMenuTarget,
+} from "./editor/linkAt";
 export { cachedImageSize, cacheImageSize } from "./editor/imageSizeCache";
 export {
   initialResizeAnchor,

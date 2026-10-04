@@ -1139,6 +1139,42 @@ export function mountLayout(root: HTMLElement): void {
     }
   }
 
+  /**
+   * The file a link target resolves to — a note or an image — or null
+   * for an unresolved, external or same-note heading link.
+   */
+  function resolveLinkFile(target: string): string | null {
+    const { note } = splitAnchor(target);
+    if (note === "" || isExternalTarget(target) || currentFolder === null) {
+      return null;
+    }
+    const resolution = resolveWikilink(
+      target,
+      currentFolder,
+      [...folderFiles, ...folderImages],
+      getSettings().files.defaultExtension,
+    );
+    return resolution !== null && resolution.exists ? resolution.path : null;
+  }
+
+  /**
+   * What the context menu offers on a link (m50): renaming the file
+   * it points to, through the same flow as the file menu.
+   */
+  function linkMenuItems(link: { target: string }): MenuEntry[] {
+    const path = resolveLinkFile(link.target);
+    if (path === null) {
+      return [];
+    }
+    return [
+      {
+        label: t("menu.rename"),
+        icon: "pencil",
+        onClick: () => void renameFromMenu(path),
+      },
+    ];
+  }
+
   function createPaneEditor(host: HTMLElement): EditorHandle {
     return createEditor(host, {
     onDocChanged(doc, quiet) {
@@ -1158,6 +1194,7 @@ export function mountLayout(root: HTMLElement): void {
     onWikilinkClick(target, newTab) {
       void openWikilink(target, newTab === true);
     },
+    linkMenuItems,
     getWikilinkCompletions() {
       return [
         ...folderFiles.map((file) => file.name.replace(/\.md$/i, "")),
@@ -1210,6 +1247,7 @@ export function mountLayout(root: HTMLElement): void {
     onInternalLink(target, newTab) {
       void openWikilink(target, newTab === true);
     },
+    linkMenuItems,
     onTaskToggle(pos, checked) {
       editor.replaceRange(pos, pos + 3, checked ? "[x]" : "[ ]");
       void saveNow();

@@ -21,6 +21,7 @@ Si la carpeta — o un ancestro — contiene un marcador de proyecto (`CLAUDE.md
 - Los enlaces markdown también funcionan: `[texto](carpeta/Nota.md#Título de sección)`. Los espacios de la ruta o del heading no hace falta escaparlos.
 - Hacer clic en un enlace lo abre (o **crea la nota** si no existe). `Ctrl+clic` o clic central: pestaña nueva.
 - Desde el menú contextual, «Insertar ▸ Wikilink» escribe `[[]]` y abre el autocompletado de notas.
+- Clic derecho sobre un enlace o una imagen incrustada: «Cambiar el nombre…» cambia el nombre del archivo enlazado y actualiza todos los enlaces que apuntan a él.
 - **Previsualización**: pasa el ratón sobre un enlace en modo lectura (o `Ctrl`+ratón en edición) para ver el contenido en una ventana emergente.
 - `![[nota]]` incrusta el contenido de otra nota (también `![[nota#sección]]` e imágenes `![[imagen.png|500]]`).
 

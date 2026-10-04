@@ -6,7 +6,9 @@ import {
   arePropertiesCollapsed,
   setPropertiesCollapsed,
 } from "../editor/livePreview";
+import type { LinkMenuTarget } from "../editor/linkAt";
 import { renderToHtml } from "../markdown/render";
+import { openContextMenu, type MenuEntry } from "./contextMenu";
 import { createIcon } from "./icons";
 import { buildInlineTitleElement } from "./inlineTitle";
 import {
@@ -51,6 +53,12 @@ export interface ReadingViewHooks {
   onInlineTitleRename(name: string): void;
   /** Opens an http(s) link in the host's browser of choice. */
   onExternalLink(url: string): void;
+  /**
+   * Menu entries for a right-clicked internal link or embedded image
+   * (m50). Rendered links do not remember how they were written:
+   * every anchor reports the kind "link".
+   */
+  linkMenuItems?(link: LinkMenuTarget): MenuEntry[];
 }
 
 export interface ReadingViewHandle {
@@ -218,6 +226,32 @@ export function createReadingView(hooks: ReadingViewHooks): ReadingViewHandle {
         hooks.onTaskToggle(pos, target.checked);
       }
     }
+  });
+
+  // Right-click on an internal link or an embedded image: the host's
+  // entries for it, when it has any. Nothing here edits the note —
+  // reading mode stays read-only.
+  element.addEventListener("contextmenu", (event) => {
+    const target = event.target;
+    if (hooks.linkMenuItems === undefined || !(target instanceof Element)) {
+      return;
+    }
+    const link = target.closest<HTMLElement>(
+      "a.internal-link[data-target], img.internal-embed[data-target]",
+    );
+    if (link === null) {
+      return;
+    }
+    const items = hooks.linkMenuItems({
+      target: link.dataset.target ?? "",
+      kind: link.tagName === "IMG" ? "embed" : "link",
+    });
+    if (items.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    openContextMenu(event.clientX, event.clientY, items);
   });
 
   // Middle-click on an internal link opens it in a new tab.
