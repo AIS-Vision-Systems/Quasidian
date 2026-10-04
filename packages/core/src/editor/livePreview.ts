@@ -3112,6 +3112,21 @@ function moveIntoBlock(view: EditorView, forward: boolean): boolean {
   return true;
 }
 
+/**
+ * Re-reads whether the links of rendered table cells resolve. A table
+ * widget keeps its DOM for as long as its source is the same (m45), so
+ * its links would keep the look they were built with — every link of
+ * a table drawn before the folder listing arrived stayed "unresolved".
+ * Only classes change: nothing is rebuilt and nothing moves.
+ */
+function remarkTableLinks(view: EditorView, hooks: LivePreviewHooks): void {
+  for (const table of view.dom.querySelectorAll<HTMLElement>(
+    ".cm-table-widget",
+  )) {
+    markUnresolvedLinks(table, hooks.isResolved);
+  }
+}
+
 export function livePreview(hooks: LivePreviewHooks) {
   return [
     livePreviewHooks.of(hooks),
@@ -3144,6 +3159,13 @@ export function livePreview(hooks: LivePreviewHooks) {
             hasEffects
           ) {
             this.decorations = buildDecorations(update.view, hooks);
+          }
+          // Effects are how the host says "what resolves has changed"
+          // (a block refresh after the folder listing arrives): the
+          // editor's own links were just re-read above, the links
+          // inside table cells follow.
+          if (hasEffects) {
+            remarkTableLinks(update.view, hooks);
           }
         }
       },
