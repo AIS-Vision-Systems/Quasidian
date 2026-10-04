@@ -37,7 +37,7 @@ You audit a change against the rules in `CLAUDE.md`, `CONTRIBUTING.md` and the s
 
 **Version coherence** — if any of `package.json`, `src-tauri/tauri.conf.json` or `src-tauri/Cargo.toml` changes version, all three plus both lockfiles must agree.
 
-**Specs** — `docs/SPEC.md` … `docs/SPEC6.md` must not be modified. They are historical.
+**Specs** — `docs/SPEC.md` … `docs/SPEC7.md` must not be modified. They are historical.
 
 ## Report format
 
