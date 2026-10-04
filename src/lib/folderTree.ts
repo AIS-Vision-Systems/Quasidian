@@ -1,6 +1,6 @@
 // Pure module: no Tauri, no DOM. Builds the collapsible sidebar tree of
 // a recursive vault from the flat entry list produced by the scan.
-import { basename, normalizePath } from "./paths";
+import { basename, dirname, normalizePath } from "./paths";
 
 export interface TreeEntry {
   /** Full path as reported by the filesystem. */
@@ -121,4 +121,15 @@ export function buildFolderTree(
   }
   sortChildren(rootNode.children);
   return rootNode.children;
+}
+
+/**
+ * Whether dropping the file at `path` on `folder` moves it anywhere
+ * (m52): a file dropped on the folder it already lives in stays put.
+ */
+export function movesFile(path: string, folder: string): boolean {
+  return (
+    normalizePath(dirname(path)).toLowerCase() !==
+    normalizePath(folder).toLowerCase()
+  );
 }

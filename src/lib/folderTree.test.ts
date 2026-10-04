@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildFolderTree, collapsedByDefault, relativePath } from "./folderTree";
+import {
+  buildFolderTree,
+  collapsedByDefault,
+  movesFile,
+  relativePath,
+} from "./folderTree";
 
 describe("relativePath", () => {
   it("strips the root prefix, case-insensitively", () => {
@@ -83,5 +88,31 @@ describe("collapsedByDefault", () => {
       { path: "C:/vault/x.md", isDir: false },
     ]);
     expect(collapsedByDefault(tree)).toEqual([]);
+  });
+});
+
+describe("movesFile (m52)", () => {
+  it("moves a file dropped on another folder", () => {
+    expect(movesFile("C:/vault/docs/nota.md", "C:/vault/arxiu")).toBe(true);
+    expect(movesFile("C:/vault/docs/nota.md", "C:/vault")).toBe(true);
+    expect(movesFile("C:/vault/nota.md", "C:/vault/docs")).toBe(true);
+  });
+
+  it("does nothing for a file dropped on its own folder", () => {
+    expect(movesFile("C:/vault/docs/nota.md", "C:/vault/docs")).toBe(false);
+    expect(movesFile("C:/vault/nota.md", "C:/vault")).toBe(false);
+  });
+
+  it("compares folders whatever the separators and the case", () => {
+    expect(movesFile("C:\\vault\\docs\\nota.md", "C:/vault/docs")).toBe(false);
+    expect(movesFile("C:/Vault/Docs/nota.md", "c:/vault/docs/")).toBe(false);
+    expect(movesFile("/home/u/vault/docs/nota.md", "/home/u/vault/docs")).toBe(
+      false,
+    );
+  });
+
+  it("tells a folder from another one that only shares a prefix", () => {
+    expect(movesFile("C:/vault/docs/nota.md", "C:/vault/docs2")).toBe(true);
+    expect(movesFile("C:/vault/docs/api/nota.md", "C:/vault/docs")).toBe(true);
   });
 });
