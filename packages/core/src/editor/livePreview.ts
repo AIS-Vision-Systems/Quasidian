@@ -44,6 +44,13 @@ import {
 } from "../markdown/callouts";
 import { cachedImageSize, cacheImageSize } from "./imageSizeCache";
 import {
+  cachedWidgetHeight,
+  cacheWidgetHeight,
+  estimatedTableHeight,
+  tableRowCount,
+  widgetHeightKey,
+} from "./widgetHeightCache";
+import {
   applyTableOp,
   parseTableSource,
   serializeTable,
@@ -73,6 +80,73 @@ import {
 export interface HiddenRange {
   from: number;
   to: number;
+}
+
+// Measured widget heights (m45). CodeMirror assumes one line for a
+// block widget that gives no estimate and corrects it only when the
+// widget is drawn, shifting the text below. Every block-sized widget
+// reports its box here, keyed by content, and answers estimatedHeight
+// from the cache the next time it is built.
+interface TrackedWidget {
+  key: () => string;
+  onMeasure?: (height: number) => void;
+}
+
+const trackedWidgets = new WeakMap<Element, TrackedWidget>();
+let widgetObserver: ResizeObserver | null = null;
+// Height of one table row as last measured: the estimate for tables
+// that were never drawn.
+let lastTableRowHeight = -1;
+
+function trackWidgetHeight(
+  dom: HTMLElement,
+  key: () => string,
+  onMeasure?: (height: number) => void,
+): void {
+  if (typeof ResizeObserver === "undefined") {
+    return;
+  }
+  if (widgetObserver === null) {
+    widgetObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const tracked = trackedWidgets.get(entry.target);
+        if (tracked === undefined) {
+          continue;
+        }
+        // Zero while detached or inside a hidden pane: never a real
+        // measurement (the cache ignores it too).
+        const height = entry.target.getBoundingClientRect().height;
+        if (height > 0) {
+          cacheWidgetHeight(tracked.key(), height);
+          tracked.onMeasure?.(height);
+        }
+      }
+    });
+  }
+  trackedWidgets.set(dom, { key, onMeasure });
+  widgetObserver.observe(dom);
+}
+
+function untrackWidgetHeight(dom: HTMLElement): void {
+  trackedWidgets.delete(dom);
+  widgetObserver?.unobserve(dom);
+}
+
+/**
+ * Document position of a widget's DOM, or null once that DOM is no
+ * longer the live rendering of the editor. Widgets compare equal
+ * regardless of where they sit (m45), so one DOM survives edits above
+ * it and must look its position up when it needs it.
+ */
+function widgetPos(view: EditorView, dom: HTMLElement): number | null {
+  if (!dom.isConnected) {
+    return null;
+  }
+  try {
+    return view.posAtDOM(dom);
+  } catch {
+    return null;
+  }
 }
 
 export interface LivePreviewHooks {
@@ -849,8 +923,18 @@ class InlineTitleWidget extends WidgetType {
     return other.title === this.title;
   }
 
+  // One key for every note: the title box depends on the theme, not
+  // on the name (a wrapped title is the rare exception).
+  override get estimatedHeight(): number {
+    return cachedWidgetHeight(widgetHeightKey("title", ""));
+  }
+
+  override destroy(dom: HTMLElement): void {
+    untrackWidgetHeight(dom);
+  }
+
   toDOM(view: EditorView): HTMLElement {
-    return buildInlineTitleElement({
+    const element = buildInlineTitleElement({
       title: this.title,
       tag: "div",
       className: "cm-inline-title inline-title",
@@ -870,6 +954,8 @@ class InlineTitleWidget extends WidgetType {
         view.dispatch({ selection: { anchor: pos } });
       },
     });
+    trackWidgetHeight(element, () => widgetHeightKey("title", ""));
+    return element;
   }
 
   override ignoreEvent(): boolean {
@@ -897,6 +983,8 @@ export function bumpEmbedGeneration(): void {
 interface EmbedHtmlEntry {
   freshness: number;
   html: string;
+  /** The render the filled html came from, before any fill (m45). */
+  source?: string;
 }
 
 const embedHtmlCache = new Map<string, EmbedHtmlEntry>();
@@ -914,22 +1002,49 @@ function embedHtmlKey(target: string, alias: string | null): string {
 export function getEmbedHtml(
   target: string,
   alias: string | null,
-): { html: string; fresh: boolean } | undefined {
+): { html: string; fresh: boolean; source?: string } | undefined {
   const entry = embedHtmlCache.get(embedHtmlKey(target, alias));
   return entry === undefined
     ? undefined
-    : { html: entry.html, fresh: entry.freshness === embedFreshness };
+    : {
+        html: entry.html,
+        fresh: entry.freshness === embedFreshness,
+        source: entry.source,
+      };
 }
 
+/**
+ * Caches the filled html of an embed and marks it fresh. The optional
+ * source is the unfilled render it was built from; omitted, the entry
+ * keeps the one it had (nested fills re-cache the markup only).
+ */
 export function setEmbedHtml(
   target: string,
   alias: string | null,
   html: string,
+  source?: string,
 ): void {
-  embedHtmlCache.set(embedHtmlKey(target, alias), {
+  const key = embedHtmlKey(target, alias);
+  embedHtmlCache.set(key, {
     freshness: embedFreshness,
     html,
+    source: source ?? embedHtmlCache.get(key)?.source,
   });
+}
+
+/**
+ * Whether a stale seed can stay on screen untouched: the note renders
+ * to exactly what the seed was built from, and nothing nested in it
+ * could have changed on its own (m45).
+ */
+export function embedSeedStillValid(
+  seedSource: string | undefined,
+  freshSource: string,
+  hasNestedEmbeds: boolean,
+): boolean {
+  return (
+    !hasNestedEmbeds && seedSource !== undefined && seedSource === freshSource
+  );
 }
 
 class NoteEmbedWidget extends WidgetType {
@@ -951,9 +1066,22 @@ class NoteEmbedWidget extends WidgetType {
     );
   }
 
+  private get heightKey(): string {
+    return widgetHeightKey("embed", embedHtmlKey(this.target, this.alias));
+  }
+
+  override get estimatedHeight(): number {
+    return cachedWidgetHeight(this.heightKey);
+  }
+
+  override destroy(dom: HTMLElement): void {
+    untrackWidgetHeight(dom);
+  }
+
   toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("span");
     container.className = "cm-embed-note";
+    trackWidgetHeight(container, () => this.heightKey);
     const title = document.createElement("span");
     title.className = "cm-embed-note-title";
     title.textContent = this.alias ?? this.target;
@@ -1033,32 +1161,80 @@ class NoteEmbedWidget extends WidgetType {
       // through and refresh in place. Seeding first keeps the height
       // stable whenever the content did not change.
     }
-    void this.hooks.renderEmbedNote(this.target).then((result) => {
+    const seed = cached;
+    void this.hooks.renderEmbedNote(this.target).then(async (result) => {
       if (result === null) {
         title.classList.add("cm-embed-missing");
         // A stale seed of a target deleted since must not linger.
         body.replaceChildren();
-      } else {
-        body.innerHTML = result.html;
-        fillEmbedImages(body, this.hooks.resolveEmbedSrc);
-        highlightCodeBlocks(body);
-        addCodePills(body);
-        renderMathElements(body);
-        wirePropertiesCollapse(body);
-        markUnresolvedLinks(body, this.hooks.isResolved);
-        for (const image of body.querySelectorAll("img")) {
-          image.addEventListener("load", () => view.requestMeasure());
-        }
-        // Deeper transclusions, with this chain marked as visited.
-        const current = this.hooks.currentFilePath();
-        const visited = new Set(
-          current === null
-            ? [result.path.toLowerCase()]
-            : [current.toLowerCase(), result.path.toLowerCase()],
-        );
-        fillEmbedNotes(body, fillHooks, visited, 1);
-        setEmbedHtml(this.target, this.alias, body.innerHTML);
+        view.requestMeasure();
+        return;
       }
+      if (
+        seed !== undefined &&
+        embedSeedStillValid(
+          seed.source,
+          result.html,
+          // Nested notes, and images that did not resolve when the
+          // seed was built, can change without this note changing.
+          body.querySelector("span.embed-note, .embed-missing") !== null,
+        )
+      ) {
+        // The save that outdated the seed did not touch this note:
+        // what is on screen is already right, so nothing is rebuilt
+        // and nothing can move (m45). Whether a link resolves does
+        // depend on the other notes: only classes are toggled.
+        markUnresolvedLinks(body, this.hooks.isResolved);
+        setEmbedHtml(this.target, this.alias, body.innerHTML, result.html);
+        return;
+      }
+      // A first fill goes straight into the widget. A refresh of a
+      // seeded widget is staged off-document and swapped in whole:
+      // filling in place put the nested embeds back to placeholders
+      // first, so the widget shrank and then grew again.
+      const stage =
+        seed === undefined ? body : document.createElement("span");
+      stage.innerHTML = result.html;
+      fillEmbedImages(stage, this.hooks.resolveEmbedSrc);
+      highlightCodeBlocks(stage);
+      addCodePills(stage);
+      renderMathElements(stage);
+      wirePropertiesCollapse(stage);
+      markUnresolvedLinks(stage, this.hooks.isResolved);
+      for (const image of stage.querySelectorAll("img")) {
+        image.addEventListener("load", () => view.requestMeasure());
+      }
+      // Deeper transclusions, with this chain marked as visited.
+      const current = this.hooks.currentFilePath();
+      const visited = new Set(
+        current === null
+          ? [result.path.toLowerCase()]
+          : [current.toLowerCase(), result.path.toLowerCase()],
+      );
+      if (stage === body) {
+        void fillEmbedNotes(body, fillHooks, visited, 1);
+      } else {
+        // Until the swap the stage is not the widget: its nested fills
+        // must not re-cache (and thereby mark fresh) the old markup.
+        let swapped = false;
+        await fillEmbedNotes(
+          stage,
+          {
+            ...fillHooks,
+            onRendered: () => {
+              if (swapped) {
+                fillHooks.onRendered?.();
+              }
+            },
+          },
+          visited,
+          1,
+        );
+        // Moved, not copied: the listeners wired above stay attached.
+        body.replaceChildren(...stage.childNodes);
+        swapped = true;
+      }
+      setEmbedHtml(this.target, this.alias, body.innerHTML, result.html);
       // The fill changed the widget height after CodeMirror measured it.
       view.requestMeasure();
     });
@@ -1156,7 +1332,13 @@ class MathWidget extends WidgetType {
   constructor(
     readonly tex: string,
     readonly display: boolean,
-    readonly pos: number,
+    /**
+     * Where the math node starts, relative to the start of the range
+     * this widget replaces. Not an absolute position: a formula is the
+     * same widget wherever edits above push it, so its DOM (and its
+     * measured height) survive them (m45).
+     */
+    readonly offset: number,
     /** True when used as a block decoration (multi-line $$ blocks). */
     readonly standalone: boolean = false,
   ) {
@@ -1167,9 +1349,24 @@ class MathWidget extends WidgetType {
     return (
       other.tex === this.tex &&
       other.display === this.display &&
-      other.pos === this.pos &&
+      other.offset === this.offset &&
       other.standalone === this.standalone
     );
+  }
+
+  // The one-line and the multi-line display shapes are padded
+  // differently: one TeX, two boxes.
+  private get heightKey(): string {
+    return widgetHeightKey("math", (this.standalone ? "b:" : "i:") + this.tex);
+  }
+
+  // Display math is block-sized; inline math is as tall as its line.
+  override get estimatedHeight(): number {
+    return this.display ? cachedWidgetHeight(this.heightKey) : -1;
+  }
+
+  override destroy(dom: HTMLElement): void {
+    untrackWidgetHeight(dom);
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -1187,10 +1384,17 @@ class MathWidget extends WidgetType {
       throwOnError: false,
       displayMode: this.display,
     });
+    if (this.display) {
+      trackWidgetHeight(container, () => this.heightKey);
+    }
     // Clicking a formula reveals its raw TeX with the cursor inside.
     container.addEventListener("mousedown", (event) => {
       event.preventDefault();
-      view.dispatch({ selection: { anchor: this.pos } });
+      const start = widgetPos(view, container);
+      if (start === null) {
+        return;
+      }
+      view.dispatch({ selection: { anchor: start + this.offset } });
       view.focus();
     });
     return container;
@@ -1245,13 +1449,36 @@ class TableWidget extends WidgetType {
     super();
   }
 
+  // The source alone: a table is the same widget wherever edits above
+  // push it. Including the position rebuilt the whole table DOM on
+  // every keystroke above it and reset its measured height (m45).
+  // The pos field is only trusted while toDOM runs; afterwards the
+  // DOM looks its position up.
   override eq(other: TableWidget): boolean {
-    return other.source === this.source && other.pos === this.pos;
+    return other.source === this.source;
+  }
+
+  override get estimatedHeight(): number {
+    const cached = cachedWidgetHeight(widgetHeightKey("table", this.source));
+    return cached >= 0
+      ? cached
+      : estimatedTableHeight(this.source, lastTableRowHeight);
+  }
+
+  override destroy(dom: HTMLElement): void {
+    untrackWidgetHeight(dom);
   }
 
   toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("div");
     container.className = "cm-table-widget markdown-rendered table-editor";
+    trackWidgetHeight(
+      container,
+      () => widgetHeightKey("table", this.source),
+      (height) => {
+        lastTableRowHeight = height / tableRowCount(this.source);
+      },
+    );
     const data = parseTableSource(this.source);
     if (data === null) {
       container.innerHTML = renderToHtml(this.source);
@@ -1262,7 +1489,19 @@ class TableWidget extends WidgetType {
       next: TableData,
       focus: { row: number; column: number } | null,
     ): void => {
-      const to = this.pos + this.source.length;
+      // The position of this DOM now; for a DOM already detached (a
+      // cell committing on blur while the widget is torn down), the
+      // one it was built at. Either way a handler that outlived its
+      // table must never write: only when the document still holds
+      // this exact source there.
+      const from = widgetPos(view, container) ?? this.pos;
+      if (
+        view.state.doc.sliceString(from, from + this.source.length) !==
+        this.source
+      ) {
+        return;
+      }
+      const to = from + this.source.length;
       let insert = serializeTable(next);
       // Always keep a blank line after the table so following text
       // never gets absorbed into it.
@@ -1272,9 +1511,9 @@ class TableWidget extends WidgetType {
         insert += "\n";
       }
       if (focus !== null) {
-        pendingTableFocus = { from: this.pos, ...focus };
+        pendingTableFocus = { from, ...focus };
       }
-      view.dispatch({ changes: { from: this.pos, to, insert } });
+      view.dispatch({ changes: { from, to, insert } });
     };
 
     const apply = (
@@ -1827,9 +2066,26 @@ class PropertiesWidget extends WidgetType {
     return other.source === this.source;
   }
 
+  // Collapsed and expanded are two different boxes of the same source.
+  private get heightKey(): string {
+    return widgetHeightKey(
+      "properties",
+      (propertiesCollapsed ? "1:" : "0:") + this.source,
+    );
+  }
+
+  override get estimatedHeight(): number {
+    return cachedWidgetHeight(this.heightKey);
+  }
+
+  override destroy(dom: HTMLElement): void {
+    untrackWidgetHeight(dom);
+  }
+
   toDOM(view: EditorView): HTMLElement {
     const container = document.createElement("div");
     container.className = "cm-frontmatter-widget";
+    trackWidgetHeight(container, () => this.heightKey);
     const data = parseFrontmatter(this.source);
     container.innerHTML = renderPropertiesHtml(data, true, knownPropertyKeys);
     container.classList.toggle("is-collapsed", propertiesCollapsed);
@@ -2419,7 +2675,7 @@ function buildDecorations(
         // state field below.
         ranges.push(
           Decoration.replace({
-            widget: new MathWidget(math.tex, math.display, math.from),
+            widget: new MathWidget(math.tex, math.display, 0),
           }).range(math.from, math.to),
         );
       }
@@ -2518,7 +2774,12 @@ export function buildBlockDecorations(state: EditorState): DecorationSet {
           if (math.from === node.from) {
             ranges.push(
               Decoration.replace({
-                widget: new MathWidget(math.tex, true, node.from, true),
+                widget: new MathWidget(
+                  math.tex,
+                  true,
+                  node.from - fromLine.from,
+                  true,
+                ),
                 block: true,
               }).range(fromLine.from, toLine.to),
             );

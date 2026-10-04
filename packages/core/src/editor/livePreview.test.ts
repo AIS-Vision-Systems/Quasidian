@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState } from "@codemirror/state";
+import type { WidgetType } from "@codemirror/view";
 import { markdownExtensions } from "../markdown/parser";
 import {
   bumpEmbedGeneration,
@@ -16,6 +17,7 @@ import {
   computeMathRanges,
   computeNoteEmbeds,
   computeTaskMarkers,
+  embedSeedStillValid,
   blockRebuildNeeded,
   buildBlockDecorations,
   inlineTitleField,
@@ -29,6 +31,11 @@ import {
   tableBlankGuard,
   type HiddenRange,
 } from "./livePreview";
+import {
+  cacheWidgetHeight,
+  clearWidgetHeights,
+  widgetHeightKey,
+} from "./widgetHeightCache";
 
 function hiddenRanges(
   doc: string,
@@ -856,5 +863,129 @@ describe("inline title — per-editor state (m44)", () => {
       setInlineTitle(null);
     }
     expect(buildBlockDecorations(follower).size).toBe(0);
+  });
+});
+
+describe("block widgets — stable across edits above them (m45)", () => {
+  const table = "| a | b |\n| --- | --- |\n| 1 | 2 |";
+  const math = "$$\nx^2\n$$";
+
+  function state(doc: string): EditorState {
+    const created = EditorState.create({
+      doc,
+      selection: EditorSelection.single(0),
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: markdownExtensions }),
+      ],
+    });
+    ensureSyntaxTree(created, doc.length, 5000);
+    return created;
+  }
+
+  function blockWidgets(from: EditorState): WidgetType[] {
+    const widgets: WidgetType[] = [];
+    const iter = buildBlockDecorations(from).iter();
+    while (iter.value !== null) {
+      widgets.push(iter.value.spec.widget as WidgetType);
+      iter.next();
+    }
+    return widgets;
+  }
+
+  it("a table is the same widget after text is inserted before it", () => {
+    const before = state("intro\n\n" + table + "\n");
+    const after = before.update({
+      changes: { from: 0, insert: "nova línia\n\n" },
+      selection: { anchor: 0 },
+    }).state;
+    const [first] = blockWidgets(before);
+    const [second] = blockWidgets(after);
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(first).not.toBe(second);
+    // eq keeps the DOM (and its measured height) instead of rebuilding
+    // the whole table on every keystroke above it.
+    expect(first.eq(second)).toBe(true);
+  });
+
+  it("a table whose source changed is a different widget", () => {
+    const [first] = blockWidgets(state(table + "\n"));
+    const [second] = blockWidgets(state(table.replace("| 1 |", "| 9 |") + "\n"));
+    expect(first.eq(second)).toBe(false);
+  });
+
+  it("a math block is the same widget after text is inserted before it", () => {
+    const before = state("intro\n\n" + math + "\n");
+    const after = before.update({
+      changes: { from: 0, insert: "nova línia\n\n" },
+      selection: { anchor: 0 },
+    }).state;
+    const [first] = blockWidgets(before);
+    const [second] = blockWidgets(after);
+    expect(first.eq(second)).toBe(true);
+  });
+
+  it("a math block with different TeX is a different widget", () => {
+    // Text first: a cursor at the start of the block would reveal it.
+    const [first] = blockWidgets(state("intro\n\n" + math + "\n"));
+    const [second] = blockWidgets(state("intro\n\n$$\ny^2\n$$\n"));
+    expect(first.eq(second)).toBe(false);
+  });
+
+  it("estimates a table from its last measured height", () => {
+    clearWidgetHeights();
+    const [fresh] = blockWidgets(state(table + "\n"));
+    // Never measured, and no other table measured yet: unknown.
+    expect(fresh.estimatedHeight).toBe(-1);
+    cacheWidgetHeight(widgetHeightKey("table", table), 132);
+    const [measured] = blockWidgets(state("intro\n\n" + table + "\n"));
+    expect(measured.estimatedHeight).toBe(132);
+    clearWidgetHeights();
+  });
+
+  it("estimates a math block from its last measured height", () => {
+    clearWidgetHeights();
+    const [fresh] = blockWidgets(state("intro\n\n" + math + "\n"));
+    expect(fresh.estimatedHeight).toBe(-1);
+    // The one-line display shape of the same TeX is another box.
+    cacheWidgetHeight(widgetHeightKey("math", "i:x^2"), 40);
+    expect(fresh.estimatedHeight).toBe(-1);
+    cacheWidgetHeight(widgetHeightKey("math", "b:x^2"), 58);
+    const [measured] = blockWidgets(state("més text\n\n" + math + "\n"));
+    expect(measured.estimatedHeight).toBe(58);
+    clearWidgetHeights();
+  });
+});
+
+describe("embed refresh — an unchanged note is left untouched (m45)", () => {
+  it("remembers the source an entry was rendered from", () => {
+    setEmbedHtml("NoteS", null, "<p>filled</p>", "<p>source</p>");
+    expect(getEmbedHtml("NoteS", null)?.source).toBe("<p>source</p>");
+  });
+
+  it("keeps that source when a nested fill re-caches the markup", () => {
+    setEmbedHtml("NoteT", null, "<p>filled</p>", "<p>source</p>");
+    setEmbedHtml("NoteT", null, "<p>filled more</p>");
+    expect(getEmbedHtml("NoteT", null)).toEqual({
+      html: "<p>filled more</p>",
+      fresh: true,
+      source: "<p>source</p>",
+    });
+  });
+
+  it("keeps the seed when the note renders to the same source", () => {
+    expect(embedSeedStillValid("<p>a</p>", "<p>a</p>", false)).toBe(true);
+  });
+
+  it("refreshes when the source changed", () => {
+    expect(embedSeedStillValid("<p>a</p>", "<p>b</p>", false)).toBe(false);
+  });
+
+  it("refreshes when the seed predates source tracking", () => {
+    expect(embedSeedStillValid(undefined, "<p>a</p>", false)).toBe(false);
+  });
+
+  it("refreshes when nested embeds could have changed on their own", () => {
+    expect(embedSeedStillValid("<p>a</p>", "<p>a</p>", true)).toBe(false);
   });
 });
